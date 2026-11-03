@@ -10,6 +10,7 @@ import Dialog from './components/Dialog.jsx';
 import TooltipLayer from './components/Tooltip.jsx';
 import Toasts, { useToasts } from './components/Toasts.jsx';
 import { usePrefs } from './state/usePrefs.js';
+import { useWallpaper } from './state/useWallpaper.js';
 import { useWorkspace } from './state/useWorkspace.js';
 import { useAssistant } from './state/useAssistant.js';
 import { useExecution } from './state/useExecution.js';
@@ -41,6 +42,7 @@ export default function App() {
 
   const { prefs, update, setSidebarWidth, setAssistantWidth, setResultsHeight, changeFontSize, reset: resetPrefs } =
     usePrefs();
+  const wall = useWallpaper(notify);
   const ws = useWorkspace(onSave);
   const exec = useExecution({ onSave });
 
@@ -386,6 +388,9 @@ export default function App() {
         diffInline={prefs.diffInline}
         onDiffInline={(inline) => update({ diffInline: inline })}
         onReset={() => setConfirmReset(true)}
+        wallpaper={wall.wallpaper}
+        onWallpaper={wall.choose}
+        onWallpaperFile={wall.pickImage}
       />
 
       <div className="workspace">

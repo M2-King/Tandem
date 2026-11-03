@@ -130,7 +130,7 @@ p {
   color: #fff;
 }
 .btn-danger:hover {
-  background: #991b1b;
+  background: #e5645b;
 }
 .btn-primary-size {
   height: 36px;
@@ -373,7 +373,7 @@ p {
   position: absolute;
   inset: 0;
   z-index: 25;
-  background: rgba(32, 33, 36, 0.12);
+  background: rgba(5, 7, 12, 0.35);
   animation: fade-in var(--t-panel) var(--ease);
 }
 @keyframes fade-in {
@@ -667,14 +667,14 @@ body.is-resizing .resizer:active::after {
 }
 .banner-review {
   background: var(--accent-soft);
-  border-bottom-color: #d6e4ff;
+  border-bottom-color: var(--border);
 }
 .banner-session {
-  background: #f3f7ff;
+  background: var(--accent-soft);
 }
 .banner-warning {
   background: var(--warning-soft);
-  border-bottom-color: #f1e3bd;
+  border-bottom-color: var(--border);
 }
 .banner-warning > svg {
   color: var(--warning);
@@ -766,7 +766,7 @@ body.is-resizing .resizer:active::after {
   background: var(--error);
 }
 .monaco-editor .bp-hover-glyph::before {
-  background: rgba(185, 28, 28, 0.28);
+  background: rgba(255, 128, 119, 0.35);
 }
 .monaco-editor .bp-glyph,
 .monaco-editor .bp-hover-glyph,
@@ -793,10 +793,10 @@ body.is-resizing .resizer:active::after {
 }
 @keyframes applied-fade {
   from {
-    background: rgba(21, 128, 61, 0.16);
+    background: rgba(98, 207, 149, 0.2);
   }
   to {
-    background: rgba(21, 128, 61, 0);
+    background: rgba(98, 207, 149, 0);
   }
 }
 .monaco-editor .margin-view-overlays .cgmr {
@@ -965,7 +965,8 @@ body.is-resizing .resizer:active::after {
   max-width: 260px;
   padding: 4px 8px;
   border-radius: 6px;
-  background: #202124;
+  background: rgba(30, 34, 46, 0.96);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0, 0, 0, 0.4);
   color: #fff;
   font-size: 12px;
   line-height: 16px;
@@ -980,7 +981,7 @@ body.is-resizing .resizer:active::after {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(32, 33, 36, 0.2);
+  background: rgba(5, 7, 12, 0.55);
   animation: fade-in var(--t-panel) var(--ease);
 }
 .dialog {
@@ -1126,8 +1127,8 @@ select {
   gap: 8px;
   min-height: 40px;
   padding: 4px 6px 4px 14px;
-  border-radius: 10px;
-  background: #202124;
+  border-radius: 12px;
+  background: var(--glass-strong);
   color: #fff;
   box-shadow: var(--shadow-menu);
   font-size: 13px;
@@ -1486,7 +1487,7 @@ select {
 }
 .composer:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+  box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.18);
 }
 .composer-context {
   display: flex;
@@ -1545,9 +1546,10 @@ select {
 }
 .send-btn-stop {
   background: var(--text-primary);
+  color: #11141c;
 }
 .send-btn-stop:hover {
-  background: #000 !important;
+  background: #fff !important;
 }
 
 /* ---------- results ---------- */
@@ -1697,14 +1699,14 @@ select {
 }
 .callout-error {
   background: var(--error-soft);
-  border-color: #f3d0d0;
+  border-color: rgba(255, 128, 119, 0.25);
 }
 .callout-error > svg {
   color: var(--error);
 }
 .callout-warning {
   background: var(--warning-soft);
-  border-color: #f1e3bd;
+  border-color: rgba(242, 195, 90, 0.25);
 }
 .callout-warning > svg {
   color: var(--warning);
@@ -1752,7 +1754,7 @@ select {
 .var-table td,
 .runs-table td {
   padding: 5px 16px;
-  border-bottom: 1px solid #f0f1f4;
+  border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
 .var-name {
@@ -1776,7 +1778,7 @@ select {
 }
 @keyframes changed-fade {
   from {
-    background: #dde9ff;
+    background: rgba(91, 140, 255, 0.28);
   }
   to {
     background: transparent;
@@ -1939,7 +1941,7 @@ select {
   display: block;
 }
 .grid-line {
-  stroke: #eef0f3;
+  stroke: rgba(255, 255, 255, 0.07);
   stroke-width: 1;
 }
 .axis-line {
@@ -1947,7 +1949,7 @@ select {
   stroke-width: 1;
 }
 .diagonal-line {
-  stroke: #9aa0a8;
+  stroke: rgba(255, 255, 255, 0.4);
   stroke-width: 1.5;
   stroke-dasharray: 5 4;
 }
@@ -1998,7 +2000,7 @@ select {
 .metrics-table td {
   padding: 4px 10px 4px 0;
   text-align: right;
-  border-bottom: 1px solid #f0f1f4;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 .metrics-table th:first-child,

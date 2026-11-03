@@ -29,7 +29,7 @@ export default function DiffReview({ proposal, inline, fontSize }) {
       modifiedModelPath={modifiedPath}
       keepCurrentOriginalModel
       keepCurrentModifiedModel
-      theme="tandem-light"
+      theme="tandem-dusk"
       loading={<div className="editor-loading">Loading diff…</div>}
       options={{
         readOnly: true,

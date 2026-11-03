@@ -33,4 +33,6 @@ export const STORAGE_KEYS = {
   workspace: 'tandem.workspace.v1',
   chat: 'tandem.chat.v1',
   runs: 'tandem.runs.v1',
+  // Personal setting: Reset demo leaves it alone.
+  wallpaper: 'tandem.wallpaper.v1',
 };

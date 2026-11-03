@@ -1,4 +1,5 @@
-import { PanelLeft, PanelBottom, PanelRight, MoreHorizontal, Check, Loader2, AlertTriangle, Minus, Plus, RotateCcw, Rows2, Columns2 } from 'lucide-react';
+import { useRef } from 'react';
+import { ImagePlus, PanelLeft, PanelBottom, PanelRight, MoreHorizontal, Check, Loader2, AlertTriangle, Minus, Plus, RotateCcw, Rows2, Columns2 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import Menu, { MenuItem } from './Menu.jsx';
 import RunControl from './RunControl.jsx';
@@ -18,6 +19,13 @@ function SaveStatus({ state }) {
     </span>
   );
 }
+
+const swatch = (className, style) =>
+  function Swatch() {
+    return <span className={`wallpaper-swatch ${className}`} style={style} aria-hidden="true" />;
+  };
+const DuskSwatch = swatch('wallpaper-swatch-dusk');
+const PlainSwatch = swatch('wallpaper-swatch-plain');
 
 function DemoBadge() {
   return (
@@ -53,15 +61,19 @@ export default function Toolbar({
   diffInline,
   onDiffInline,
   onReset,
+  wallpaper,
+  onWallpaper,
+  onWallpaperFile,
 }) {
+  const fileInput = useRef(null);
+  const custom = wallpaper.custom;
   return (
     <header className="toolbar">
       <div className="toolbar-left">
         <span className="app-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" width="20" height="20">
-            <rect width="32" height="32" rx="8" fill="#202124" />
-            <path d="M9 11h14M16 11v12" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
-            <circle cx="23" cy="22" r="3" fill="#2563EB" />
+          <svg viewBox="0 0 32 32" width="18" height="18">
+            <path d="M8 10h16M16 10v13" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" />
+            <circle cx="23.5" cy="22.5" r="2.8" fill="#8FB0FF" />
           </svg>
         </span>
         <span className="app-name">Tandem</span>
@@ -146,6 +158,42 @@ export default function Toolbar({
                 onSelect={() => onDiffInline(false)}
               />
               <div className="menu-sep" role="separator" />
+              <div className="menu-label">Wallpaper</div>
+              <MenuItem
+                close={close}
+                role="menuitemradio"
+                checked={wallpaper.kind === 'dusk' || (wallpaper.kind === 'custom' && !custom)}
+                icon={DuskSwatch}
+                label="Dusk"
+                onSelect={() => onWallpaper('dusk')}
+              />
+              <MenuItem
+                close={close}
+                role="menuitemradio"
+                checked={wallpaper.kind === 'plain'}
+                icon={PlainSwatch}
+                label="Plain"
+                onSelect={() => onWallpaper('plain')}
+              />
+              {custom && (
+                <MenuItem
+                  close={close}
+                  role="menuitemradio"
+                  checked={wallpaper.kind === 'custom'}
+                  icon={swatch('', { backgroundImage: `url("${custom.image}")` })}
+                  label="Your image"
+                  description={custom.name}
+                  onSelect={() => onWallpaper('custom')}
+                />
+              )}
+              <MenuItem
+                close={close}
+                icon={ImagePlus}
+                label={custom ? 'Choose another image…' : 'Use your own image…'}
+                description="Saved in this browser only"
+                onSelect={() => fileInput.current?.click()}
+              />
+              <div className="menu-sep" role="separator" />
               <MenuItem
                 close={close}
                 icon={RotateCcw}
@@ -156,6 +204,18 @@ export default function Toolbar({
             </>
           )}
         </Menu>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/*"
+          hidden
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(e) => {
+            onWallpaperFile(e.target.files?.[0]);
+            e.target.value = '';
+          }}
+        />
       </div>
     </header>
   );

@@ -201,7 +201,7 @@ export default function CodeEditor({
       path={path}
       value={files[path]}
       language={languageFor(path)}
-      theme="tandem-light"
+      theme="tandem-dusk"
       onMount={handleMount}
       keepCurrentModel
       loading={<div className="editor-loading">Loading editor…</div>}

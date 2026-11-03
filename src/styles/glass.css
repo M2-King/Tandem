@@ -1,0 +1,329 @@
+/* ---------- Dusk glass layer ----------
+   Dark translucent panels floating over a sunset lake. Loaded after app.css. */
+
+body {
+  background-color: var(--bg-app);
+  background-image:
+    linear-gradient(180deg, rgba(8, 10, 16, 0.35) 0%, rgba(8, 10, 16, 0.05) 45%, rgba(8, 10, 16, 0.3) 100%),
+    url('/bg-dusk.svg');
+  background-size: cover;
+  background-position: center 60%;
+  color-scheme: dark;
+}
+/* The person's own image, shaded by how bright it is (see useWallpaper). */
+body[data-wallpaper='custom'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 16, var(--wallpaper-dim, 0.3)), rgba(8, 10, 16, var(--wallpaper-dim, 0.3))),
+    var(--wallpaper-image);
+  background-position: center;
+}
+body[data-wallpaper='plain'] {
+  background-image:
+    radial-gradient(120% 80% at 70% 0%, rgba(91, 140, 255, 0.12), transparent 60%),
+    radial-gradient(90% 70% at 10% 100%, rgba(245, 161, 66, 0.08), transparent 60%);
+}
+::selection {
+  background: rgba(91, 140, 255, 0.35);
+}
+
+/* Shared glass surface */
+.glass,
+.sidebar,
+.assistant,
+.editor-pane,
+.results {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .sidebar,
+  .assistant,
+  .editor-pane,
+  .results {
+    background: var(--glass-strong);
+  }
+}
+
+/* ---------- shell ---------- */
+.toolbar {
+  height: 56px;
+  padding: 0 16px 0 14px;
+  background: transparent;
+  border-bottom: 0;
+}
+.app-mark {
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+.app-name {
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.toolbar-sep {
+  color: rgba(255, 255, 255, 0.25);
+}
+.project-name {
+  color: var(--text-primary);
+  opacity: 0.85;
+}
+.toolbar-group {
+  border-left-color: rgba(255, 255, 255, 0.12);
+}
+.demo-badge {
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(242, 178, 90, 0.14);
+  border-color: rgba(242, 178, 90, 0.35);
+  color: #f6c983;
+}
+.demo-badge:hover {
+  background: rgba(242, 178, 90, 0.22);
+}
+
+.workspace {
+  gap: 0;
+  padding: 0 12px 12px;
+}
+.sidebar.is-closed,
+.assistant.is-closed {
+  border-width: 0;
+}
+.sidebar,
+.assistant {
+  overflow: hidden;
+}
+
+/* Resizers become the gaps between panels */
+.resizer-vertical {
+  width: 10px;
+  margin: 0;
+}
+.resizer-vertical::after {
+  left: 4px;
+  top: 12px;
+  bottom: 12px;
+  border-radius: 2px;
+}
+.resizer-horizontal {
+  top: -10px;
+  height: 10px;
+}
+.resizer-horizontal::after {
+  top: 4px;
+  left: 12px;
+  right: 12px;
+  border-radius: 2px;
+}
+
+.center {
+  background: transparent;
+  gap: 0;
+}
+.editor-pane {
+  overflow: hidden;
+}
+.results {
+  margin-top: 10px;
+  overflow: visible;
+}
+.results > :not(.resizer) {
+  border-radius: inherit;
+  overflow: hidden;
+}
+.results.is-closed {
+  margin-top: 0;
+  border-width: 0;
+}
+
+/* Overlays on narrow screens float above the backdrop */
+.sidebar.is-overlay,
+.assistant.is-overlay {
+  top: 0;
+  bottom: 12px;
+  background: var(--glass-strong);
+  border-width: 1px;
+}
+.sidebar.is-overlay {
+  left: 12px;
+}
+.assistant.is-overlay {
+  right: 12px;
+}
+.scrim {
+  border-radius: var(--radius-lg);
+}
+
+/* ---------- panel headers & file tree ---------- */
+.panel-header {
+  height: 46px;
+}
+.panel-title {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.file-row {
+  border-radius: 8px;
+}
+.file-row.is-active {
+  background: var(--bg-selected);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px rgba(91, 140, 255, 0.25);
+}
+
+/* ---------- editor tabs ---------- */
+.tab-bar {
+  height: 42px;
+  padding: 6px 8px 0;
+  gap: 2px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  border-right: 0;
+  border-radius: 8px 8px 0 0;
+}
+.tab.is-active {
+  background: rgba(255, 255, 255, 0.06);
+}
+.tab.is-active::before {
+  top: auto;
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  height: 2px;
+  border-radius: 2px;
+}
+
+/* ---------- buttons ---------- */
+.btn-primary {
+  background: linear-gradient(180deg, #6d99ff, #4f80f5);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset, 0 6px 18px rgba(64, 112, 240, 0.35);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #7ea5ff, #5b8cff);
+}
+.btn-primary:active:not(:disabled) {
+  background: var(--accent-pressed);
+}
+.split-main {
+  border-radius: 999px 0 0 999px;
+  padding-left: 16px;
+}
+.split-toggle {
+  border-radius: 0 999px 999px 0;
+  width: 34px;
+  padding-right: 3px;
+  border-left-color: rgba(255, 255, 255, 0.25);
+}
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.11);
+}
+.send-btn {
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(64, 112, 240, 0.4);
+}
+.send-btn:disabled {
+  box-shadow: none;
+}
+
+/* ---------- floating surfaces ---------- */
+.menu,
+.dialog {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+}
+.toast {
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+/* ---------- assistant ---------- */
+.composer {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+}
+.msg-user-text {
+  background: rgba(91, 140, 255, 0.16);
+  border: 1px solid rgba(91, 140, 255, 0.22);
+}
+
+/* ---------- results ---------- */
+.results-header {
+  height: 46px;
+  padding: 0 8px 0 10px;
+}
+.results-tabs {
+  height: 30px;
+  gap: 4px;
+}
+.results-tab {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  transition: color var(--t-select) var(--ease), background-color var(--t-select) var(--ease);
+}
+.results-tab:hover {
+  background: var(--bg-hover);
+}
+.results-tab.is-active {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.results-tab.is-active::after {
+  display: none;
+}
+
+/* Scrollbars that suit dark glass */
+* {
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+/* Banners: let actions drop below the message on narrow editors */
+.editor-banner {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  background-clip: padding-box;
+}
+.banner-text {
+  flex: 1 1 220px;
+}
+.banner-actions {
+  margin-left: auto;
+}
+
+/* Wallpaper choices in the More menu */
+.wallpaper-swatch {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-size: cover;
+  background-position: center;
+}
+.wallpaper-swatch-dusk {
+  background-image: url('/bg-dusk.svg');
+}
+.wallpaper-swatch-plain {
+  background: #141822;
+}
