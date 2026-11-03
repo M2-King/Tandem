@@ -42,7 +42,7 @@ Inside panels, grouped content sits on inset cards (`rgba(255,255,255,.03)`, 1px
 
 ## Colour
 
-- Neutrals: `--bg-app #101217`, workspace `#16191F`, panels `#1B1E24`, raised `#242831`.
+- Neutrals: backdrop `#0B0C10`; glass tint `rgb(14,16,21)`, raised tint `rgb(30,33,41)`; solid fallbacks `#16191F`, `#1B1E24`, `#242831`.
 - Text: primary `#ECEEF2`, secondary `#9CA3AF`, muted `#858B95` (4.8:1 on the workspace).
 - Accent: `--accent #7895DB` for text, icons and indicators; `--accent-fill #5672BD` for primary buttons (white text, 4.6:1).
 - Status colours are desaturated (`--success`, `--error`, `--warning`) and always appear with an icon or a word.
@@ -59,7 +59,7 @@ One primary action per area. Panel toggles show their state with a brighter icon
 
 ## Type and space
 
-- Interface 13/18, metadata 12/16, badges 11/14, reading text in the assistant 14/21, dialog titles 15/22. Weights 400, 500 and 600 only.
+- Interface 13/18, metadata 12/16, badges 11/14, assistant replies 13/20, dialog titles 15/22. Weights 400, 500 and 600 only.
 - Code in JetBrains Mono.
 - Spacing steps 4, 8, 12, 16, 24, 32. Controls 26, 28 and 30 px high; rows 28 px; headers 40 px; panel gap 8 px.
 - Radii: 5 (small controls), 7 (buttons, rows), 10 (cards), 12 (floating surfaces), 14 (panels).
