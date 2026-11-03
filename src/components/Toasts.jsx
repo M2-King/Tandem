@@ -53,7 +53,7 @@ function Toast({ toast, onDismiss }) {
         </button>
       )}
       <button type="button" className="icon-btn icon-btn-sm" aria-label="Dismiss" onClick={() => onDismiss(toast.id)}>
-        <X size={14} aria-hidden="true" />
+        <X size={16} aria-hidden="true" />
       </button>
     </div>
   );

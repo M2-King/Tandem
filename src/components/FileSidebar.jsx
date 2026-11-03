@@ -64,7 +64,7 @@ export default function FileSidebar({ paths, activePath, onOpen }) {
                 onClick={() => setCollapsed((c) => ({ ...c, [node.name]: !c[node.name] }))}
               >
                 <ChevronRight
-                  size={14}
+                  size={16}
                   aria-hidden="true"
                   className={`folder-chevron ${collapsed[node.name] ? '' : 'is-open'}`}
                 />

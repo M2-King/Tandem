@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { ImagePlus, PanelLeft, PanelBottom, PanelRight, MoreHorizontal, Check, Loader2, AlertTriangle, Minus, Plus, RotateCcw, Rows2, Columns2 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
+import TandemMark from './TandemMark.jsx';
 import Menu, { MenuItem } from './Menu.jsx';
 import RunControl from './RunControl.jsx';
 
@@ -14,7 +15,7 @@ function SaveStatus({ state }) {
   }
   return (
     <span className="save-status" data-tooltip="Files and settings are saved in this browser only." tabIndex={0}>
-      {state === 'saving' ? <Loader2 size={13} className="spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}
+      {state === 'saving' ? <Loader2 size={14} className="spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}
       {state === 'saving' ? 'Saving…' : 'Saved locally'}
     </span>
   );
@@ -71,10 +72,7 @@ export default function Toolbar({
     <header className="toolbar">
       <div className="toolbar-left">
         <span className="app-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" width="18" height="18">
-            <path d="M8 10h16M16 10v13" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" />
-            <circle cx="23.5" cy="22.5" r="2.8" fill="#8FB0FF" />
-          </svg>
+          <TandemMark size={18} />
         </span>
         <span className="app-name">Tandem</span>
         <span className="toolbar-sep" aria-hidden="true">/</span>
@@ -88,18 +86,21 @@ export default function Toolbar({
         <div className="toolbar-group" role="group" aria-label="Panels">
           <IconButton
             icon={PanelLeft}
+            size={18}
             label={panels.files.open ? 'Hide files' : 'Show files'}
             pressed={panels.files.open}
             onClick={panels.files.toggle}
           />
           <IconButton
             icon={PanelBottom}
+            size={18}
             label={panels.results.open ? 'Hide results' : 'Show results'}
             pressed={panels.results.open}
             onClick={panels.results.toggle}
           />
           <IconButton
             icon={PanelRight}
+            size={18}
             label={panels.assistant.open ? 'Hide assistant' : 'Show assistant'}
             pressed={panels.assistant.open}
             onClick={panels.assistant.toggle}
@@ -109,7 +110,7 @@ export default function Toolbar({
         <Menu
           label="More options"
           renderTrigger={(props) => (
-            <IconButton icon={MoreHorizontal} label="More options" tooltipSide="left" {...props} />
+            <IconButton icon={MoreHorizontal} size={18} label="More options" tooltipSide="left" {...props} />
           )}
         >
           {(close) => (

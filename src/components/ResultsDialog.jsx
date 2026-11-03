@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Sparkles, Table2 } from 'lucide-react';
+import { X, MessageSquarePlus, Table2 } from 'lucide-react';
 import Dialog from './Dialog.jsx';
 import FigureView from './FigureView.jsx';
 import { MetricsList, MetricsComparison } from './MetricsTable.jsx';
@@ -118,12 +118,12 @@ export default function ResultsDialog({ runs, initialA, initialB, onClose, onAsk
           <div className="expanded-side-actions">
             {hasPredictions && (
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowData((s) => !s)} aria-expanded={showData}>
-                <Table2 size={13} aria-hidden="true" /> {showData ? 'Hide' : 'Show'} data table
+                <Table2 size={16} aria-hidden="true" /> {showData ? 'Hide' : 'Show'} data table
               </button>
             )}
             {runA.figures.length > 0 && (
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => onAskModify(runA, runA.figures.at(-1))}>
-                <Sparkles size={13} aria-hidden="true" /> Ask AI to modify
+                <MessageSquarePlus size={16} aria-hidden="true" /> Ask AI to modify
               </button>
             )}
           </div>

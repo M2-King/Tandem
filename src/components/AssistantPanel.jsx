@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, Sparkles } from 'lucide-react';
+import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw } from 'lucide-react';
+import TandemMark from './TandemMark.jsx';
 import Markdown from './Markdown.jsx';
 import ProposalCard from './ProposalCard.jsx';
 import IconButton from './IconButton.jsx';
@@ -11,11 +12,11 @@ function ContextChip({ chip, onRemove }) {
   const Icon = chipIcon(chip.type);
   return (
     <span className="context-chip" title={chip.text ? chip.text.slice(0, 400) : chip.label}>
-      <Icon size={13} aria-hidden="true" />
+      <Icon size={14} aria-hidden="true" />
       <span className="context-chip-label">{chip.label}</span>
       {onRemove && (
         <button type="button" className="context-chip-remove" aria-label={`Remove ${chip.label}`} onClick={onRemove}>
-          <X size={12} aria-hidden="true" />
+          <X size={14} aria-hidden="true" />
         </button>
       )}
     </span>
@@ -27,13 +28,13 @@ function Stages({ stages, working }) {
     <ol className="stages" aria-live="polite">
       {stages.map((s, i) => (
         <li key={i} className={s.done ? 'is-done' : 'is-active'}>
-          {s.done ? <Check size={13} aria-hidden="true" /> : <Loader2 size={13} className="spin" aria-hidden="true" />}
+          {s.done ? <Check size={16} aria-hidden="true" /> : <Loader2 size={16} className="spin" aria-hidden="true" />}
           <span>{s.label}</span>
         </li>
       ))}
       {working && !stages.length && (
         <li className="is-active">
-          <Loader2 size={13} className="spin" aria-hidden="true" />
+          <Loader2 size={16} className="spin" aria-hidden="true" />
           <span>Starting</span>
         </li>
       )}
@@ -68,16 +69,16 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
       )}
       {message.status === 'cancelled' && (
         <p className="msg-muted">
-          <Square size={11} aria-hidden="true" /> {message.text}
+          <Square size={12} aria-hidden="true" /> {message.text}
         </p>
       )}
       {message.status === 'failed' && (
         <div className="msg-error" role="alert">
-          <AlertCircle size={14} aria-hidden="true" />
+          <AlertCircle size={16} aria-hidden="true" />
           <span>{message.text}</span>
           {message.retry && (
             <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => onRetry(message.retry)}>
-              <RotateCcw size={13} aria-hidden="true" /> Try again
+              <RotateCcw size={16} aria-hidden="true" /> Try again
             </button>
           )}
         </div>
@@ -93,7 +94,7 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
       )}
       {message.action && (
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => onAction(message.action)}>
-          <RotateCcw size={13} aria-hidden="true" /> {message.action.label}
+          <RotateCcw size={16} aria-hidden="true" /> {message.action.label}
         </button>
       )}
       {message.suggestions?.length > 0 && (
@@ -112,7 +113,7 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
 function EmptyConversation({ onSuggestion }) {
   return (
     <div className="assistant-empty">
-      <Sparkles size={18} aria-hidden="true" className="assistant-empty-icon" />
+      <TandemMark size={20} className="assistant-empty-icon" />
       <p className="assistant-empty-title">What should we change?</p>
       <p className="assistant-empty-text">
         Describe a change, or select code in the editor and choose Ask AI. You review every change before it’s applied.
@@ -300,7 +301,7 @@ export default function AssistantPanel({
       </div>
       {showJump && (
         <button type="button" className="jump-latest" onClick={jump}>
-          <ArrowDown size={14} aria-hidden="true" /> Latest
+          <ArrowDown size={16} aria-hidden="true" /> Latest
         </button>
       )}
       <Composer

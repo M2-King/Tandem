@@ -1,69 +1,128 @@
-/* Design tokens. Components use these variables instead of raw values. */
+/* Design tokens. Components use these variables instead of raw values.
+
+   Near-black glass. Three material levels:
+   1. Workspace (editor, results): near-opaque, so code never competes with the wallpaper.
+   2. Panels (files, assistant): slightly translucent with a soft blur.
+   3. Floating (menus, popovers, dialogs, tooltips, toasts): frosted glass with a shadow.
+   Blue is reserved for the primary action, focus, selection and the active item. */
 :root {
-  /* Dusk glass: dark translucent panels floating over a sunset backdrop */
-  --bg-app: #0c0f16;
-  --glass: rgba(20, 23, 33, 0.58);
-  --glass-strong: rgba(24, 28, 39, 0.94);
-  --glass-border: rgba(255, 255, 255, 0.09);
-  --glass-blur: blur(24px) saturate(140%);
-  --bg-surface: rgba(255, 255, 255, 0.05);
-  --bg-subtle: rgba(255, 255, 255, 0.03);
-  --bg-hover: rgba(255, 255, 255, 0.07);
-  --bg-pressed: rgba(255, 255, 255, 0.11);
-  --bg-selected: rgba(98, 145, 255, 0.18);
+  /* Backdrop */
+  --bg-app: #101217;
+  --wallpaper-shade: rgba(10, 11, 15, 0.42);
 
-  --text-primary: #e9ecf3;
-  --text-secondary: #a6adbb;
-  --text-muted: #868e9e;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.18);
+  /* Materials */
+  --surface-1: rgba(22, 25, 31, 0.97);
+  --surface-1-solid: #16191f;
+  --surface-2: rgba(27, 30, 36, 0.91);
+  --surface-2-solid: #1b1e24;
+  --surface-3: rgba(36, 40, 49, 0.86);
+  --surface-3-solid: #242831;
+  --blur-2: blur(28px) saturate(120%);
+  --blur-3: blur(20px) saturate(150%);
 
-  --accent: #5b8cff;
-  --accent-hover: #719cff;
-  --accent-pressed: #4a79e8;
-  --accent-soft: rgba(91, 140, 255, 0.16);
+  /* Fills on top of a surface */
+  --bg-subtle: rgba(255, 255, 255, 0.025);
+  --bg-surface: rgba(255, 255, 255, 0.04);
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-pressed: rgba(255, 255, 255, 0.09);
+  --bg-selected: rgba(255, 255, 255, 0.075);
+
+  /* Text */
+  --text-primary: #eceef2;
+  --text-secondary: #9ca3af;
+  --text-muted: #858b95;
+
+  /* Lines */
+  --border: rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --border-float: rgba(255, 255, 255, 0.1);
+
+  /* Accent */
+  --accent: #7895db; /* text, icons, indicators */
+  --accent-fill: #5672bd; /* primary button background, white text 4.6:1 */
+  --accent-fill-hover: #5f7bc6;
+  --accent-fill-pressed: #4e6ab3;
+  --accent-soft: rgba(120, 149, 219, 0.13);
   --on-accent: #ffffff;
-  --exec-line: rgba(91, 140, 255, 0.16);
+  --exec-line: rgba(120, 149, 219, 0.14);
+  --selection: rgba(120, 149, 219, 0.3);
 
-  --success: #62cf95;
-  --success-soft: rgba(98, 207, 149, 0.13);
-  --error: #ff8077;
-  --error-soft: rgba(255, 128, 119, 0.12);
-  --warning: #f2c35a;
-  --warning-soft: rgba(242, 195, 90, 0.12);
+  /* Status, desaturated to sit with the neutrals */
+  --success: #6fbf8e;
+  --success-soft: rgba(111, 191, 142, 0.11);
+  --error: #e5776f;
+  --error-fill: #b9524b;
+  --error-soft: rgba(229, 119, 111, 0.11);
+  --warning: #d9b25c;
+  --warning-soft: rgba(217, 178, 92, 0.1);
 
-  --series-1: #5b8cff;
-  --series-2: #f5a142;
+  --series-1: #7895db;
+  --series-2: #d9a05b;
 
+  /* Type */
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-code: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --fs-xs: 11px; /* badges, hints */
+  --fs-sm: 12px; /* metadata */
+  --fs-md: 13px; /* interface text */
+  --fs-lg: 14px; /* reading text in the assistant */
+  --fs-xl: 15px; /* dialog titles */
+  --lh-xs: 14px;
+  --lh-sm: 16px;
+  --lh-md: 18px;
+  --lh-lg: 21px;
+  --lh-xl: 22px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
 
+  /* Space */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
+  --gap-panel: 8px;
 
-  --radius: 8px;
-  --radius-lg: 14px;
-  --radius-sm: 6px;
+  /* Sizes */
+  --control-sm: 26px;
+  --control: 28px;
+  --control-lg: 30px;
+  --row: 28px;
+  --toolbar-height: 48px;
+  --header-height: 40px;
+  --icon-sm: 14px;
+  --icon: 16px;
+  --icon-nav: 18px;
+  --icon-stroke: 1.75;
 
-  --shadow-menu: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 16px 40px rgba(0, 0, 0, 0.5);
-  --shadow-overlay: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 24px 60px rgba(0, 0, 0, 0.55);
-  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 18px 50px rgba(0, 0, 0, 0.35);
-  --focus-ring: 0 0 0 2px rgba(12, 15, 22, 0.9), 0 0 0 4px rgba(113, 156, 255, 0.85);
+  /* Shape */
+  --radius-sm: 5px;
+  --radius: 7px;
+  --radius-float: 10px;
+  --radius-lg: 12px;
 
-  --ease: cubic-bezier(0.2, 0, 0, 1);
-  --t-hover: 110ms;
-  --t-menu: 140ms;
-  --t-select: 160ms;
-  --t-panel: 200ms;
+  /* Depth */
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.22);
+  --shadow-menu: 0 2px 6px rgba(0, 0, 0, 0.18), 0 14px 36px rgba(0, 0, 0, 0.38);
+  --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.22), 0 24px 64px rgba(0, 0, 0, 0.45);
+  --focus-ring: 0 0 0 2px var(--surface-1-solid), 0 0 0 4px rgba(120, 149, 219, 0.9);
+
+  /* Motion */
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-hover: 150ms;
+  --t-press: 170ms;
+  --t-menu: 200ms;
+  --t-select: 170ms;
+  --t-panel: 260ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
     --t-hover: 0ms;
+    --t-press: 0ms;
     --t-menu: 0ms;
     --t-select: 0ms;
     --t-panel: 0ms;

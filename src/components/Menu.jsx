@@ -78,7 +78,7 @@ export function MenuItem({ icon: Icon, label, description, onSelect, close, role
         <span className="menu-item-label">{label}</span>
         {description && <span className="menu-item-desc">{description}</span>}
       </span>
-      {role === 'menuitemradio' && checked && <Check size={14} aria-hidden="true" className="menu-item-check" />}
+      {role === 'menuitemradio' && checked && <Check size={16} aria-hidden="true" className="menu-item-check" />}
     </button>
   );
 }

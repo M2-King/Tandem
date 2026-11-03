@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Play, Loader2, AlertCircle, RotateCcw, Sparkles, Maximize2, ArrowRight, Info, GitCompare } from 'lucide-react';
+import { X, Play, Loader2, AlertCircle, RotateCcw, MessageSquarePlus, Wrench, Maximize2, ArrowRight, Info, GitCompare } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import FigureView from './FigureView.jsx';
 import { MetricsList } from './MetricsTable.jsx';
@@ -51,7 +51,7 @@ function NoticeCallout({ notice, onResetFile, onDismiss }) {
         <p>{notice.detail}</p>
         <div className="callout-actions">
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => onResetFile(notice.resetPath)}>
-            <RotateCcw size={13} aria-hidden="true" /> Reset {notice.resetPath.split('/').pop()} to sample
+            <RotateCcw size={16} aria-hidden="true" /> Reset {notice.resetPath.split('/').pop()} to sample
           </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onDismiss}>
             Dismiss
@@ -69,7 +69,7 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
         <div className="run-meta">
           <span className="run-meta-title">Running {session.path}</span>
           <span className="run-state status-running">
-            <Loader2 size={14} className="spin" aria-hidden="true" /> Running (simulated)
+            <Loader2 size={16} className="spin" aria-hidden="true" /> Running (simulated)
           </span>
         </div>
         <OutputLines lines={session.output} />
@@ -109,7 +109,7 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
                 <p>{run.error.explanation}</p>
                 <div className="callout-actions">
                   <button type="button" className="btn btn-primary btn-sm" onClick={() => actions.onAskFix(run)}>
-                    <Sparkles size={13} aria-hidden="true" /> Ask AI to fix
+                    <Wrench size={16} aria-hidden="true" /> Ask AI to fix
                   </button>
                   <button
                     type="button"
@@ -130,7 +130,7 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
       ) : (
         <Empty title="No output yet" text={`Run ${runTarget} to see its output here.`}>
           <button type="button" className="btn btn-secondary btn-sm" onClick={actions.onRun}>
-            <Play size={13} fill="currentColor" aria-hidden="true" /> Run {runTarget}
+            <Play size={16} fill="currentColor" aria-hidden="true" /> Run {runTarget}
           </button>
         </Empty>
       )}
@@ -254,7 +254,7 @@ function ChartsView({ run, runs, actions }) {
         <div className="charts-actions">
           {others.length > 0 && (
             <label className="compare-select">
-              <GitCompare size={14} aria-hidden="true" />
+              <GitCompare size={16} aria-hidden="true" />
               <span className="sr-only">Compare with another run</span>
               <select
                 value=""
@@ -271,7 +271,7 @@ function ChartsView({ run, runs, actions }) {
             </label>
           )}
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => actions.onAskModify(run, figure)}>
-            <Sparkles size={13} aria-hidden="true" /> Ask AI to modify
+            <MessageSquarePlus size={16} aria-hidden="true" /> Ask AI to modify
           </button>
           <IconButton icon={Maximize2} label="Expand results" onClick={() => actions.onExpand(run.id, null)} tooltipSide="left" />
         </div>
@@ -303,7 +303,7 @@ function RunsView({ runs, selectedRunId, onSelect, onCompare }) {
           disabled={picked.length !== 2}
           onClick={() => onCompare(picked[0], picked[1])}
         >
-          <GitCompare size={13} aria-hidden="true" /> Compare
+          <GitCompare size={16} aria-hidden="true" /> Compare
         </button>
       </div>
       <table className="runs-table">
@@ -342,7 +342,7 @@ function RunsView({ runs, selectedRunId, onSelect, onCompare }) {
               <td className="muted-text">{formatTime(run.createdAt)}</td>
               <td>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => onSelect(run.id)}>
-                  {run.id === selectedRunId ? 'Showing' : 'Show'} <ArrowRight size={13} aria-hidden="true" />
+                  {run.id === selectedRunId ? 'Showing' : 'Show'} <ArrowRight size={16} aria-hidden="true" />
                 </button>
               </td>
             </tr>

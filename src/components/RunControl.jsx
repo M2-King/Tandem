@@ -15,12 +15,12 @@ export default function RunControl({ session, runTarget, onRun, onStep, onDebug,
     return (
       <div className="run-control">
         <span className="run-status" role="status">
-          {session.mode === 'run' && <Loader2 size={14} className="spin" aria-hidden="true" />}
-          {session.mode === 'step' && <Footprints size={14} aria-hidden="true" />}
-          {session.mode === 'debug' && <Bug size={14} aria-hidden="true" />}
+          {session.mode === 'run' && <Loader2 size={16} className="spin" aria-hidden="true" />}
+          {session.mode === 'step' && <Footprints size={16} aria-hidden="true" />}
+          {session.mode === 'debug' && <Bug size={16} aria-hidden="true" />}
           <span className="run-status-text">{label}</span>
         </span>
-        <button type="button" className="btn btn-secondary btn-primary-size btn-stop" onClick={onStop}>
+        <button type="button" className="btn btn-secondary btn-stop" onClick={onStop}>
           <Square size={12} fill="currentColor" aria-hidden="true" />
           Stop
         </button>

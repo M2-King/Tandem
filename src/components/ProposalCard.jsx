@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileCode2, Check, X, Eye, Undo2, AlertTriangle, RefreshCw, Square, CircleCheck, CircleSlash } from 'lucide-react';
+import { FileCode2, FileDiff, Undo2, AlertTriangle, RefreshCw, CircleCheck, CircleSlash } from 'lucide-react';
 import { formatInline } from './Markdown.jsx';
 
 // The assistant's proposed change, with its current state and actions.
@@ -11,7 +11,7 @@ export default function ProposalCard({ view, handlers }) {
   return (
     <div className={`proposal-card status-${status}`}>
       <div className="proposal-head">
-        <FileCode2 size={14} strokeWidth={1.75} aria-hidden="true" />
+        <FileCode2 size={16} strokeWidth={1.75} aria-hidden="true" />
         <span className="proposal-file">{path}</span>
         <span className="diff-stat">
           <span className="diff-add" aria-label={`${proposal.added} lines added`}>+{proposal.added}</span>{' '}
@@ -26,19 +26,23 @@ export default function ProposalCard({ view, handlers }) {
 
       {status === 'pending' && stale && (
         <div className="proposal-state state-warning" role="status">
-          <AlertTriangle size={14} aria-hidden="true" />
+          <AlertTriangle size={16} aria-hidden="true" />
           <span>{path} changed after this proposal was created, so it can’t be applied safely.</span>
-          <div className="proposal-actions">
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => handlers.onDiscard(id)}>
-              Discard
-            </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => handlers.onRegenerate(id)}>
-              <RefreshCw size={13} aria-hidden="true" /> Regenerate
-            </button>
-          </div>
+          {!reviewing && (
+            <div className="proposal-actions">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handlers.onDiscard(id)}>
+                Discard
+              </button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => handlers.onRegenerate(id)}>
+                <RefreshCw size={16} aria-hidden="true" /> Regenerate
+              </button>
+            </div>
+          )}
         </div>
       )}
 
+      {/* Accept and Reject live in the editor, next to the changed lines.
+          The card explains the change and points to where it is reviewed. */}
       {status === 'pending' && !stale && (
         <>
           {blockedBy && (
@@ -46,34 +50,24 @@ export default function ProposalCard({ view, handlers }) {
               {path} is being run. Stop the run before applying changes to it.
             </p>
           )}
-          <div className="proposal-actions">
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => handlers.onReview(id)}
-              aria-pressed={reviewing}
-            >
-              <Eye size={14} aria-hidden="true" /> {reviewing ? 'Reviewing' : 'Review'}
-            </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => handlers.onReject(id)}>
-              <X size={14} aria-hidden="true" /> Reject
-            </button>
-            {blockedBy ? (
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => handlers.onStopAndApply(id)}>
-                <Square size={11} fill="currentColor" aria-hidden="true" /> Stop and accept
+          {reviewing ? (
+            <p className="proposal-review-status" role="status">
+              <FileDiff size={14} aria-hidden="true" />
+              Reviewing in the editor. Accept or reject it above the code.
+            </p>
+          ) : (
+            <div className="proposal-actions">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handlers.onReview(id)}>
+                <FileDiff size={16} aria-hidden="true" /> Review in editor
               </button>
-            ) : (
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => handlers.onAccept(id)}>
-                <Check size={14} aria-hidden="true" /> Accept
-              </button>
-            )}
-          </div>
+            </div>
+          )}
         </>
       )}
 
       {status === 'accepted' && (
         <div className="proposal-state state-success">
-          <CircleCheck size={14} aria-hidden="true" />
+          <CircleCheck size={16} aria-hidden="true" />
           <span>Applied to {path}</span>
           {canUndo && !confirmUndo && (
             <button
@@ -81,7 +75,7 @@ export default function ProposalCard({ view, handlers }) {
               className="btn btn-ghost btn-sm push-right"
               onClick={() => (editedSinceApply ? setConfirmUndo(true) : handlers.onUndo(id))}
             >
-              <Undo2 size={14} aria-hidden="true" /> Undo
+              <Undo2 size={16} aria-hidden="true" /> Undo
             </button>
           )}
           {!canUndo && <span className="state-hint push-right">A later change to {path} must be undone first</span>}
@@ -89,7 +83,7 @@ export default function ProposalCard({ view, handlers }) {
       )}
       {status === 'accepted' && confirmUndo && (
         <div className="proposal-state state-warning" role="alertdialog" aria-label="Confirm undo">
-          <AlertTriangle size={14} aria-hidden="true" />
+          <AlertTriangle size={16} aria-hidden="true" />
           <span>{path} has edits made after this change. Undo restores the earlier version and removes them.</span>
           <div className="proposal-actions">
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setConfirmUndo(false)}>
@@ -110,19 +104,19 @@ export default function ProposalCard({ view, handlers }) {
       )}
       {status === 'undone' && (
         <div className="proposal-state state-muted">
-          <Undo2 size={14} aria-hidden="true" />
+          <Undo2 size={16} aria-hidden="true" />
           <span>Undone. {path} was restored to the version before this change.</span>
         </div>
       )}
       {status === 'rejected' && (
         <div className="proposal-state state-muted">
-          <CircleSlash size={14} aria-hidden="true" />
+          <CircleSlash size={16} aria-hidden="true" />
           <span>Rejected. {path} is unchanged.</span>
         </div>
       )}
       {status === 'discarded' && (
         <div className="proposal-state state-muted">
-          <CircleSlash size={14} aria-hidden="true" />
+          <CircleSlash size={16} aria-hidden="true" />
           <span>Discarded. {path} is unchanged.</span>
         </div>
       )}

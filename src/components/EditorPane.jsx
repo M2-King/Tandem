@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, FileCode2, FileSpreadsheet, Sparkles, MessageSquareText, Wrench, Check, AlertTriangle, StepForward, FastForward, RotateCcw, Square, Bug, Footprints, Info, CircleCheck } from 'lucide-react';
+import { X, FileCode2, FileSpreadsheet, FileDiff, MessageSquarePlus, MessageSquareText, Wrench, Check, AlertTriangle, StepForward, FastForward, RotateCcw, Square, Bug, Footprints, Info, CircleCheck } from 'lucide-react';
 import CodeEditor from './CodeEditor.jsx';
 import DiffReview from './DiffReview.jsx';
 import { TRACE } from '../services/traceService.js';
@@ -24,7 +24,7 @@ function Tabs({ openTabs, activePath, onSelect, onClose, reviewPath }) {
               onAuxClick={(e) => e.button === 1 && onClose(path)}
               title={path}
             >
-              <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
+              <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
               <span>{fileName(path)}</span>
               {path === reviewPath && (
                 <span className="tab-badge" data-tooltip="Change ready for review">
@@ -38,7 +38,7 @@ function Tabs({ openTabs, activePath, onSelect, onClose, reviewPath }) {
               aria-label={`Close ${fileName(path)}`}
               onClick={() => onClose(path)}
             >
-              <X size={13} aria-hidden="true" />
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
         );
@@ -70,7 +70,7 @@ function ReviewBar({ review, onAccept, onReject, onClose, onRegenerate, onDiscar
   }
   return (
     <div className="editor-banner banner-review" role="region" aria-label="Review proposed change">
-      <Sparkles size={16} aria-hidden="true" className="banner-icon-accent" />
+      <FileDiff size={16} aria-hidden="true" className="banner-icon-accent" />
       <span className="banner-text">
         <strong>Review proposed change</strong>
         <span className="diff-stat">
@@ -83,15 +83,15 @@ function ReviewBar({ review, onAccept, onReject, onClose, onRegenerate, onDiscar
           Back to editing
         </button>
         <button type="button" className="btn btn-secondary btn-sm" onClick={onReject}>
-          <X size={14} aria-hidden="true" /> Reject
+          <X size={16} aria-hidden="true" /> Reject
         </button>
         {blockedBy ? (
           <button type="button" className="btn btn-primary btn-sm" onClick={onStopAndApply}>
-            <Square size={11} fill="currentColor" aria-hidden="true" /> Stop and accept
+            <Square size={12} fill="currentColor" aria-hidden="true" /> Stop and accept
           </button>
         ) : (
           <button type="button" className="btn btn-primary btn-sm" onClick={onAccept}>
-            <Check size={14} aria-hidden="true" /> Accept
+            <Check size={16} aria-hidden="true" /> Accept
           </button>
         )}
       </div>
@@ -143,15 +143,15 @@ function SessionBar({ session, onNext, onContinue, onRestart, onStop }) {
         {!session.finished && (
           <>
             <button type="button" className="btn btn-primary btn-sm" onClick={onNext}>
-              <StepForward size={14} aria-hidden="true" /> {isDebug ? 'Step' : 'Next'}
+              <StepForward size={16} aria-hidden="true" /> {isDebug ? 'Step' : 'Next'}
             </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onContinue}>
-              <FastForward size={14} aria-hidden="true" /> Continue
+              <FastForward size={16} aria-hidden="true" /> Continue
             </button>
           </>
         )}
         <button type="button" className="btn btn-secondary btn-sm" onClick={onRestart}>
-          <RotateCcw size={14} aria-hidden="true" /> Restart
+          <RotateCcw size={16} aria-hidden="true" /> Restart
         </button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onStop}>
           {session.finished ? 'Close' : 'Stop'}
@@ -173,7 +173,7 @@ function NoticeBar({ notice, onReset, onDismiss }) {
           Dismiss
         </button>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => onReset(notice.resetPath)}>
-          <RotateCcw size={14} aria-hidden="true" /> Reset {fileName(notice.resetPath)}
+          <RotateCcw size={16} aria-hidden="true" /> Reset {fileName(notice.resetPath)}
         </button>
       </div>
     </div>
@@ -191,14 +191,14 @@ function SelectionActions({ selection, onAskAI, onExplain, onFix }) {
       aria-label="Selection actions"
     >
       <button type="button" className="sel-btn sel-btn-primary" onMouseDown={keep} onClick={onAskAI} data-tooltip="Add the selection to the assistant (Ctrl/⌘ L)">
-        <Sparkles size={14} aria-hidden="true" /> Ask AI
+        <MessageSquarePlus size={16} aria-hidden="true" /> Ask AI
       </button>
       <span className="sel-divider" aria-hidden="true" />
       <button type="button" className="sel-btn" onMouseDown={keep} onClick={onExplain}>
-        <MessageSquareText size={14} aria-hidden="true" /> Explain
+        <MessageSquareText size={16} aria-hidden="true" /> Explain
       </button>
       <button type="button" className="sel-btn" onMouseDown={keep} onClick={onFix}>
-        <Wrench size={14} aria-hidden="true" /> Fix
+        <Wrench size={16} aria-hidden="true" /> Fix
       </button>
     </div>
   );
