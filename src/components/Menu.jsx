@@ -15,7 +15,7 @@ export default function Menu({ renderTrigger, children, align = 'end', label, cl
 
   useEffect(() => {
     if (!open) return undefined;
-    const items = () => [...(menuRef.current?.querySelectorAll('[role^="menuitem"]:not([disabled])') || [])];
+    const items = () => [...(menuRef.current?.querySelectorAll('[role^="menuitem"]:not([disabled]), [data-menu-item]') || [])];
     (items()[0] || menuRef.current)?.focus();
     const onDown = (e) => {
       if (!menuRef.current?.contains(e.target) && !triggerRef.current?.contains(e.target)) close(false);

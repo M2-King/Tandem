@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { ImagePlus, PanelLeft, PanelBottom, PanelRight, MoreHorizontal, Check, Loader2, AlertTriangle, Minus, Plus, RotateCcw, Rows2, Columns2 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import TandemMark from './TandemMark.jsx';
+import { GLASS_PRESETS } from '../lib/glass.js';
 import Menu, { MenuItem } from './Menu.jsx';
 import RunControl from './RunControl.jsx';
 
@@ -161,26 +162,45 @@ export default function Toolbar({
                 onSelect={() => onDiffInline(false)}
               />
               <div className="menu-sep" role="separator" />
-              <div className="menu-row" role="group" aria-label="Glass">
-                <span className="menu-row-label">Glass</span>
-                <div className="segmented" role="radiogroup" aria-label="Panel glass">
-                  {[
-                    ['clear', 'Clear'],
-                    ['balanced', 'Balanced'],
-                    ['solid', 'Solid'],
-                  ].map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={glass === value}
-                      className={glass === value ? 'is-active' : ''}
-                      onClick={() => onGlass(value)}
-                    >
-                      {label}
-                    </button>
-                  ))}
+              <div className="menu-glass" role="group" aria-labelledby="glass-label">
+                <div className="menu-row">
+                  <span className="menu-row-label" id="glass-label">
+                    Glass
+                  </span>
+                  <div className="segmented" role="group" aria-label="Glass preset">
+                    {GLASS_PRESETS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={glass === p.level}
+                        className={glass === p.level ? 'is-active' : ''}
+                        onClick={() => onGlass(p.level)}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                <label className="glass-slider">
+                  <span className="sr-only">Panel opacity</span>
+                  <span className="glass-slider-end" aria-hidden="true">
+                    Clearer
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    data-menu-item=""
+                    value={glass}
+                    onChange={(e) => onGlass(Number(e.target.value))}
+                    aria-valuetext={`Glass ${glass} of 100`}
+                  />
+                  <span className="glass-slider-end" aria-hidden="true">
+                    Solid
+                  </span>
+                </label>
               </div>
               <div className="menu-label">Wallpaper</div>
               <MenuItem

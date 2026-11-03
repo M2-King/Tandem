@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, ChevronRight, MessageSquareText, Wrench } from 'lucide-react';
+import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, ChevronRight, MessageSquareText, Wrench, Lightbulb } from 'lucide-react';
+import { MetricsList } from './MetricsTable.jsx';
 import TandemMark from './TandemMark.jsx';
 import Markdown from './Markdown.jsx';
 import ProposalCard from './ProposalCard.jsx';
@@ -57,6 +58,8 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
       </div>
     );
   }
+
+  if (message.kind === 'analysis' && message.analysis) return <RunAnalysis analysis={message.analysis} />;
 
   const working = message.status === 'working';
   const stateLabel = { working: 'Working', failed: 'Failed', cancelled: 'Cancelled' }[message.status];
@@ -116,33 +119,108 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
   );
 }
 
+// Shown after a run of code that Tandem changed. Built from the run record.
+function RunAnalysis({ analysis }) {
+  return (
+    <article className="msg msg-assistant msg-analysis" aria-label={`Results of run ${analysis.runNumber}`}>
+      <header className="msg-head">
+        <TandemMark size={14} className="msg-head-mark" />
+        <span className="msg-head-name">Tandem</span>
+        <span className="sim-tag msg-head-tag" data-tooltip="Calculated from the simulated run's sample data.">
+          Simulated
+        </span>
+      </header>
+      <div className="analysis-heading">
+        <h3 className="analysis-title">Both models ran</h3>
+        <p className="analysis-sub">
+          Run #{analysis.runNumber} · {analysis.path}
+        </p>
+      </div>
+      <ul className="analysis-checks">
+        {analysis.checks.map((c) => (
+          <li key={c}>
+            <Check size={14} aria-hidden="true" />
+            <span>{c}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="analysis-metrics">
+        <MetricsList metrics={analysis.metrics} />
+      </div>
+      <div className="analysis-insight">
+        <Lightbulb size={16} aria-hidden="true" className="analysis-insight-icon" />
+        <div>
+          <p className="analysis-insight-title">Insight</p>
+          <p>{analysis.insight}</p>
+        </div>
+      </div>
+      <details className="analysis-next">
+        <summary>
+          <ChevronRight size={14} aria-hidden="true" className="analysis-next-chevron" />
+          Next steps
+        </summary>
+        <ul>
+          {analysis.nextSteps.map((n) => (
+            <li key={n}>{n}</li>
+          ))}
+        </ul>
+      </details>
+    </article>
+  );
+}
+
 const STARTERS = [
-  { icon: BarChart3, title: 'Compare two models', prompt: DEMO_PROMPTS.compare },
-  { icon: MessageSquareText, title: 'Explain main.py', prompt: DEMO_PROMPTS.explainMain },
-  { icon: Wrench, title: 'Fix summary.py', prompt: DEMO_PROMPTS.fixSummary },
+  {
+    icon: BarChart3,
+    title: 'Compare model results',
+    detail: 'Add a decision tree to main.py and compare it with linear regression',
+    prompt: DEMO_PROMPTS.compare,
+  },
+  { icon: MessageSquareText, title: 'Explain main.py', detail: 'Walk through what the script does', prompt: DEMO_PROMPTS.explainMain },
+  { icon: Wrench, title: 'Fix summary.py', detail: 'It stops with an error when it runs', prompt: DEMO_PROMPTS.fixSummary },
 ];
 
-function EmptyConversation({ onSuggestion }) {
+function EmptyConversation({ onSuggestion, project }) {
+  const lastRun = project?.lastRun;
   return (
     <div className="assistant-empty">
       <div className="assistant-intro">
-        <TandemMark size={20} className="assistant-empty-icon" />
         <p className="assistant-empty-title">What should we change?</p>
         <p className="assistant-empty-text">
-          Describe a change, or select code in the editor and choose Ask AI. You review every change before it’s
-          applied.
+          Tandem can edit, explain and fix the code in this project. Every change opens in the editor for you to
+          review before it’s applied.
         </p>
       </div>
-      <div className="starter-card" role="group" aria-labelledby="starter-title">
+      {project && (
+        <dl className="assistant-context" aria-label="Project context">
+          <div>
+            <dt>Project</dt>
+            <dd>{project.name}</dd>
+          </div>
+          <div>
+            <dt>Open</dt>
+            <dd className="mono">{project.activePath}</dd>
+          </div>
+          <div>
+            <dt>Last run</dt>
+            <dd>
+              {lastRun
+                ? `#${lastRun.number} · ${lastRun.path} · ${lastRun.status === 'success' ? 'completed' : lastRun.status === 'error' ? 'failed' : 'stopped'}`
+                : 'None yet'}
+            </dd>
+          </div>
+        </dl>
+      )}
+      <div className="starters" role="group" aria-labelledby="starter-title">
         <p className="starter-title" id="starter-title">
-          Try one of these
+          Suggested
         </p>
-        {STARTERS.map(({ icon: Icon, title, prompt }) => (
-          <button key={prompt} type="button" className="starter" onClick={() => onSuggestion(prompt)}>
+        {STARTERS.map(({ icon: Icon, title, detail, prompt }) => (
+          <button key={prompt} type="button" className="starter" onClick={() => onSuggestion(prompt)} title={prompt}>
             <Icon size={16} aria-hidden="true" className="starter-icon" />
             <span className="starter-text">
               <span className="starter-name">{title}</span>
-              <span className="starter-prompt">{prompt}</span>
+              <span className="starter-prompt">{detail}</span>
             </span>
             <ChevronRight size={16} aria-hidden="true" className="starter-chevron" />
           </button>
@@ -249,6 +327,7 @@ export default function AssistantPanel({
   composerRef,
   onClose,
   composerSuggestions,
+  project,
 }) {
   const listRef = useRef(null);
   const contentRef = useRef(null);
@@ -304,7 +383,7 @@ export default function AssistantPanel({
       <div className="assistant-messages" ref={listRef} onScroll={onScroll}>
         <div className="assistant-messages-content" ref={contentRef}>
         {messages.length === 0 ? (
-          <EmptyConversation onSuggestion={onSuggestion} />
+          <EmptyConversation onSuggestion={onSuggestion} project={project} />
         ) : (
           messages.map((m) => (
             <Message

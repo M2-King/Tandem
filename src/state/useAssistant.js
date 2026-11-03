@@ -135,6 +135,23 @@ export function useAssistant({ getFiles, getActivePath, onSave }) {
 
   const cancel = useCallback(() => controllerRef.current?.abort(), []);
 
+  // A finished-run summary (see analysisService). Added once per run.
+  const addAnalysis = useCallback(
+    (analysis) =>
+      setChat((c) =>
+        c.messages.some((m) => m.analysis?.runId === analysis.runId)
+          ? c
+          : {
+              ...c,
+              messages: [
+                ...c.messages,
+                { id: uid('msg'), role: 'assistant', status: 'done', kind: 'analysis', analysis, createdAt: Date.now() },
+              ],
+            }
+      ),
+    [setChat]
+  );
+
   const updateProposal = useCallback(
     (id, patch) =>
       setChat((c) => (c.proposals[id] ? { ...c, proposals: { ...c.proposals, [id]: { ...c.proposals[id], ...patch } } } : c)),
@@ -160,6 +177,7 @@ export function useAssistant({ getFiles, getActivePath, onSave }) {
     busy,
     send,
     cancel,
+    addAnalysis,
     updateProposal,
     draftContext,
     addContext,

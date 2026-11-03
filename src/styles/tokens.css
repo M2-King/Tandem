@@ -1,55 +1,62 @@
 /* Design tokens. Components use these variables instead of raw values.
 
-   Dark glass. The wallpaper sits behind everything, blurred, darkened and
-   desaturated. Panels are near-black glass; four controls tune them all:
-   tint, opacity, blur and border strength. Three material levels:
-   1. Workspace (editor): the most solid glass, so code stays readable.
-   2. Panels (files, results, assistant): translucent glass.
-   3. Floating (menus, popovers, dialogs, toasts): lighter frosted glass.
+   Dark glass over a quiet wallpaper. Three materials:
+   1. Editor: charcoal glass, the most opaque, for code.
+   2. Panels (files, results, assistant): slate frosted glass, a little clearer.
+   3. Floating (menus, popovers, dialogs, toasts): lighter glass, stronger blur, soft shadow.
+
+   The Glass setting (More menu) moves one value from clear to solid and
+   writes --glass-opacity, --glass-opacity-editor, --glass-opacity-float,
+   --glass-blur and --wallpaper-brightness on :root (see lib/glass.js).
+   The defaults below are the Balanced preset. Only backgrounds are
+   translucent; text and icons are never faded.
    Blue is reserved for the primary action, focus, selection and the active item. */
 :root {
   /* ---- Glass controls ---- */
-  --glass-tint: 14, 16, 21; /* near-black, slightly cool */
-  --glass-tint-raised: 30, 33, 41; /* floating surfaces */
-  --glass-opacity-work: 0.74; /* editor */
-  --glass-opacity: 0.6; /* side and results panels */
-  --glass-opacity-float: 0.74; /* menus, popovers */
+  --glass-tint-editor: 41, 47, 61;
+  --glass-tint: 50, 54, 66;
+  --glass-tint-float: 58, 62, 76;
+  --glass-opacity-editor: 0.9;
+  --glass-opacity: 0.7;
+  --glass-opacity-float: 0.78;
   --glass-blur: 24px;
-  --glass-saturate: 135%;
+  --glass-saturate: 115%; /* low, so warm light doesn't tint the glass */
   --glass-border-opacity: 0.09;
-  --glass-highlight-opacity: 0.07;
+  --glass-highlight-strength: 0.1;
 
   /* ---- Backdrop ---- */
-  --bg-app: #0b0c10;
-  --wallpaper-blur: 10px;
-  --wallpaper-brightness: 0.74;
-  --wallpaper-saturate: 0.7;
-  --wallpaper-shade: rgba(8, 9, 12, 0.2);
+  --bg-app: #0d1017;
+  --wallpaper-blur: 4px;
+  --wallpaper-brightness: 0.92;
+  --wallpaper-saturate: 0.8;
+  --wallpaper-shade: rgba(12, 15, 22, 0.12); /* neutral, slightly cool */
 
   /* ---- Materials (derived) ---- */
-  --surface-1: rgba(var(--glass-tint), var(--glass-opacity-work));
+  --surface-1: rgba(var(--glass-tint-editor), var(--glass-opacity-editor));
   --surface-2: rgba(var(--glass-tint), var(--glass-opacity));
-  --surface-3: rgba(var(--glass-tint-raised), var(--glass-opacity-float));
-  --surface-1-solid: #16191f;
-  --surface-2-solid: #1b1e24;
-  --surface-3-solid: #242831;
+  --surface-3: rgba(var(--glass-tint-float), var(--glass-opacity-float));
+  --surface-1-solid: #161a22;
+  --surface-2-solid: #1f2230;
+  --surface-3-solid: #272b37;
   --blur-1: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   --blur-2: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  --blur-3: blur(calc(var(--glass-blur) - 4px)) saturate(150%);
+  --blur-3: blur(calc(var(--glass-blur) + 8px)) saturate(var(--glass-saturate));
   --glass-edge: rgba(255, 255, 255, var(--glass-border-opacity));
-  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, var(--glass-highlight-opacity));
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, var(--glass-highlight-strength));
 
   /* Fills on top of a surface */
-  --bg-subtle: rgba(255, 255, 255, 0.025);
-  --bg-surface: rgba(255, 255, 255, 0.04);
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --bg-pressed: rgba(255, 255, 255, 0.09);
-  --bg-selected: rgba(255, 255, 255, 0.075);
+  --bg-subtle: rgba(255, 255, 255, 0.03);
+  --bg-surface: rgba(255, 255, 255, 0.045);
+  --bg-hover: rgba(255, 255, 255, 0.065);
+  --bg-pressed: rgba(255, 255, 255, 0.1);
+  --bg-selected: rgba(255, 255, 255, 0.085);
+  --card: rgba(255, 255, 255, 0.04);
+  --card-edge: rgba(255, 255, 255, 0.07);
 
   /* Text */
   --text-primary: #eceef2;
-  --text-secondary: #9ca3af;
-  --text-muted: #858b95;
+  --text-secondary: #a3aab7;
+  --text-muted: #8a91a0;
 
   /* Lines */
   --border: rgba(255, 255, 255, 0.07);
@@ -102,15 +109,15 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
-  --gap-panel: 8px;
+  --gap-panel: 12px;
 
   /* Sizes */
   --control-sm: 26px;
   --control: 28px;
   --control-lg: 30px;
-  --row: 28px;
-  --toolbar-height: 48px;
-  --header-height: 40px;
+  --row: 32px;
+  --toolbar-height: 52px;
+  --header-height: 44px;
   --icon-sm: 14px;
   --icon: 16px;
   --icon-nav: 18px;
@@ -120,12 +127,12 @@
   --radius-sm: 5px;
   --radius: 7px;
   --radius-float: 12px;
-  --radius-lg: 14px;
-  --radius-card: 10px;
+  --radius-lg: 16px;
+  --radius-card: 12px;
 
   /* Depth */
-  --shadow-panel: var(--glass-highlight), 0 1px 2px rgba(0, 0, 0, 0.22), 0 18px 48px rgba(0, 0, 0, 0.32);
-  --shadow-menu: var(--glass-highlight), 0 2px 6px rgba(0, 0, 0, 0.2), 0 16px 40px rgba(0, 0, 0, 0.42);
+  --shadow-panel: var(--glass-highlight), 0 1px 2px rgba(0, 0, 0, 0.18), 0 24px 60px rgba(0, 0, 0, 0.3);
+  --shadow-menu: var(--glass-highlight), 0 2px 8px rgba(0, 0, 0, 0.22), 0 18px 44px rgba(0, 0, 0, 0.45);
   --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.22), 0 24px 64px rgba(0, 0, 0, 0.45);
   --focus-ring: 0 0 0 2px rgba(11, 12, 16, 0.9), 0 0 0 4px rgba(120, 149, 219, 0.9);
 
@@ -139,26 +146,12 @@
   --t-panel: 260ms;
 }
 
-/* Glass presets, chosen in the More menu */
-:root[data-glass='clear'] {
-  --glass-opacity-work: 0.66;
-  --glass-opacity: 0.5;
-  --glass-opacity-float: 0.68;
-  --wallpaper-brightness: 0.68;
-}
-:root[data-glass='solid'] {
-  --glass-opacity-work: 0.9;
-  --glass-opacity: 0.82;
-  --glass-opacity-float: 0.88;
-  --wallpaper-brightness: 0.55;
-}
-
 /* Without backdrop blur, glass would show a sharp wallpaper: go more solid. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root {
-    --glass-opacity-work: 0.94;
-    --glass-opacity: 0.9;
-    --glass-opacity-float: 0.96;
+    --glass-opacity-editor: 0.96 !important;
+    --glass-opacity: 0.92 !important;
+    --glass-opacity-float: 0.96 !important;
   }
 }
 

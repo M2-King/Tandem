@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileCode2, FileSpreadsheet, Folder, FolderOpen, ChevronRight } from 'lucide-react';
+import { FileCode2, FileSpreadsheet, Folder, FolderOpen, ChevronRight, Layers } from 'lucide-react';
 
 const iconFor = (path) => (path.endsWith('.csv') ? FileSpreadsheet : FileCode2);
 
@@ -41,7 +41,7 @@ function FileRow({ node, depth, active, onOpen }) {
   );
 }
 
-export default function FileSidebar({ paths, activePath, onOpen }) {
+export default function FileSidebar({ paths, activePath, onOpen, projectName, runCount }) {
   const [collapsed, setCollapsed] = useState({});
   const tree = buildTree(paths);
 
@@ -86,6 +86,15 @@ export default function FileSidebar({ paths, activePath, onOpen }) {
           )
         )}
       </ul>
+      <div className="sidebar-footer">
+        <Layers size={16} aria-hidden="true" className="sidebar-footer-icon" />
+        <div className="sidebar-footer-text">
+          <span className="sidebar-footer-name">{projectName}</span>
+          <span className="sidebar-footer-meta">
+            {paths.length} files · {runCount === 0 ? 'no runs yet' : `${runCount} run${runCount === 1 ? '' : 's'}`}
+          </span>
+        </div>
+      </div>
     </nav>
   );
 }

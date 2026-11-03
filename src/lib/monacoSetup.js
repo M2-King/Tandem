@@ -60,7 +60,7 @@ monaco.editor.defineTheme('tandem-dusk', {
   colors: {
     'editor.background': '#00000000',
     'editor.foreground': '#DFE2E8',
-    'editorLineNumber.foreground': '#5C626D',
+    'editorLineNumber.foreground': '#6B7180',
     'editorLineNumber.activeForeground': '#C3C8D1',
     'editor.lineHighlightBackground': '#FFFFFF07',
     'editor.lineHighlightBorder': '#00000000',

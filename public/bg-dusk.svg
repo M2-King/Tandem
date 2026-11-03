@@ -1,60 +1,60 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Twilight over a lake: cool sky, warm light only low on the horizon -->
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1b2036"/>
-      <stop offset="0.2" stop-color="#3a3550"/>
-      <stop offset="0.38" stop-color="#8a5a4e"/>
-      <stop offset="0.5" stop-color="#d98a42"/>
-      <stop offset="0.62" stop-color="#f6bd62"/>
+      <stop offset="0" stop-color="#2c3650"/>
+      <stop offset="0.35" stop-color="#3c475f"/>
+      <stop offset="0.58" stop-color="#4a5163"/>
+      <stop offset="0.7" stop-color="#6a5f60"/>
+      <stop offset="0.77" stop-color="#b48a63"/>
+      <stop offset="0.8" stop-color="#d9a86e"/>
     </linearGradient>
-    <radialGradient id="sun" cx="0.62" cy="0.6" r="0.6">
-      <stop offset="0" stop-color="#ffe6a8" stop-opacity="1"/>
-      <stop offset="0.12" stop-color="#ffc56b" stop-opacity="0.9"/>
-      <stop offset="0.4" stop-color="#f08a3c" stop-opacity="0.35"/>
-      <stop offset="1" stop-color="#f08a3c" stop-opacity="0"/>
+    <radialGradient id="glow" cx="0.58" cy="0.8" r="0.36">
+      <stop offset="0" stop-color="#f3c88a" stop-opacity="0.75"/>
+      <stop offset="0.25" stop-color="#d99a5e" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#d99a5e" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#d4904a"/>
-      <stop offset="0.25" stop-color="#7a4d3a"/>
-      <stop offset="1" stop-color="#0d1019"/>
+      <stop offset="0" stop-color="#a98060"/>
+      <stop offset="0.18" stop-color="#5d5258"/>
+      <stop offset="0.55" stop-color="#3a3e4a"/>
+      <stop offset="1" stop-color="#2a2d36"/>
     </linearGradient>
-    <radialGradient id="glint" cx="0.62" cy="0" r="0.5">
-      <stop offset="0" stop-color="#ffd58a" stop-opacity="0.8"/>
-      <stop offset="1" stop-color="#ffd58a" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="m1" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#7e5a5a"/><stop offset="1" stop-color="#a26a4c"/>
+    <linearGradient id="far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a4e5e"/>
+      <stop offset="1" stop-color="#5e5a62"/>
     </linearGradient>
-    <linearGradient id="m2" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#4a3843"/><stop offset="1" stop-color="#5e4038"/>
+    <linearGradient id="near" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#454a5b"/>
+      <stop offset="1" stop-color="#363a48"/>
     </linearGradient>
-    <linearGradient id="m3" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#22202c"/><stop offset="1" stop-color="#1a1820"/>
+    <linearGradient id="cloud" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8a8fa0" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#8a8fa0" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#8a8fa0" stop-opacity="0"/>
     </linearGradient>
   </defs>
   <rect width="1600" height="1000" fill="url(#sky)"/>
-  <rect width="1600" height="1000" fill="url(#sun)"/>
-  <circle cx="992" cy="600" r="38" fill="#fff1c9" opacity="0.95"/>
-  <!-- far range -->
-  <path d="M0 560 L120 520 L210 540 L330 470 L420 505 L520 455 L640 520 L760 480 L860 530 L960 560 L1080 500 L1180 470 L1290 515 L1400 480 L1500 525 L1600 500 L1600 620 L0 620 Z" fill="url(#m1)" opacity="0.75"/>
-  <!-- mid range -->
-  <path d="M0 590 L90 560 L180 575 L300 505 L360 530 L450 490 L560 560 L700 585 L820 570 L900 600 L1040 610 L1160 560 L1240 520 L1330 560 L1440 530 L1530 570 L1600 555 L1600 625 L0 625 Z" fill="url(#m2)" opacity="0.9"/>
-  <!-- near ridges -->
-  <path d="M0 520 L70 470 L150 500 L230 430 L300 480 L380 560 L460 600 L560 618 L0 625 Z" fill="url(#m3)"/>
-  <path d="M1600 470 L1520 440 L1440 500 L1380 470 L1300 560 L1220 600 L1120 620 L1600 625 Z" fill="url(#m3)"/>
+  <!-- thin cloud bands -->
+  <ellipse cx="1000" cy="300" rx="620" ry="34" fill="url(#cloud)"/>
+  <ellipse cx="560" cy="420" rx="520" ry="26" fill="url(#cloud)"/>
+  <ellipse cx="1180" cy="520" rx="480" ry="20" fill="url(#cloud)"/>
+  <rect width="1600" height="1000" fill="url(#glow)"/>
+  <!-- far hills on the horizon -->
+  <path d="M0 770 L160 745 L300 760 L470 735 L620 758 L760 748 L900 770 L1040 752 L1200 762 L1340 742 L1480 760 L1600 750 L1600 800 L0 800 Z" fill="url(#far)" opacity="0.85"/>
+  <!-- large mountain on the left, smaller ridge on the right -->
+  <path d="M0 330 L70 300 L150 360 L230 420 L300 470 L380 560 L470 650 L560 720 L640 775 L700 800 L0 800 Z" fill="url(#near)"/>
+  <path d="M1600 560 L1530 580 L1460 640 L1380 700 L1300 760 L1240 800 L1600 800 Z" fill="url(#near)" opacity="0.9"/>
   <!-- lake -->
-  <rect y="620" width="1600" height="380" fill="url(#lake)"/>
-  <ellipse cx="992" cy="625" rx="420" ry="190" fill="url(#glint)"/>
-  <g stroke="#ffe0a0" stroke-linecap="round" opacity="0.55">
-    <path d="M950 640h84" stroke-width="3"/>
-    <path d="M930 662h120" stroke-width="2.5"/>
-    <path d="M960 686h66" stroke-width="2.5"/>
-    <path d="M900 712h170" stroke-width="2"/>
-    <path d="M945 742h90" stroke-width="2"/>
-    <path d="M880 780h210" stroke-width="1.5" opacity="0.7"/>
-    <path d="M930 822h120" stroke-width="1.5" opacity="0.6"/>
+  <rect y="800" width="1600" height="200" fill="url(#lake)"/>
+  <ellipse cx="930" cy="806" rx="360" ry="70" fill="#f0c387" opacity="0.18"/>
+  <g stroke="#f2cf98" stroke-linecap="round" opacity="0.4">
+    <path d="M880 818h110" stroke-width="2"/>
+    <path d="M850 836h170" stroke-width="1.6"/>
+    <path d="M900 856h90" stroke-width="1.4"/>
+    <path d="M820 880h240" stroke-width="1.2" opacity="0.7"/>
   </g>
-  <!-- shore reflections of ridges -->
-  <path d="M0 625 L560 625 L460 650 L300 690 L150 660 L0 700 Z" fill="#14131b" opacity="0.65"/>
-  <path d="M1600 625 L1120 625 L1260 655 L1380 700 L1500 670 L1600 720 Z" fill="#14131b" opacity="0.65"/>
+  <!-- reflections of the mountains -->
+  <path d="M0 800 L700 800 L600 840 L420 900 L200 950 L0 980 Z" fill="#2a2e3a" opacity="0.7"/>
+  <path d="M1600 800 L1240 800 L1340 840 L1480 880 L1600 900 Z" fill="#2a2e3a" opacity="0.6"/>
 </svg>

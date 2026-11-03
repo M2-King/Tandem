@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { usePersistedState } from './usePersistedState.js';
 import { STORAGE_KEYS } from '../lib/storage.js';
+import { DEFAULT_GLASS, normalizeGlass } from '../lib/glass.js';
 
 export const LIMITS = {
   sidebar: { min: 160, max: 280, initial: 200 },
@@ -17,7 +18,7 @@ const createPrefs = () => ({
   assistantOpen: true,
   fontSize: LIMITS.fontSize.initial,
   diffInline: true,
-  glass: 'balanced',
+  glass: DEFAULT_GLASS,
 });
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
@@ -25,7 +26,7 @@ const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 // Layout and editor preferences, remembered in this browser.
 export function usePrefs() {
   const [prefs, setPrefs] = usePersistedState(STORAGE_KEYS.prefs, createPrefs, {
-    restore: (saved) => ({ ...createPrefs(), ...saved }),
+    restore: (saved) => ({ ...createPrefs(), ...saved, glass: normalizeGlass(saved?.glass) }),
   });
 
   const update = useCallback((patch) => setPrefs((p) => ({ ...p, ...patch })), [setPrefs]);

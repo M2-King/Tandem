@@ -11,6 +11,7 @@ import TooltipLayer from './components/Tooltip.jsx';
 import Toasts, { useToasts } from './components/Toasts.jsx';
 import { usePrefs } from './state/usePrefs.js';
 import { useWallpaper } from './state/useWallpaper.js';
+import { applyGlass } from './lib/glass.js';
 import { useWorkspace } from './state/useWorkspace.js';
 import { useAssistant } from './state/useAssistant.js';
 import { useExecution } from './state/useExecution.js';
@@ -20,6 +21,7 @@ import { TRACE, EXECUTABLE_LINES } from './services/traceService.js';
 import { DEMO_PROMPTS } from './services/aiService.js';
 import { DEBUG_FILE, PROJECT_NAME } from './data/sampleProject.js';
 import { diffStats } from './lib/diff.js';
+import { buildRunAnalysis, proposalForRun } from './services/analysisService.js';
 
 const MIN_EDITOR_WIDTH = 480;
 
@@ -43,9 +45,7 @@ export default function App() {
   const { prefs, update, setSidebarWidth, setAssistantWidth, setResultsHeight, changeFontSize, reset: resetPrefs } =
     usePrefs();
   const wall = useWallpaper(notify);
-  useEffect(() => {
-    document.documentElement.dataset.glass = prefs.glass;
-  }, [prefs.glass]);
+  useEffect(() => applyGlass(prefs.glass), [prefs.glass]);
   const ws = useWorkspace(onSave);
   const exec = useExecution({ onSave });
 
@@ -287,6 +287,11 @@ export default function App() {
   useEffect(() => {
     const last = exec.runs.at(-1);
     if (last && last.figures.length) setNewCharts(true);
+    // When the run used a change Tandem made, the assistant summarises the result.
+    if (last && proposalForRun(last, proposalsRef.current)) {
+      const analysis = buildRunAnalysis(last);
+      if (analysis) assistant.addAnalysis(analysis);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runCount]);
   useEffect(() => {
@@ -404,7 +409,13 @@ export default function App() {
           style={{ '--w': `${prefs.sidebarWidth}px` }}
           {...inertProps(!sidebarVisible)}
         >
-          <FileSidebar paths={ws.fileOrder} activePath={ws.activePath} onOpen={openFile} />
+          <FileSidebar
+            paths={ws.fileOrder}
+            activePath={ws.activePath}
+            onOpen={openFile}
+            projectName={PROJECT_NAME}
+            runCount={exec.runs.length}
+          />
         </aside>
         {!compact && sidebarVisible && (
           <Resizer
@@ -531,6 +542,7 @@ export default function App() {
             composerRef={composerRef}
             onClose={closeAssistant}
             composerSuggestions={composerSuggestions}
+            project={{ name: PROJECT_NAME, activePath: ws.activePath, lastRun: exec.runs.at(-1) || null }}
           />
         </aside>
 

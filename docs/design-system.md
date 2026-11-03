@@ -19,31 +19,45 @@ Kept: the dark workspace, the layout and panel behaviour, rounded geometry, the 
 
 ## Materials
 
-The wallpaper sits behind everything, blurred (10px), darkened (74% brightness, plus a soft vignette) and desaturated (70%). Panels are near-black glass over it.
+The wallpaper is a secondary layer: gently blurred (4px), slightly darkened and desaturated, under a neutral cool shade. Its warm light sits low on the horizon, so it shows at the edges and in the gaps, not behind code.
 
-Four controls in `tokens.css` tune every panel at once:
+| Material | Used for | Tint (RGB) | Balanced opacity |
+| --- | --- | --- | --- |
+| Editor | Code | 41, 47, 61 (charcoal slate) | 0.90 |
+| Panel | Files, results, assistant | 50, 54, 66 | 0.70 |
+| Floating | Menus, popovers, dialogs, toasts | 58, 62, 76 | 0.78, blur +8px |
 
-| Control | Default | What it does |
-| --- | --- | --- |
-| `--glass-tint` | `14, 16, 21` | Panel colour (near-black, slightly cool) |
-| `--glass-opacity-work` / `--glass-opacity` / `--glass-opacity-float` | 0.74 / 0.60 / 0.74 | How much of the wallpaper shows through |
-| `--glass-blur` | 24px | Backdrop blur |
-| `--glass-border-opacity` | 0.09 | 1px white edge; `--glass-highlight-opacity` (0.07) sets the inner top highlight |
+Every panel has a 1px white edge (`--glass-border-opacity` 0.09), an inner top highlight (`--glass-highlight-strength` 0.10) and a soft shadow. Backdrop saturation is kept low (115%) so warm light doesn't tint the glass. Only backgrounds are translucent; text and icons are never faded.
 
-| Level | Used for | Opacity |
-| --- | --- | --- |
-| 1 Workspace | Editor | 0.74, the most solid, for readability |
-| 2 Panels | Files, results, assistant | 0.60 |
-| 3 Floating | Menus, popovers, dialogs, toasts | 0.74 of a lighter tint |
+### Glass setting
 
-The ⋯ menu has a **Glass** setting (Clear, Balanced, Solid) that swaps these values. Browsers without backdrop blur fall back to near-solid panels.
+One level from 0 (clearest) to 100 (most solid) drives all surfaces (`src/lib/glass.js`). The ⋯ menu offers Clear (15), Balanced (50, default) and Solid (90), plus a slider.
 
-Inside panels, grouped content sits on inset cards (`rgba(255,255,255,.03)`, 1px edge at 6%, radius 10): chart figures and metrics in the results, the starter list and each Tandem reply in the assistant. A proposed change is the last section of its reply card, not a card inside a card.
+| | Clear | Balanced | Solid |
+| --- | --- | --- | --- |
+| Editor opacity | 0.84 | 0.90 | 0.96 |
+| Panel opacity | 0.56 | 0.70 | 0.86 |
+| Floating opacity | 0.70 | 0.78 | 0.88 |
+| Blur | 30px | 24px | 18px |
+| Wallpaper brightness | 0.99 | 0.92 | 0.84 |
+
+Browsers without backdrop blur fall back to near-solid panels.
+
+Inside panels, grouped content sits on inset cards (white at 4%, 1px edge at 7%, radius 12): chart figures and metrics, each Tandem reply, the project summary in Files. A proposed change is the last section of its reply card, not a card inside a card.
+
+## Assistant states
+
+| State | Layout |
+| --- | --- |
+| Empty | Title and one-line explanation; project context (project, open file, last run); three suggested actions as quiet rows; input at the bottom |
+| Working | Reply card with live steps and Cancel |
+| Review | Reply card with the change summary; "Reviewing in the editor" (Accept and Reject live above the code) |
+| Completed | Only after the accepted change has actually run: what ran, metrics from the run, an insight computed from those metrics, next steps |
 
 ## Colour
 
-- Neutrals: backdrop `#0B0C10`; glass tint `rgb(14,16,21)`, raised tint `rgb(30,33,41)`; solid fallbacks `#16191F`, `#1B1E24`, `#242831`.
-- Text: primary `#ECEEF2`, secondary `#9CA3AF`, muted `#858B95` (4.8:1 on the workspace).
+- Neutrals: backdrop `#0D1017`; glass tints as in Materials; solid fallbacks `#161A22`, `#1F2230`, `#272B37`.
+- Text: primary `#ECEEF2`, secondary `#A3AAB7`, muted `#8A91A0`.
 - Accent: `--accent #7895DB` for text, icons and indicators; `--accent-fill #5672BD` for primary buttons (white text, 4.6:1).
 - Status colours are desaturated (`--success`, `--error`, `--warning`) and always appear with an icon or a word.
 
@@ -61,8 +75,8 @@ One primary action per area. Panel toggles show their state with a brighter icon
 
 - Interface 13/18, metadata 12/16, badges 11/14, assistant replies 13/20, dialog titles 15/22. Weights 400, 500 and 600 only.
 - Code in JetBrains Mono.
-- Spacing steps 4, 8, 12, 16, 24, 32. Controls 26, 28 and 30 px high; rows 28 px; headers 40 px; panel gap 8 px.
-- Radii: 5 (small controls), 7 (buttons, rows), 10 (cards), 12 (floating surfaces), 14 (panels).
+- Spacing steps 4, 8, 12, 16, 24, 32. Controls 26, 28 and 30 px high; file rows 32 px; headers 44 px; panel gap 12 px, outer margin 16 px (8 px on phones).
+- Radii: 5 (small controls), 7 (buttons, rows, tabs), 12 (cards, floating surfaces), 16 (panels); pills for result tabs and Run, a circle for Send.
 
 ## Motion
 
