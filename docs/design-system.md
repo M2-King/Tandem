@@ -7,8 +7,8 @@ All values live in `src/styles/tokens.css`. Components use the tokens, not raw v
 | Problem in the dusk-glass version | Change |
 | --- | --- |
 | Blue on many ordinary controls, glowing gradient Run button | Blue is kept for the primary action, focus, selection and the active item. Run is a flat fill with no glow. |
-| Wallpaper visible behind code | The editor and results share one near-opaque panel (level 1). The wallpaper shows in the gaps, the toolbar and faintly through the side panels. |
-| Four separate floating panels | Three: files, workspace (editor + results with a hairline between them), assistant. |
+| Wallpaper competing with the interface | The wallpaper is blurred, darkened and desaturated; panels are near-black glass, and the editor is the most solid. |
+| Separate panels with no clear order | Four floating glass panels with one hierarchy: the editor is the most solid, files, results and assistant are lighter. |
 | Sparkle icons used as decoration | Replaced with icons that name the action: file diff for review, message-plus for "Ask AI", wrench for fixes. |
 | Mixed icon sizes (11–18 px) and stroke weights | 16 px in buttons and rows, 18 px in the toolbar, 14 px beside 12 px metadata. One stroke weight (1.75) set in CSS for every Lucide icon. |
 | Accept and Reject both in the editor and in the assistant | They live only in the review bar above the code. The assistant card explains the change and shows "Review in editor" or "Reviewing in the editor". |
@@ -19,13 +19,26 @@ Kept: the dark workspace, the layout and panel behaviour, rounded geometry, the 
 
 ## Materials
 
-| Level | Used for | Token |
-| --- | --- | --- |
-| 1 Workspace | Editor, results | `--surface-1` (97% opaque) |
-| 2 Panels | Files, assistant | `--surface-2` (91%, blur 28px) |
-| 3 Floating | Menus, popovers, selection actions, toasts, overlays on narrow screens | `--surface-3` (86%, blur 20px) + `--shadow-menu` |
+The wallpaper sits behind everything, blurred (10px), darkened (74% brightness, plus a soft vignette) and desaturated (70%). Panels are near-black glass over it.
 
-Dialogs and tooltips use the solid level-3 colour so text is never read over moving content.
+Four controls in `tokens.css` tune every panel at once:
+
+| Control | Default | What it does |
+| --- | --- | --- |
+| `--glass-tint` | `14, 16, 21` | Panel colour (near-black, slightly cool) |
+| `--glass-opacity-work` / `--glass-opacity` / `--glass-opacity-float` | 0.74 / 0.60 / 0.74 | How much of the wallpaper shows through |
+| `--glass-blur` | 24px | Backdrop blur |
+| `--glass-border-opacity` | 0.09 | 1px white edge; `--glass-highlight-opacity` (0.07) sets the inner top highlight |
+
+| Level | Used for | Opacity |
+| --- | --- | --- |
+| 1 Workspace | Editor | 0.74, the most solid, for readability |
+| 2 Panels | Files, results, assistant | 0.60 |
+| 3 Floating | Menus, popovers, dialogs, toasts | 0.74 of a lighter tint |
+
+The ⋯ menu has a **Glass** setting (Clear, Balanced, Solid) that swaps these values. Browsers without backdrop blur fall back to near-solid panels.
+
+Inside panels, grouped content sits on inset cards (`rgba(255,255,255,.03)`, 1px edge at 6%, radius 10): chart figures and metrics in the results, the starter list and each Tandem reply in the assistant. A proposed change is the last section of its reply card, not a card inside a card.
 
 ## Colour
 
@@ -49,7 +62,7 @@ One primary action per area. Panel toggles show their state with a brighter icon
 - Interface 13/18, metadata 12/16, badges 11/14, reading text in the assistant 14/21, dialog titles 15/22. Weights 400, 500 and 600 only.
 - Code in JetBrains Mono.
 - Spacing steps 4, 8, 12, 16, 24, 32. Controls 26, 28 and 30 px high; rows 28 px; headers 40 px; panel gap 8 px.
-- Radii: 5 (small controls), 7 (buttons, rows), 10 (floating surfaces), 12 (panels).
+- Radii: 5 (small controls), 7 (buttons, rows), 10 (cards), 12 (floating surfaces), 14 (panels).
 
 ## Motion
 

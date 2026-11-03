@@ -17,6 +17,7 @@ const createPrefs = () => ({
   assistantOpen: true,
   fontSize: LIMITS.fontSize.initial,
   diffInline: true,
+  glass: 'balanced',
 });
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));

@@ -43,6 +43,9 @@ export default function App() {
   const { prefs, update, setSidebarWidth, setAssistantWidth, setResultsHeight, changeFontSize, reset: resetPrefs } =
     usePrefs();
   const wall = useWallpaper(notify);
+  useEffect(() => {
+    document.documentElement.dataset.glass = prefs.glass;
+  }, [prefs.glass]);
   const ws = useWorkspace(onSave);
   const exec = useExecution({ onSave });
 
@@ -388,6 +391,8 @@ export default function App() {
         diffInline={prefs.diffInline}
         onDiffInline={(inline) => update({ diffInline: inline })}
         onReset={() => setConfirmReset(true)}
+        glass={prefs.glass}
+        onGlass={(glass) => update({ glass })}
         wallpaper={wall.wallpaper}
         onWallpaper={wall.choose}
         onWallpaperFile={wall.pickImage}

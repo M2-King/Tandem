@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw } from 'lucide-react';
+import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, ChevronRight, MessageSquareText, Wrench } from 'lucide-react';
 import TandemMark from './TandemMark.jsx';
 import Markdown from './Markdown.jsx';
 import ProposalCard from './ProposalCard.jsx';
@@ -28,13 +28,13 @@ function Stages({ stages, working }) {
     <ol className="stages" aria-live="polite">
       {stages.map((s, i) => (
         <li key={i} className={s.done ? 'is-done' : 'is-active'}>
-          {s.done ? <Check size={16} aria-hidden="true" /> : <Loader2 size={16} className="spin" aria-hidden="true" />}
+          {s.done ? <Check size={14} aria-hidden="true" /> : <Loader2 size={14} className="spin" aria-hidden="true" />}
           <span>{s.label}</span>
         </li>
       ))}
       {working && !stages.length && (
         <li className="is-active">
-          <Loader2 size={16} className="spin" aria-hidden="true" />
+          <Loader2 size={14} className="spin" aria-hidden="true" />
           <span>Starting</span>
         </li>
       )}
@@ -59,8 +59,14 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
   }
 
   const working = message.status === 'working';
+  const stateLabel = { working: 'Working', failed: 'Failed', cancelled: 'Cancelled' }[message.status];
   return (
-    <div className={`msg msg-assistant status-${message.status}`}>
+    <article className={`msg msg-assistant status-${message.status}`} aria-label="Tandem reply">
+      <header className="msg-head">
+        <TandemMark size={14} className="msg-head-mark" />
+        <span className="msg-head-name">Tandem</span>
+        {stateLabel && <span className={`msg-head-state state-${message.status}`}>{stateLabel}</span>}
+      </header>
       {(working || message.stages?.length > 0) && <Stages stages={message.stages || []} working={working} />}
       {working && (
         <button type="button" className="btn btn-ghost btn-sm stage-cancel" onClick={onCancel}>
@@ -106,22 +112,39 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
           ))}
         </div>
       )}
-    </div>
+    </article>
   );
 }
+
+const STARTERS = [
+  { icon: BarChart3, title: 'Compare two models', prompt: DEMO_PROMPTS.compare },
+  { icon: MessageSquareText, title: 'Explain main.py', prompt: DEMO_PROMPTS.explainMain },
+  { icon: Wrench, title: 'Fix summary.py', prompt: DEMO_PROMPTS.fixSummary },
+];
 
 function EmptyConversation({ onSuggestion }) {
   return (
     <div className="assistant-empty">
-      <TandemMark size={20} className="assistant-empty-icon" />
-      <p className="assistant-empty-title">What should we change?</p>
-      <p className="assistant-empty-text">
-        Describe a change, or select code in the editor and choose Ask AI. You review every change before it’s applied.
-      </p>
-      <div className="suggestions">
-        {[DEMO_PROMPTS.compare, DEMO_PROMPTS.explainMain, DEMO_PROMPTS.fixSummary].map((s) => (
-          <button key={s} type="button" className="suggestion" onClick={() => onSuggestion(s)}>
-            {s}
+      <div className="assistant-intro">
+        <TandemMark size={20} className="assistant-empty-icon" />
+        <p className="assistant-empty-title">What should we change?</p>
+        <p className="assistant-empty-text">
+          Describe a change, or select code in the editor and choose Ask AI. You review every change before it’s
+          applied.
+        </p>
+      </div>
+      <div className="starter-card" role="group" aria-labelledby="starter-title">
+        <p className="starter-title" id="starter-title">
+          Try one of these
+        </p>
+        {STARTERS.map(({ icon: Icon, title, prompt }) => (
+          <button key={prompt} type="button" className="starter" onClick={() => onSuggestion(prompt)}>
+            <Icon size={16} aria-hidden="true" className="starter-icon" />
+            <span className="starter-text">
+              <span className="starter-name">{title}</span>
+              <span className="starter-prompt">{prompt}</span>
+            </span>
+            <ChevronRight size={16} aria-hidden="true" className="starter-chevron" />
           </button>
         ))}
       </div>

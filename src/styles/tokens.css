@@ -1,24 +1,43 @@
 /* Design tokens. Components use these variables instead of raw values.
 
-   Near-black glass. Three material levels:
-   1. Workspace (editor, results): near-opaque, so code never competes with the wallpaper.
-   2. Panels (files, assistant): slightly translucent with a soft blur.
-   3. Floating (menus, popovers, dialogs, tooltips, toasts): frosted glass with a shadow.
+   Dark glass. The wallpaper sits behind everything, blurred, darkened and
+   desaturated. Panels are near-black glass; four controls tune them all:
+   tint, opacity, blur and border strength. Three material levels:
+   1. Workspace (editor): the most solid glass, so code stays readable.
+   2. Panels (files, results, assistant): translucent glass.
+   3. Floating (menus, popovers, dialogs, toasts): lighter frosted glass.
    Blue is reserved for the primary action, focus, selection and the active item. */
 :root {
-  /* Backdrop */
-  --bg-app: #101217;
-  --wallpaper-shade: rgba(10, 11, 15, 0.42);
+  /* ---- Glass controls ---- */
+  --glass-tint: 14, 16, 21; /* near-black, slightly cool */
+  --glass-tint-raised: 30, 33, 41; /* floating surfaces */
+  --glass-opacity-work: 0.74; /* editor */
+  --glass-opacity: 0.6; /* side and results panels */
+  --glass-opacity-float: 0.74; /* menus, popovers */
+  --glass-blur: 24px;
+  --glass-saturate: 135%;
+  --glass-border-opacity: 0.09;
+  --glass-highlight-opacity: 0.07;
 
-  /* Materials */
-  --surface-1: rgba(22, 25, 31, 0.97);
+  /* ---- Backdrop ---- */
+  --bg-app: #0b0c10;
+  --wallpaper-blur: 10px;
+  --wallpaper-brightness: 0.74;
+  --wallpaper-saturate: 0.7;
+  --wallpaper-shade: rgba(8, 9, 12, 0.2);
+
+  /* ---- Materials (derived) ---- */
+  --surface-1: rgba(var(--glass-tint), var(--glass-opacity-work));
+  --surface-2: rgba(var(--glass-tint), var(--glass-opacity));
+  --surface-3: rgba(var(--glass-tint-raised), var(--glass-opacity-float));
   --surface-1-solid: #16191f;
-  --surface-2: rgba(27, 30, 36, 0.91);
   --surface-2-solid: #1b1e24;
-  --surface-3: rgba(36, 40, 49, 0.86);
   --surface-3-solid: #242831;
-  --blur-2: blur(28px) saturate(120%);
-  --blur-3: blur(20px) saturate(150%);
+  --blur-1: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  --blur-2: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  --blur-3: blur(calc(var(--glass-blur) - 4px)) saturate(150%);
+  --glass-edge: rgba(255, 255, 255, var(--glass-border-opacity));
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, var(--glass-highlight-opacity));
 
   /* Fills on top of a surface */
   --bg-subtle: rgba(255, 255, 255, 0.025);
@@ -33,9 +52,9 @@
   --text-muted: #858b95;
 
   /* Lines */
-  --border: rgba(255, 255, 255, 0.075);
-  --border-strong: rgba(255, 255, 255, 0.13);
-  --border-float: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-float: rgba(255, 255, 255, 0.12);
 
   /* Accent */
   --accent: #7895db; /* text, icons, indicators */
@@ -100,14 +119,15 @@
   /* Shape */
   --radius-sm: 5px;
   --radius: 7px;
-  --radius-float: 10px;
-  --radius-lg: 12px;
+  --radius-float: 12px;
+  --radius-lg: 14px;
+  --radius-card: 10px;
 
   /* Depth */
-  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.22);
-  --shadow-menu: 0 2px 6px rgba(0, 0, 0, 0.18), 0 14px 36px rgba(0, 0, 0, 0.38);
+  --shadow-panel: var(--glass-highlight), 0 1px 2px rgba(0, 0, 0, 0.22), 0 18px 48px rgba(0, 0, 0, 0.32);
+  --shadow-menu: var(--glass-highlight), 0 2px 6px rgba(0, 0, 0, 0.2), 0 16px 40px rgba(0, 0, 0, 0.42);
   --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.22), 0 24px 64px rgba(0, 0, 0, 0.45);
-  --focus-ring: 0 0 0 2px var(--surface-1-solid), 0 0 0 4px rgba(120, 149, 219, 0.9);
+  --focus-ring: 0 0 0 2px rgba(11, 12, 16, 0.9), 0 0 0 4px rgba(120, 149, 219, 0.9);
 
   /* Motion */
   --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -117,6 +137,29 @@
   --t-menu: 200ms;
   --t-select: 170ms;
   --t-panel: 260ms;
+}
+
+/* Glass presets, chosen in the More menu */
+:root[data-glass='clear'] {
+  --glass-opacity-work: 0.66;
+  --glass-opacity: 0.5;
+  --glass-opacity-float: 0.68;
+  --wallpaper-brightness: 0.68;
+}
+:root[data-glass='solid'] {
+  --glass-opacity-work: 0.9;
+  --glass-opacity: 0.82;
+  --glass-opacity-float: 0.88;
+  --wallpaper-brightness: 0.55;
+}
+
+/* Without backdrop blur, glass would show a sharp wallpaper: go more solid. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-opacity-work: 0.94;
+    --glass-opacity: 0.9;
+    --glass-opacity-float: 0.96;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

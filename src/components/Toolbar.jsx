@@ -62,6 +62,8 @@ export default function Toolbar({
   diffInline,
   onDiffInline,
   onReset,
+  glass,
+  onGlass,
   wallpaper,
   onWallpaper,
   onWallpaperFile,
@@ -159,6 +161,27 @@ export default function Toolbar({
                 onSelect={() => onDiffInline(false)}
               />
               <div className="menu-sep" role="separator" />
+              <div className="menu-row" role="group" aria-label="Glass">
+                <span className="menu-row-label">Glass</span>
+                <div className="segmented" role="radiogroup" aria-label="Panel glass">
+                  {[
+                    ['clear', 'Clear'],
+                    ['balanced', 'Balanced'],
+                    ['solid', 'Solid'],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={glass === value}
+                      className={glass === value ? 'is-active' : ''}
+                      onClick={() => onGlass(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="menu-label">Wallpaper</div>
               <MenuItem
                 close={close}
