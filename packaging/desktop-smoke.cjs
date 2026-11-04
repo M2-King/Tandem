@@ -61,6 +61,52 @@ $small.Save('${file.replace(/'/g, "''")}', $codec, $p)
   return execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' }).trim();
 }
 
+// Average colour of a screen rectangle (Windows), as [r, g, b].
+function screenAverage(rect) {
+  const ps = `
+Add-Type -AssemblyName System.Drawing
+$bmp = New-Object System.Drawing.Bitmap ${rect.width}, ${rect.height}
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.CopyFromScreen(${rect.x}, ${rect.y}, 0, 0, $bmp.Size)
+$r = 0; $gr = 0; $b = 0; $n = 0
+for ($x = 0; $x -lt $bmp.Width; $x += 8) { for ($y = 0; $y -lt $bmp.Height; $y += 8) {
+  $c = $bmp.GetPixel($x, $y); $r += $c.R; $gr += $c.G; $b += $c.B; $n++ } }
+"$([int]($r / $n)) $([int]($gr / $n)) $([int]($b / $n))"`;
+  return execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' }).trim().split(' ').map(Number);
+}
+
+function setWallpaper(r, g, b) {
+  const ps = `
+Add-Type -AssemblyName System.Drawing
+$bmp = New-Object System.Drawing.Bitmap 1920, 1080
+$gfx = [System.Drawing.Graphics]::FromImage($bmp)
+$gfx.Clear([System.Drawing.Color]::FromArgb(255, ${r}, ${g}, ${b}))
+$file = Join-Path $env:TEMP "tandem-wall-${r}-${g}-${b}.bmp"
+$bmp.Save($file, [System.Drawing.Imaging.ImageFormat]::Bmp)
+Add-Type -Namespace Win32 -Name Desk2 -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool SystemParametersInfo(int a, int b, string c, int d);'
+[Win32.Desk2]::SystemParametersInfo(20, 0, $file, 3) | Out-Null`;
+  execFileSync('powershell', ['-NoProfile', '-Command', ps]);
+}
+
+// Does the desktop show through the window? Compare the window's colour over a
+// blue and an orange wallpaper: an opaque window looks the same over both.
+async function seeThrough(app, win, label) {
+  const rect = await app.evaluate(({ BrowserWindow }) => {
+    const b = BrowserWindow.getAllWindows()[0].getContentBounds();
+    // The empty editor area, right of the file list and above the results.
+    return { x: b.x + Math.round(b.width * 0.35), y: b.y + Math.round(b.height * 0.45), width: 200, height: 120 };
+  });
+  setWallpaper(20, 60, 200);
+  await win.waitForTimeout(1500);
+  const blue = screenAverage(rect);
+  setWallpaper(230, 120, 30);
+  await win.waitForTimeout(1500);
+  const orange = screenAverage(rect);
+  const delta = Math.round(Math.hypot(blue[0] - orange[0], blue[1] - orange[1], blue[2] - orange[2]));
+  console.log(`     ${label}: window colour over blue wallpaper ${blue}, over orange ${orange}, difference ${delta}`);
+  return delta;
+}
+
 (async () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-desktop-'));
   fs.mkdirSync(path.join(project, '.tandem'));
@@ -120,6 +166,19 @@ $small.Save('${file.replace(/'/g, "''")}', $codec, $p)
   await win.locator('.figure-image').first().waitFor({ timeout: 15000 });
   check(true, 'acceptance script ran in the app: DataFrame printed, chart shown');
 
+  if (IS_WIN && probe.material !== 'clear') {
+    await win.getByRole('tab', { name: /Output/ }).click().catch(() => {});
+    const glass = {};
+    for (const material of ['acrylic', 'mica']) {
+      await win.evaluate((m) => window.tandemDesktop.setMaterial(m), material);
+      await win.waitForTimeout(800);
+      glass[material] = await seeThrough(app, win, material === 'acrylic' ? 'Frosted (acrylic)' : 'Mica');
+    }
+    await win.evaluate(() => window.tandemDesktop.setMaterial('acrylic'));
+    check(glass.acrylic > 12, 'Frosted glass: the desktop shows through the window');
+    console.log(`     Mica ${glass.mica > 12 ? 'follows the wallpaper' : 'did not change with the wallpaper on this machine'}`);
+  }
+
   const href = await app.evaluate(async ({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
     await w.webContents.executeJavaScript("location.href = 'https://example.com/'; 1");
@@ -136,6 +195,26 @@ $small.Save('${file.replace(/'/g, "''")}', $codec, $p)
     left = runtimeProcesses();
   }
   check(left === 0, 'closing the app stops the runtime');
+
+  if (IS_WIN) {
+    // Clear glass needs a transparent window, created at start.
+    const settings = path.join(userData, 'settings.json');
+    const saved = JSON.parse(fs.readFileSync(settings, 'utf8'));
+    fs.writeFileSync(settings, JSON.stringify({ ...saved, material: 'clear' }));
+    const app2 = await electron.launch({
+      executablePath: exe,
+      args: [`--user-data-dir=${userData}`],
+      env: { ...process.env, TANDEM_OPEN_FOLDER: project, TANDEM_CONFIG_DIR: path.join(userData, 'config') },
+      timeout: 120000,
+    });
+    const win2 = await app2.firstWindow();
+    await win2.locator('.runtime-status.tone-up').waitFor({ timeout: 90000 });
+    check((await win2.evaluate(() => document.documentElement.dataset.material)) === 'clear', 'Clear glass after restart');
+    check((await win2.locator('.window-controls button').count()) === 3, 'Clear glass: the app draws the window buttons');
+    const delta = await seeThrough(app2, win2, 'Clear');
+    check(delta > 12, 'Clear glass: the desktop shows through the window');
+    await app2.close();
+  }
   console.log('\nAll desktop checks passed.');
 })().catch((e) => {
   console.error('FAILED:', e);
