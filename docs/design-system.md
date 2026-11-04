@@ -63,7 +63,24 @@ Browsers without backdrop blur fall back to near-solid surfaces.
 
 ## Results
 
-One glass surface with one header row: Output, Variables, Charts and Runs as pill tabs (Charts and Runs show counts), then the chart controls on the right (run number, figure 1/2, compare, Ask AI to modify, expand) and close. The chart sits directly on the panel glass with its title and legend in one line; only the metrics table gets a quiet inset surface beside it. Grid lines are white at 4.5%, the axis at 16%. Linear regression is blue circles (#6F95EC), the decision tree orange squares (#E8A352). The area adapts to its own width: under 620px it drops the counts, run label, compare and metrics so the chart keeps its room.
+One glass surface with one header row: Output, Variables, Charts and Runs as pill tabs (Charts and Runs show counts), then the chart controls on the right (run number, figure 1/2, compare, show code, Ask AI to modify, expand) and close. The area adapts to its own width: under 620px it drops the counts, run label, compare and metrics so the chart keeps its room.
+
+### Output, variables, errors
+
+- The run is one quiet line above its output (no band): "Run #2 · main.py", status, duration. The file name is a link to the code; if the file has changed since the run, the line says "edited since this run", because the output belongs to the earlier version.
+- Errors: a quiet callout (7% tint and a 2px left rule in the error colour), with Ask AI to fix and Go to line. In the traceback only the final line (the error itself) is red; the rest is secondary text.
+
+### Charts
+
+- The chart sits directly on the pane: title and legend on one line, aligned with the plot area. Grid lines white at 4.5%, axis at 16%, no chart backgrounds or shadows. Linear regression is blue circles (#6F95EC), the decision tree orange squares (#E8A352); every chart, table and run list uses the same marks.
+- **Show code** highlights the block of code that draws the chart (each figure is the unbroken block ending at its `plt.show()`). If the file has changed since the run, a toast says the current code is shown.
+- The expanded view uses the same language: charts on the glass, a hairline between figures, no boxed cards.
+
+### Metrics, in one place
+
+- The Results pane is the authoritative place for metrics; the assistant links to it instead of repeating them.
+- Compact table: right-aligned tabular numbers; model columns headed by their chart marks. The better value in each row (lower MAE and RMSE, higher R²) is set in the primary colour and semibold, with "(better)" for screen readers. No other colour.
+- The Runs list shows each run's R² for both models with their marks, so runs compare at a glance; the run comparison table marks the better run per row the same way.
 
 ## AI interaction
 

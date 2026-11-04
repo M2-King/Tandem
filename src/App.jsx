@@ -23,10 +23,23 @@ import { DEMO_PROMPTS } from './services/aiService.js';
 import { DEBUG_FILE, PROJECT_NAME } from './data/sampleProject.js';
 import { diffStats } from './lib/diff.js';
 import { buildRunAnalysis, proposalForRun } from './services/analysisService.js';
+import { shortHash } from './lib/text.js';
 
 const DATA_FILE = 'data/housing.csv';
 
 // Rows and columns of the sample CSV, read from the file as it is now.
+// The block of code that draws figure `index` in a script: each figure ends
+// at a plt.show(), and its code is the unbroken block above it.
+function figureLines(text, index) {
+  const lines = text.split('\n');
+  const shows = lines.map((l, i) => (/\bplt\.show\(\)/.test(l) ? i : -1)).filter((i) => i >= 0);
+  const end = shows[index];
+  if (end == null) return null;
+  let start = end;
+  while (start > 0 && lines[start - 1].trim() !== '' && start - 1 !== shows[index - 1]) start--;
+  return { start: start + 1, end: end + 1 };
+}
+
 function datasetStats(text) {
   if (!text) return null;
   const lines = text.trim().split('\n').filter(Boolean);
@@ -360,6 +373,27 @@ export default function App() {
       setFlash({ path, lines: [line], key: Date.now() });
     },
     onResetFile: resetFile,
+    isCodeCurrent: (run) => shortHash(ws.files[run.path] ?? '') === run.snapshotHash,
+    onOpenRunFile: (run) => {
+      setReviewingId(null);
+      openFile(run.path);
+    },
+    // From a chart to the lines that draw it, in the file as it is now.
+    onShowFigureCode: (run, index) => {
+      const text = ws.files[run.path] ?? '';
+      const range = figureLines(text, index);
+      setReviewingId(null);
+      openFile(run.path);
+      if (!range) {
+        notify(`${run.path} no longer has the code for this chart.`);
+        return;
+      }
+      const lines = [];
+      for (let l = range.start; l <= range.end; l++) lines.push(l);
+      setRevealRequest({ path: run.path, line: range.start, key: Date.now() });
+      setFlash({ path: run.path, lines, key: Date.now() });
+      if (shortHash(text) !== run.snapshotHash) notify(`${run.path} has changed since run #${run.number}. Showing the current code.`);
+    },
     onDismissNotice: () => exec.setNotice(null),
     onExpand: (a, b) => setExpanded({ a, b }),
     onAskModify: askToModifyChart,

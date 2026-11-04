@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { X, Play, Loader2, AlertCircle, RotateCcw, MessageSquarePlus, Wrench, Maximize2, ArrowRight, Info, GitCompare } from 'lucide-react';
+import { X, Play, Loader2, AlertCircle, RotateCcw, MessageSquarePlus, Wrench, Maximize2, ArrowRight, Info, GitCompare, Code2 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import FigureView from './FigureView.jsx';
-import { MetricsList } from './MetricsTable.jsx';
+import { MetricsList, ModelHeading } from './MetricsTable.jsx';
 import { RunStatus, runTitle, formatTime, formatDuration } from './runFormat.jsx';
 
 const TABS = ['Output', 'Variables', 'Charts', 'Runs'];
@@ -17,10 +17,30 @@ function Empty({ title, text, children }) {
   );
 }
 
-function RunMeta({ run }) {
+// The run's file is a link back to the code. If the file has changed since
+// the run, say so: the output belongs to the earlier version.
+function RunFile({ run, actions }) {
+  const current = actions.isCodeCurrent(run);
+  return (
+    <>
+      <button type="button" className="run-file-link" onClick={() => actions.onOpenRunFile(run)} title={`Open ${run.path}`}>
+        {run.path}
+      </button>
+      {!current && (
+        <span className="run-meta-note" data-tooltip="The output below came from the earlier version of the file.">
+          edited since this run
+        </span>
+      )}
+    </>
+  );
+}
+
+function RunMeta({ run, actions }) {
   return (
     <div className="run-meta">
-      <span className="run-meta-title">{runTitle(run)}</span>
+      <span className="run-meta-title">
+        Run #{run.number} · <RunFile run={run} actions={actions} />
+      </span>
       <span className="run-meta-detail" data-tooltip="Fingerprint of the code this run used. Later edits don't change it.">
         snapshot {run.snapshotHash} · {run.versionLabel}
       </span>
@@ -30,11 +50,13 @@ function RunMeta({ run }) {
   );
 }
 
+// A traceback is mostly context; only its last line (the error itself) is red.
 function OutputLines({ lines }) {
+  const lastErr = lines.map((l) => l.kind).lastIndexOf('err');
   return (
     <pre className="output-lines">
       {lines.map((l, i) => (
-        <div key={i} className={l.kind === 'err' ? 'line-err' : undefined}>
+        <div key={i} className={l.kind === 'err' ? (i === lastErr ? 'line-err line-err-final' : 'line-err') : undefined}>
           {l.text || ' '}
         </div>
       ))}
@@ -98,7 +120,7 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
         run && <p className="muted-text pad">Earlier results are kept in the Runs tab.</p>
       ) : run ? (
         <>
-          <RunMeta run={run} />
+          <RunMeta run={run} actions={actions} />
           {run.error && (
             <div className="callout callout-error" role="alert">
               <AlertCircle size={16} aria-hidden="true" />
@@ -167,7 +189,7 @@ function VariableTable({ variables, changed = [], stepKey }) {
   );
 }
 
-function VariablesView({ traceView, run }) {
+function VariablesView({ traceView, run, actions }) {
   if (traceView) {
     return (
       <div className="results-scroll">
@@ -201,7 +223,9 @@ function VariablesView({ traceView, run }) {
     <div className="results-scroll">
       <div className="run-meta">
         <span className="run-meta-title">Variables at the end of run #{run.number}</span>
-        <span className="run-meta-detail">{run.path} · sample data</span>
+        <span className="run-meta-detail">
+          <RunFile run={run} actions={actions} /> · sample data
+        </span>
       </div>
       {run.variables.length ? (
         <VariableTable variables={run.variables} />
@@ -277,9 +301,25 @@ function ChartControls({ run, runs, figure, index, onIndex, actions }) {
           </select>
         </label>
       )}
+      <IconButton icon={Code2} label="Show the code for this chart" onClick={() => actions.onShowFigureCode(run, index)} />
       <IconButton icon={MessageSquarePlus} label="Ask AI to modify this chart" onClick={() => actions.onAskModify(run, figure)} />
       <IconButton icon={Maximize2} label="Expand results" onClick={() => actions.onExpand(run.id, null)} />
     </div>
+  );
+}
+
+// R² per model for one run, with the chart marks, so runs compare at a glance.
+function RunScores({ metrics }) {
+  const models = Object.entries(metrics || {}).filter(([, m]) => m?.r2 != null);
+  if (!models.length) return <span className="muted-text">—</span>;
+  return (
+    <span className="run-scores">
+      {models.map(([name, m]) => (
+        <span key={name} className="run-score" title={`${name}: R² ${m.r2.toFixed(3)}`}>
+          <ModelHeading model={name} /> <span className="run-score-value">{m.r2.toFixed(3)}</span>
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -310,6 +350,9 @@ function RunsView({ runs, selectedRunId, onSelect, onCompare }) {
             <th scope="col">Run</th>
             <th scope="col">Code snapshot</th>
             <th scope="col">Status</th>
+            <th scope="col" className="num">
+              R² <span className="th-hint">on test data</span>
+            </th>
             <th scope="col">Time</th>
             <th scope="col">
               <span className="sr-only">Open</span>
@@ -333,6 +376,9 @@ function RunsView({ runs, selectedRunId, onSelect, onCompare }) {
               </td>
               <td>
                 <RunStatus status={run.status} />
+              </td>
+              <td className="num">
+                <RunScores metrics={run.metrics} />
               </td>
               <td className="muted-text">{formatTime(run.createdAt)}</td>
               <td>
@@ -391,7 +437,7 @@ export default function ResultsPanel({ tab, onTab, session, traceView, notice, r
         {tab === 'Output' && (
           <OutputView session={session} traceView={traceView} notice={notice} run={run} runTarget={runTarget} actions={actions} />
         )}
-        {tab === 'Variables' && <VariablesView traceView={traceView} run={run} />}
+        {tab === 'Variables' && <VariablesView traceView={traceView} run={run} actions={actions} />}
         {tab === 'Charts' && <ChartsView run={run} figure={figure} />}
         {tab === 'Runs' && (
           <RunsView runs={runs} selectedRunId={run?.id} onSelect={actions.onSelectRun} onCompare={actions.onExpand} />
