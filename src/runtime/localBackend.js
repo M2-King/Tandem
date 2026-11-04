@@ -38,6 +38,11 @@ export function createLocalBackend(config) {
     writeFile: (path, text, baseHash) => client.api('/api/file', { method: 'PUT', body: { path, text, base_hash: baseHash } }),
     createFile: (path, text = '') => client.api('/api/file', { method: 'POST', body: { path, text } }),
 
+    // AI provider settings. Keys go to the runtime and never come back.
+    aiSettings: () => client.api('/api/ai/settings'),
+    saveAISettings: (body) => client.api('/api/ai/settings', { method: 'PUT', body }),
+    testAI: (provider) => client.api('/api/ai/test', { method: 'POST', body: { provider } }),
+
     // Starts a real run. Callbacks:
     //   onStart({python, cwd}), onOutput(line), onFinish(result)
     // result: { status: 'success'|'error'|'stopped', exitCode, output, variables,

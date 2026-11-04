@@ -27,9 +27,9 @@ export function RuntimeStatus({ connection, status, error }) {
       align="start"
       label="Runtime"
       renderTrigger={(props) => (
-        <button type="button" className={`runtime-status tone-${tone}`} {...props}>
+        <button type="button" className={`runtime-status tone-${tone}`} aria-label={`Runtime: ${label}`} {...props}>
           <span className="runtime-dot" aria-hidden="true" />
-          {label}
+          <span className="runtime-status-label">{label}</span>
         </button>
       )}
     >

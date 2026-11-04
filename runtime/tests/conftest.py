@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from tandem_runtime.ai_settings import AISettings
 from tandem_runtime.security import AccessPolicy
 from tandem_runtime.server import create_app
 
@@ -39,6 +40,18 @@ def pid_alive(pid: int) -> bool:
     return state != "" and not state.startswith("Z")
 
 
+@pytest.fixture(autouse=True)
+def utf8_test_files(monkeypatch):
+    """Test files are written as UTF-8 with \n line endings, as an editor would,
+    instead of Windows' default code page and CRLF."""
+    original = Path.write_text
+
+    def write_text(self, data, encoding="utf-8", errors=None, newline="\n"):
+        return original(self, data, encoding=encoding, errors=errors, newline=newline)
+
+    monkeypatch.setattr(Path, "write_text", write_text)
+
+
 @pytest.fixture(params=["3.11", "3.12"], ids=["py3.11", "py3.12"])
 def python(request) -> Path:
     py = env_python(request.param)
@@ -60,8 +73,13 @@ def use_python(root: Path, python: Path) -> None:
 
 
 @pytest.fixture
-def client(project: Path):
-    app = create_app(project, AccessPolicy(token=TOKEN, port=PORT), ui_dir=None)
+def config_dir(tmp_path: Path) -> Path:
+    return tmp_path / "config"
+
+
+@pytest.fixture
+def client(project: Path, config_dir: Path):
+    app = create_app(project, AccessPolicy(token=TOKEN, port=PORT), ui_dir=None, ai_settings=AISettings(config_dir))
     with TestClient(app, base_url=f"http://127.0.0.1:{PORT}") as c:
         c.headers.update({"x-tandem-token": TOKEN})
         yield c

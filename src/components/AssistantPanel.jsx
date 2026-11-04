@@ -415,6 +415,7 @@ export default function AssistantPanel({
   project,
   onShowResults,
   onGoToCode,
+  onConnectAI,
 }) {
   const listRef = useRef(null);
   const contentRef = useRef(null);
@@ -509,6 +510,11 @@ export default function AssistantPanel({
           <span className="sim-tag" data-tooltip="Responses are prepared for a few sample tasks. No AI service is connected.">
             Simulated
           </span>
+        )}
+        {onConnectAI && (
+          <button type="button" className="btn btn-secondary btn-sm assistant-connect" onClick={onConnectAI}>
+            AI settings
+          </button>
         )}
         <IconButton icon={X} label="Hide assistant" className="push-right" onClick={onClose} tooltipSide="left" />
       </div>

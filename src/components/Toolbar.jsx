@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Rows2,
   Columns2,
+  Sparkles,
 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import TandemMark from './TandemMark.jsx';
@@ -94,6 +95,7 @@ export default function Toolbar({
   diffInline,
   onDiffInline,
   onReset,
+  onAISettings,
   glass,
   onGlass,
   frost,
@@ -155,6 +157,18 @@ export default function Toolbar({
           >
             {(close) => (
               <>
+                {onAISettings && (
+                  <>
+                    <MenuItem
+                      close={close}
+                      icon={Sparkles}
+                      label="AI settings…"
+                      description="Provider, model and API key"
+                      onSelect={onAISettings}
+                    />
+                    <div className="menu-sep" role="separator" />
+                  </>
+                )}
                 <div className="menu-row" role="group" aria-label="Editor text size">
                   <span className="menu-row-label">Editor text size</span>
                   <div className="stepper">

@@ -3213,3 +3213,147 @@ button.proposal-head:focus-visible {
   object-fit: contain;
   user-select: none;
 }
+
+/* AI settings dialog */
+.dialog-ai {
+  width: 520px;
+  padding: 20px;
+  overflow-y: auto;
+}
+.ai-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -4px -6px 6px 0;
+}
+.ai-settings .dialog-text {
+  margin: 0 0 4px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.ai-tabs {
+  display: flex;
+  margin-top: 14px;
+}
+.ai-tabs button {
+  flex: 1;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.ai-active-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.ai-saved-key {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-lg);
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.ai-saved-key .mono {
+  color: var(--text-primary);
+}
+.ai-advanced {
+  margin-top: 12px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.ai-advanced summary {
+  cursor: pointer;
+  width: max-content;
+  border-radius: var(--radius-sm);
+}
+.ai-advanced summary:focus-visible {
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+.ai-advanced .field {
+  margin-top: 8px;
+}
+.ai-test-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.ai-test-row .btn {
+  flex: none;
+  gap: 6px;
+}
+.ai-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--text-muted);
+}
+.ai-status svg {
+  flex: none;
+}
+.ai-status.is-ok {
+  color: var(--success);
+}
+.ai-status.is-warn {
+  color: var(--warning);
+}
+.ai-status.is-error {
+  color: var(--error);
+}
+.ai-note {
+  margin-top: 16px;
+  overflow-wrap: anywhere;
+}
+.assistant-connect {
+  margin-left: 4px;
+}
+@media (max-width: 600px) {
+  .dialog-ai {
+    padding: 16px;
+  }
+  .ai-tabs button {
+    padding: 0 4px;
+    font-size: var(--fs-xs);
+  }
+  .ai-test-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+.ai-tabs button {
+  white-space: nowrap;
+}
+/* The runtime status shrinks (dot first) instead of running under Run on narrow screens. */
+.runtime-status {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+}
+.runtime-status-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  /* Phones: the status shows as its coloured dot; the label stays its accessible name. */
+  .runtime-status-label {
+    display: none;
+  }
+  .runtime-status {
+    padding: 0 7px;
+  }
+}

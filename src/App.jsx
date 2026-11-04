@@ -20,6 +20,7 @@ import { IS_LOCAL, RUNTIME_CONFIG } from './runtime/config.js';
 import { createLocalBackend } from './runtime/localBackend.js';
 import { RuntimeStatus, DemoBadge } from './components/RuntimeStatus.jsx';
 import NewFileDialog from './components/NewFileDialog.jsx';
+import AISettingsDialog from './components/AISettingsDialog.jsx';
 import { useAssistant } from './state/useAssistant.js';
 import { useExecution } from './state/useExecution.js';
 import { useViewportWidth } from './state/useViewport.js';
@@ -91,6 +92,7 @@ export default function App() {
         ? 'No Python interpreter found for this project'
         : null;
   const [newFileOpen, setNewFileOpen] = useState(false);
+  const [aiSettingsOpen, setAISettingsOpen] = useState(false);
 
   // Refs give async callbacks (AI requests, toasts) the latest state.
   const filesRef = useRef(ws.files);
@@ -472,6 +474,7 @@ export default function App() {
         diffInline={prefs.diffInline}
         onDiffInline={(inline) => update({ diffInline: inline })}
         onReset={IS_LOCAL ? null : () => setConfirmReset(true)}
+        onAISettings={IS_LOCAL ? () => setAISettingsOpen(true) : null}
         glass={prefs.glass}
         onGlass={(glass) => update({ glass })}
         frost={prefs.frost}
@@ -634,6 +637,7 @@ export default function App() {
             onRetry={(r) => sendPrompt(r.prompt, { intent: r.intent, context: r.context })}
             composerRef={composerRef}
             onClose={closeAssistant}
+            onConnectAI={IS_LOCAL ? () => setAISettingsOpen(true) : null}
             composerSuggestions={composerSuggestions}
             onGoToCode={(chip) => {
               ws.openFile(chip.path);
@@ -681,6 +685,10 @@ export default function App() {
           onClose={() => setExpanded(null)}
           onAskModify={askToModifyChart}
         />
+      )}
+
+      {aiSettingsOpen && (
+        <AISettingsDialog backend={backend} onClose={() => setAISettingsOpen(false)} onSaved={(message) => notify(message)} />
       )}
 
       {newFileOpen && (

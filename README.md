@@ -18,6 +18,31 @@ are in Real mode, everything else is the demo.
 
 ## Real Python on your computer
 
+### Windows: download the app
+
+Download **Tandem.exe** from the repository's Releases page and double-click it. Choose a project
+folder; Tandem opens in your browser. Closing the console window stops it. Your project code needs
+Python 3.11+ installed (python.org, or `winget install Python.Python.3.12`); Tandem uses the project's
+`.venv` when it has one, otherwise the `py` launcher's Python. The exe isn't code-signed yet, so
+SmartScreen may ask you to confirm (More info → Run anyway).
+
+Build it yourself on Windows: `npm ci && npm run build`, then
+`pip install ./runtime pyinstaller==6.11.1` and `pyinstaller packaging/windows/tandem.spec`
+(use `--distpath out` so the exe doesn't land in the UI's `dist/` folder).
+The `Windows app` GitHub workflow does this on every push, runs the tests on Windows, checks the exe
+end to end with `packaging/windows/smoke.py`, and publishes a release for `v*` tags.
+
+### AI settings
+
+In Real mode, **AI settings** (in the assistant header or the ⋯ menu) connects a provider: Anthropic,
+any OpenAI-compatible server, or a local Ollama. Keys are sent once to the local runtime and stored in
+your user config folder (`%APPDATA%\Tandem` on Windows, `~/.config/tandem` on Linux,
+`~/Library/Application Support/Tandem` on macOS), readable by you only. The browser never gets a key
+back, and project code never sees it. *Test connection* lists the provider's models (no tokens used).
+The assistant itself starts using the provider in the next phase; until then it stays the labelled demo.
+
+### From source (macOS, Linux, Windows)
+
 Requires Python 3.11+ and Node.js 18+.
 
 ```bash

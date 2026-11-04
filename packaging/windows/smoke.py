@@ -9,6 +9,7 @@ loop. Exits non-zero on any failure.
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -41,9 +42,14 @@ def check(condition, message):
     print(f"ok   {message}", flush=True)
 
 
-def get(url, token=None):
-    req = urllib.request.Request(url, headers={"x-tandem-token": token} if token else {})
-    with urllib.request.urlopen(req, timeout=30) as r:
+def get(url, token=None, method="GET", body=None):
+    headers = {"x-tandem-token": token} if token else {}
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode()
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, headers=headers, method=method, data=data)
+    with urllib.request.urlopen(req, timeout=60) as r:
         return r.read().decode("utf-8")
 
 
@@ -69,8 +75,9 @@ def main():
     (project / "boom.py").write_text("values = {'a': 1}\nprint('about to fail')\nprint(values['missing'])\n", encoding="utf-8")
     (project / "loop.py").write_text("import time\nprint('tick', flush=True)\nwhile True:\n    time.sleep(0.05)\n", encoding="utf-8")
 
+    config = Path(tempfile.mkdtemp(prefix="tandem-smoke-config-"))
     proc = subprocess.Popen([app, "serve", str(project), "--port", "0", "--print-url", "--python", python],
-                            stdout=subprocess.PIPE, text=True)
+                            stdout=subprocess.PIPE, text=True, env={**os.environ, "TANDEM_CONFIG_DIR": str(config)})
     try:
         url = proc.stdout.readline().strip()
         check(url.startswith("http://127.0.0.1:"), f"runtime started at {url}")
@@ -108,6 +115,13 @@ def main():
 
             events, stopped_at = run(ws, "c", "loop.py", stop_on_output=True)
             check(events[-1]["status"] == "stopped" and time.monotonic() - stopped_at < 8, "Stop ended an endless loop")
+        key = "sk-smoke-0123456789abcdef"
+        saved = get(url + "api/ai/settings", token, "PUT",
+                    {"provider": "anthropic", "api_key": key, "base_url": "http://127.0.0.1:9"})
+        check(key not in saved and json.loads(saved)["providers"]["anthropic"]["has_key"], "AI key saved and never returned")
+        result = json.loads(get(url + "api/ai/test", token, "POST", {"provider": "anthropic"}))
+        check(result["ok"] is False and "Couldn't reach" in result["message"],
+              f"AI connection test runs in the app ({result['message']})")
         print("\nAll smoke checks passed.")
     finally:
         proc.kill()

@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from . import __version__
+from .ai_settings import AISettings, SettingsError, test_connection
 from .files import FileError, ProjectFiles
 from .interpreters import describe, resolve_interpreter
 from .runs import RunError, RunManager
@@ -66,8 +67,23 @@ class CreateBody(BaseModel):
     text: str = ""
 
 
-def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cli_python: str | None = None) -> FastAPI:
+class AISettingsBody(BaseModel):
+    provider: str
+    model: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    clear_key: bool = False
+    activate: bool | None = None
+
+
+class AITestBody(BaseModel):
+    provider: str
+
+
+def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cli_python: str | None = None,
+               ai_settings: AISettings | None = None) -> FastAPI:
     files = ProjectFiles(project_root)
+    ai = ai_settings or AISettings()
 
     def interpreter():
         return resolve_interpreter(files.root, cli_python)[0]
@@ -124,6 +140,28 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
             return files.write(body.path, body.text, create=True)
         except FileError as exc:
             file_error(exc)
+
+    # ---------------- AI provider settings ----------------
+    # Keys go in, never out: responses only say whether a key is saved.
+
+    @app.get("/api/ai/settings")
+    def get_ai_settings():
+        return ai.public()
+
+    @app.put("/api/ai/settings")
+    def put_ai_settings(body: AISettingsBody):
+        try:
+            return ai.update(body.provider, model=body.model, base_url=body.base_url, api_key=body.api_key,
+                             clear_key=body.clear_key, activate=body.activate)
+        except SettingsError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+
+    @app.post("/api/ai/test")
+    def post_ai_test(body: AITestBody):
+        try:
+            return test_connection(ai, body.provider)
+        except SettingsError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
 
     # ---------------- WebSocket: runs ----------------
 
