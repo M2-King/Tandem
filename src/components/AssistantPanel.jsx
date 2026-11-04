@@ -65,11 +65,13 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
   const stateLabel = { working: 'Working', failed: 'Failed', cancelled: 'Cancelled' }[message.status];
   return (
     <article className={`msg msg-assistant status-${message.status}`} aria-label="Tandem reply">
-      <header className="msg-head">
-        <TandemMark size={14} className="msg-head-mark" />
-        <span className="msg-head-name">Tandem</span>
-        {stateLabel && <span className={`msg-head-state state-${message.status}`}>{stateLabel}</span>}
-      </header>
+      {/* The panel already says who is talking; only a status earns a header row. */}
+      {stateLabel && (
+        <header className="msg-head">
+          <TandemMark size={14} className="msg-head-mark" />
+          <span className={`msg-head-state state-${message.status}`}>{stateLabel}</span>
+        </header>
+      )}
       {(working || message.stages?.length > 0) && <Stages stages={message.stages || []} working={working} />}
       {working && (
         <button type="button" className="btn btn-ghost btn-sm stage-cancel" onClick={onCancel}>
@@ -119,24 +121,19 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
   );
 }
 
-// Shown after a run of code that Tandem changed. Built from the run record.
+// Shown after a run of code that Tandem changed. Built from the run record,
+// so nothing here exists before the code has actually run. Sections are
+// sibling groups (no card inside a card) and the heading carries the state.
 function RunAnalysis({ analysis }) {
   return (
-    <article className="msg msg-assistant msg-analysis" aria-label={`Results of run ${analysis.runNumber}`}>
-      <header className="msg-head">
-        <TandemMark size={14} className="msg-head-mark" />
-        <span className="msg-head-name">Tandem</span>
-        <span className="sim-tag msg-head-tag" data-tooltip="Calculated from the simulated run's sample data.">
-          Simulated
-        </span>
-      </header>
-      <div className="analysis-heading">
-        <h3 className="analysis-title">Both models ran</h3>
+    <article className="msg-analysis" aria-label={`Results of run ${analysis.runNumber}`} data-analysis={analysis.runId}>
+      <header className="analysis-heading">
+        <h3 className="analysis-title">Analysis complete</h3>
         <p className="analysis-sub">
-          Run #{analysis.runNumber} · {analysis.path}
+          Run #{analysis.runNumber} of {analysis.path} finished. Here’s a summary from its sample data:
         </p>
-      </div>
-      <ul className="analysis-checks">
+      </header>
+      <ul className="analysis-group analysis-checks" aria-label="What ran">
         {analysis.checks.map((c) => (
           <li key={c}>
             <Check size={14} aria-hidden="true" />
@@ -144,17 +141,17 @@ function RunAnalysis({ analysis }) {
           </li>
         ))}
       </ul>
-      <div className="analysis-metrics">
+      <div className="analysis-group analysis-metrics">
         <MetricsList metrics={analysis.metrics} />
       </div>
-      <div className="analysis-insight">
+      <div className="analysis-group analysis-insight">
         <Lightbulb size={16} aria-hidden="true" className="analysis-insight-icon" />
         <div>
           <p className="analysis-insight-title">Insight</p>
           <p>{analysis.insight}</p>
         </div>
       </div>
-      <details className="analysis-next">
+      <details className="analysis-next" open>
         <summary>
           <ChevronRight size={14} aria-hidden="true" className="analysis-next-chevron" />
           Next steps
@@ -265,7 +262,10 @@ const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, 
           ))}
         </div>
       )}
-      <div className="composer" onClick={(e) => e.target === e.currentTarget && textareaRef.current?.focus()}>
+      <div
+        className={`composer ${text ? 'has-text' : ''}`}
+        onClick={(e) => e.target === e.currentTarget && textareaRef.current?.focus()}
+      >
         {context.length > 0 && (
           <div className="composer-context">
             {context.map((c, i) => (
@@ -278,7 +278,7 @@ const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, 
           className="composer-input"
           rows={1}
           value={text}
-          placeholder="Ask for a change, or describe what you want to build…"
+          placeholder="Ask for a change…"
           aria-label="Message the assistant"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -334,6 +334,7 @@ export default function AssistantPanel({
   const atBottom = useRef(true);
   const lastScrollTop = useRef(0);
   const [showJump, setShowJump] = useState(false);
+  const skipJump = useRef(false);
 
   // Follow new content only while the reader is at the bottom. Only scrolling
   // up un-sticks it, so programmatic scrolls can't race with new content.
@@ -357,12 +358,32 @@ export default function AssistantPanel({
       if (atBottom.current) {
         el.scrollTop = el.scrollHeight;
         lastScrollTop.current = el.scrollTop;
-      } else if (grew) setShowJump(true);
+      } else if (grew && !skipJump.current) setShowJump(true);
+      skipJump.current = false;
     });
     observer.observe(content);
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // A finished-run summary is the answer to the whole task: show it from its
+  // heading rather than from its last line.
+  const lastAnalysis = [...messages].reverse().find((m) => m.kind === 'analysis')?.analysis?.runId;
+  const shownAnalysis = useRef(lastAnalysis);
+  useLayoutEffect(() => {
+    if (!lastAnalysis || lastAnalysis === shownAnalysis.current) return;
+    shownAnalysis.current = lastAnalysis;
+    const el = listRef.current;
+    const target = el?.querySelector(`[data-analysis="${lastAnalysis}"]`);
+    if (!target) return;
+    const top = target.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 12;
+    if (top + el.clientHeight < el.scrollHeight) {
+      atBottom.current = false;
+      skipJump.current = true;
+    }
+    el.scrollTop = top;
+    lastScrollTop.current = el.scrollTop;
+  }, [lastAnalysis]);
 
   const jump = () => {
     const el = listRef.current;

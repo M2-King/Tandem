@@ -1,60 +1,74 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
-  <!-- Twilight over a lake: cool sky, warm light only low on the horizon -->
+  <!-- Sunset over a mountain lake, seen from a dark wooden deck.
+       Warm light comes from behind the mountain on the left; the sky to the right stays cool. -->
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2c3650"/>
-      <stop offset="0.35" stop-color="#3c475f"/>
-      <stop offset="0.58" stop-color="#4a5163"/>
-      <stop offset="0.7" stop-color="#6a5f60"/>
-      <stop offset="0.77" stop-color="#b48a63"/>
-      <stop offset="0.8" stop-color="#d9a86e"/>
+      <stop offset="0" stop-color="#232b3c"/>
+      <stop offset="0.22" stop-color="#303849"/>
+      <stop offset="0.4" stop-color="#4d4e5d"/>
+      <stop offset="0.5" stop-color="#8a7172"/>
+      <stop offset="0.56" stop-color="#c79a80"/>
+      <stop offset="0.6" stop-color="#e2b18a"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.58" cy="0.8" r="0.36">
-      <stop offset="0" stop-color="#f3c88a" stop-opacity="0.75"/>
-      <stop offset="0.25" stop-color="#d99a5e" stop-opacity="0.35"/>
-      <stop offset="1" stop-color="#d99a5e" stop-opacity="0"/>
+    <radialGradient id="sun" cx="0.1" cy="0.32" r="0.44">
+      <stop offset="0" stop-color="#ffdcb0" stop-opacity="1"/>
+      <stop offset="0.22" stop-color="#f0b88e" stop-opacity="0.7"/>
+      <stop offset="0.55" stop-color="#c98f78" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#c98f78" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#a98060"/>
-      <stop offset="0.18" stop-color="#5d5258"/>
-      <stop offset="0.55" stop-color="#3a3e4a"/>
-      <stop offset="1" stop-color="#2a2d36"/>
+    <linearGradient id="coolRight" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0.35" stop-color="#1f293b" stop-opacity="0"/>
+      <stop offset="1" stop-color="#1f293b" stop-opacity="0.6"/>
+    </linearGradient>
+    <linearGradient id="mountain" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a4855"/>
+      <stop offset="1" stop-color="#2b2c36"/>
     </linearGradient>
     <linearGradient id="far" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#4a4e5e"/>
-      <stop offset="1" stop-color="#5e5a62"/>
+      <stop offset="0" stop-color="#5a5662"/>
+      <stop offset="1" stop-color="#6b6066"/>
     </linearGradient>
-    <linearGradient id="near" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#454a5b"/>
-      <stop offset="1" stop-color="#363a48"/>
+    <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c99b80"/>
+      <stop offset="0.2" stop-color="#8a7375"/>
+      <stop offset="0.6" stop-color="#4c4a56"/>
+      <stop offset="1" stop-color="#363744"/>
     </linearGradient>
-    <linearGradient id="cloud" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#8a8fa0" stop-opacity="0"/>
-      <stop offset="0.5" stop-color="#8a8fa0" stop-opacity="0.16"/>
-      <stop offset="1" stop-color="#8a8fa0" stop-opacity="0"/>
+    <linearGradient id="deck" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f2724"/>
+      <stop offset="1" stop-color="#17120f"/>
     </linearGradient>
+    <radialGradient id="glint" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f0b583" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#f0b583" stop-opacity="0"/>
+    </radialGradient>
   </defs>
+
   <rect width="1600" height="1000" fill="url(#sky)"/>
-  <!-- thin cloud bands -->
-  <ellipse cx="1000" cy="300" rx="620" ry="34" fill="url(#cloud)"/>
-  <ellipse cx="560" cy="420" rx="520" ry="26" fill="url(#cloud)"/>
-  <ellipse cx="1180" cy="520" rx="480" ry="20" fill="url(#cloud)"/>
-  <rect width="1600" height="1000" fill="url(#glow)"/>
+  <rect width="1600" height="1000" fill="url(#sun)"/>
+  <rect width="1600" height="600" fill="url(#coolRight)"/>
+
   <!-- far hills on the horizon -->
-  <path d="M0 770 L160 745 L300 760 L470 735 L620 758 L760 748 L900 770 L1040 752 L1200 762 L1340 742 L1480 760 L1600 750 L1600 800 L0 800 Z" fill="url(#far)" opacity="0.85"/>
-  <!-- large mountain on the left, smaller ridge on the right -->
-  <path d="M0 330 L70 300 L150 360 L230 420 L300 470 L380 560 L470 650 L560 720 L640 775 L700 800 L0 800 Z" fill="url(#near)"/>
-  <path d="M1600 560 L1530 580 L1460 640 L1380 700 L1300 760 L1240 800 L1600 800 Z" fill="url(#near)" opacity="0.9"/>
+  <path d="M560 600 L700 584 L860 592 L1000 572 L1140 586 L1300 566 L1460 580 L1600 570 L1600 604 L560 604 Z" fill="url(#far)"/>
+  <!-- the big mountain on the left, with a sunlit ridge -->
+  <path d="M0 410 L70 388 L150 400 L250 446 L360 500 L480 548 L600 586 L700 604 L0 604 Z" fill="url(#mountain)"/>
+  <path d="M0 410 L70 388 L150 400 L250 446 L360 500 L480 548 L600 586" fill="none" stroke="#f2c49a" stroke-opacity="0.7" stroke-width="3"/>
+
   <!-- lake -->
-  <rect y="800" width="1600" height="200" fill="url(#lake)"/>
-  <ellipse cx="930" cy="806" rx="360" ry="70" fill="#f0c387" opacity="0.18"/>
-  <g stroke="#f2cf98" stroke-linecap="round" opacity="0.4">
-    <path d="M880 818h110" stroke-width="2"/>
-    <path d="M850 836h170" stroke-width="1.6"/>
-    <path d="M900 856h90" stroke-width="1.4"/>
-    <path d="M820 880h240" stroke-width="1.2" opacity="0.7"/>
+  <rect y="604" width="1600" height="196" fill="url(#lake)"/>
+  <path d="M0 604 L700 604 L560 628 L330 668 L120 700 L0 712 Z" fill="#2c2d37" opacity="0.65"/>
+  <g stroke="#f3cf9f" stroke-linecap="round" opacity="0.45">
+    <path d="M140 640h220" stroke-width="2"/>
+    <path d="M90 664h300" stroke-width="1.6"/>
+    <path d="M200 690h180" stroke-width="1.4"/>
+    <path d="M60 724h360" stroke-width="1.2" opacity="0.7"/>
+    <path d="M640 640h160" stroke-width="1.2" opacity="0.5"/>
   </g>
-  <!-- reflections of the mountains -->
-  <path d="M0 800 L700 800 L600 840 L420 900 L200 950 L0 980 Z" fill="#2a2e3a" opacity="0.7"/>
-  <path d="M1600 800 L1240 800 L1340 840 L1480 880 L1600 900 Z" fill="#2a2e3a" opacity="0.6"/>
+
+  <!-- wooden deck in the foreground, catching the light -->
+  <rect y="800" width="1600" height="200" fill="url(#deck)"/>
+  <path d="M0 800 H1600" stroke="#8a6650" stroke-opacity="0.5" stroke-width="2"/>
+  <ellipse cx="40" cy="930" rx="320" ry="70" fill="url(#glint)"/>
+  <ellipse cx="520" cy="955" rx="220" ry="34" fill="url(#glint)" opacity="0.5"/>
+  <ellipse cx="1140" cy="958" rx="200" ry="30" fill="url(#glint)" opacity="0.45"/>
 </svg>

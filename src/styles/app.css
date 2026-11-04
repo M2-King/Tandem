@@ -366,7 +366,7 @@ p {
   flex: 1;
   min-height: 0;
   display: flex;
-  padding: 0 var(--space-3) var(--space-3) var(--space-1);
+  padding: 0 var(--space-4) var(--space-5) 0;
   overflow-x: clip; /* closed drawers slide out sideways; don't let the page scroll */
 }
 
@@ -433,13 +433,30 @@ p {
   flex: none;
   width: var(--w);
   overflow: hidden;
-  background: var(--surface-2);
+  background: var(--glass-sheen), var(--surface-2);
   -webkit-backdrop-filter: var(--blur-2);
   backdrop-filter: var(--blur-2);
-  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-panel);
   transition: width var(--t-panel) var(--ease-out), visibility 0s;
+}
+/* Every glass slab gets the same 1px rim: brighter along the top edge.
+   Drawn as a masked gradient so it follows the rounded corners. */
+.sidebar::after,
+.assistant::after,
+.editor-pane::after,
+.results::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  padding: 1px;
+  border-radius: inherit;
+  background: var(--glass-rim);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
 }
 .sidebar.is-closed,
 .assistant.is-closed {
@@ -462,7 +479,7 @@ p {
 .assistant.is-overlay {
   position: absolute;
   top: 0;
-  bottom: var(--space-3);
+  bottom: var(--space-5);
   z-index: 30;
   background: var(--surface-3);
   -webkit-backdrop-filter: var(--blur-3);
@@ -472,11 +489,11 @@ p {
   transition: transform var(--t-panel) var(--ease-out), visibility 0s;
 }
 .sidebar.is-overlay {
-  left: calc(var(--space-1) + var(--rail-width));
+  left: var(--rail-width);
   width: min(var(--w), calc(100vw - 80px));
 }
 .assistant.is-overlay {
-  right: var(--space-3);
+  right: var(--space-4);
   width: min(var(--w), calc(100vw - 44px));
 }
 .sidebar.is-overlay .sidebar-inner,
@@ -496,7 +513,7 @@ p {
 }
 .scrim {
   position: absolute;
-  inset: 0 var(--space-3) var(--space-3) calc(var(--space-1) + var(--rail-width));
+  inset: 0 var(--space-4) var(--space-5) var(--rail-width);
   z-index: 25;
   border-radius: var(--radius-lg);
   background: rgba(5, 6, 9, 0.4);
@@ -517,10 +534,10 @@ p {
   flex-direction: column;
 }
 .editor-pane {
-  background: var(--surface-1);
+  position: relative;
+  background: var(--glass-sheen), var(--surface-1);
   -webkit-backdrop-filter: var(--blur-1);
   backdrop-filter: var(--blur-1);
-  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-panel);
   overflow: hidden;
@@ -529,11 +546,11 @@ p {
   position: relative;
   flex: none;
   height: var(--h);
+  max-height: calc(100% - 200px); /* the editor always keeps room on short screens */
   margin-top: var(--gap-panel);
-  background: var(--surface-2);
+  background: var(--glass-sheen), var(--surface-2);
   -webkit-backdrop-filter: var(--blur-2);
   backdrop-filter: var(--blur-2);
-  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-panel);
   transition: height var(--t-panel) var(--ease-out), visibility 0s;
@@ -1578,31 +1595,43 @@ select {
   line-height: 19px;
 }
 
-/* Finished-run analysis */
-.msg-head-tag {
-  margin-left: auto;
+/* Finished-run analysis: a heading, then sibling groups on quiet inset
+   surfaces. No outer card and no repeated "Tandem" label. */
+.msg-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-1) 0;
+  font-size: var(--fs-md);
+  line-height: 20px;
 }
 .analysis-heading {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  padding: 0 2px 2px;
 }
 .analysis-title {
   margin: 0;
-  font-size: 17px;
-  line-height: 22px;
+  font-size: 20px;
+  line-height: 26px;
   font-weight: var(--fw-semibold);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 .analysis-sub {
   color: var(--text-secondary);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-sm);
+  font-size: var(--fs-md);
+  line-height: 19px;
+}
+.analysis-group {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .analysis-checks {
   list-style: none;
-  margin: 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1619,7 +1648,7 @@ select {
   color: var(--success);
 }
 .analysis-metrics {
-  padding-top: 2px;
+  padding: 6px 14px 4px;
 }
 .analysis-metrics .metrics-table {
   width: 100%;
@@ -1630,10 +1659,6 @@ select {
 .analysis-insight {
   display: flex;
   gap: 10px;
-  padding: 10px var(--space-3);
-  margin: 0 calc(-1 * var(--space-1));
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.04);
   color: var(--text-secondary);
 }
 .analysis-insight-icon {
@@ -1668,8 +1693,11 @@ select {
 .analysis-next[open] .analysis-next-chevron {
   transform: rotate(90deg);
 }
+.analysis-next {
+  padding: 0 2px;
+}
 .analysis-next ul {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   padding-left: 22px;
   color: var(--text-secondary);
 }
@@ -1767,8 +1795,8 @@ select {
   color: var(--text-secondary);
 }
 .msg-head-state {
-  margin-left: auto;
-  color: var(--text-muted);
+  color: var(--text-secondary);
+  font-weight: var(--fw-medium);
 }
 .msg-head-state.state-failed {
   color: var(--error);
@@ -2016,14 +2044,15 @@ select {
   padding: 0 12px 12px;
 }
 .composer {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 8px 8px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: end;
+  padding: 9px 9px 9px 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  background: rgba(0, 0, 0, 0.2);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   cursor: text;
   transition: border-color var(--t-hover) var(--ease);
 }
@@ -2031,15 +2060,21 @@ select {
   border-color: rgba(128, 155, 220, 0.6);
 }
 .composer-context {
+  grid-column: 1 / -1;
+  grid-row: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  margin-bottom: 6px;
 }
 .composer-input {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: center;
   width: 100%;
   min-height: 22px;
   max-height: 168px;
-  padding: 2px 4px 0 0;
+  padding: 0 4px 0 0;
   border: 0;
   outline: 0;
   resize: none;
@@ -2054,15 +2089,24 @@ select {
   box-shadow: none;
 }
 .composer-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  display: contents;
+}
+.composer-footer > button {
+  grid-column: 2;
+  grid-row: 2;
 }
 .composer-hint {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: none;
+  margin-top: 6px;
   font-size: var(--fs-xs);
   line-height: 16px;
   color: var(--text-muted);
+}
+/* Shown once something is typed, so focus changes never shift the layout */
+.composer.has-text .composer-hint {
+  display: block;
 }
 .send-btn {
   width: var(--control-lg);
@@ -2100,13 +2144,29 @@ select {
   flex-direction: column;
 }
 .results-header {
-  height: var(--header-height);
+  height: 48px;
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-2);
-  border-bottom: 1px solid var(--border);
+  padding: 0 var(--space-2) 0 var(--space-2);
+}
+.results-header-end,
+.results-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.results-actions {
+  gap: 6px;
+  margin-right: 2px;
+}
+.results-run-label {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  margin-right: 2px;
+  white-space: nowrap;
 }
 .results-tabs {
   display: flex;
@@ -2360,38 +2420,33 @@ select {
   margin: 0;
 }
 
-.charts-view {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-.charts-toolbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px 4px 16px;
-  min-height: 40px;
-  flex-wrap: wrap;
-}
-.charts-caption {
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.charts-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-}
 .compare-select {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  width: var(--control-lg);
+  height: var(--control-lg);
+  border-radius: var(--radius);
   color: var(--text-secondary);
+  transition: background-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease);
+}
+.compare-select:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.compare-select:focus-within {
+  box-shadow: var(--focus-ring);
+}
+/* Icon-only trigger: the native select sits on top, invisible, so it keeps
+   its keyboard and screen-reader behaviour. */
+.compare-select select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
 }
 .segmented {
   display: inline-flex;
@@ -2401,7 +2456,8 @@ select {
 }
 .segmented button {
   height: 24px;
-  padding: 0 10px;
+  min-width: 26px;
+  padding: 0 9px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -2415,26 +2471,26 @@ select {
   color: var(--text-primary);
 }
 .charts-body {
-  flex: 1;
-  min-height: 0;
+  height: 100%;
   display: flex;
-  gap: var(--space-2);
-  padding: 0 var(--space-3) var(--space-3);
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-1) var(--space-4) var(--space-3) var(--space-3);
 }
-/* Figures and metrics sit on inset glass cards inside the results panel */
-.figure-panel,
-.charts-metrics {
-  padding: var(--space-2) var(--space-3) var(--space-1);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-card);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+/* The chart sits directly on the panel glass; only the metrics get a quiet
+   inset card, so the numbers read as one block beside it. */
+.charts-body > .figure {
+  align-self: stretch;
 }
 .charts-metrics {
   flex: none;
   width: 236px;
+  max-height: 100%;
   overflow: auto;
-  padding: var(--space-2) var(--space-1) var(--space-1);
+  margin-top: 28px;
+  padding: var(--space-1) var(--space-1) 2px;
+  background: rgba(255, 255, 255, 0.045);
+  border-radius: var(--radius-card);
 }
 
 .figure {
@@ -2448,7 +2504,7 @@ select {
   flex: 1;
   min-width: 0;
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-5);
 }
 .figure-panel {
   flex: 1;
@@ -2460,12 +2516,15 @@ select {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: 4px 18px;
+  min-height: 24px;
   padding-left: 52px;
+  margin-bottom: 4px;
   font-size: var(--fs-sm);
   line-height: 16px;
 }
 .figure-panel-title {
+  font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
 }
 .legend {
@@ -2490,15 +2549,15 @@ select {
   display: block;
 }
 .grid-line {
-  stroke: rgba(255, 255, 255, 0.07);
+  stroke: rgba(255, 255, 255, 0.045);
   stroke-width: 1;
 }
 .axis-line {
-  stroke: var(--border-strong);
+  stroke: rgba(255, 255, 255, 0.16);
   stroke-width: 1;
 }
 .diagonal-line {
-  stroke: rgba(255, 255, 255, 0.4);
+  stroke: rgba(255, 255, 255, 0.34);
   stroke-width: 1.5;
   stroke-dasharray: 5 4;
 }
@@ -2667,5 +2726,34 @@ select {
   .sidebar.is-overlay,
   .assistant.is-overlay {
     bottom: var(--space-2);
+  }
+}
+
+/* Keep the results header on one line as the panel narrows */
+@media (max-width: 1200px) {
+  .results-run-label,
+  .results-header .sim-tag {
+    display: none;
+  }
+}
+
+/* The results area adapts to its own width, not the window's: with both
+   side panels open the centre column can be narrow. */
+.results-inner {
+  container: results / inline-size;
+}
+@container results (max-width: 620px) {
+  .results-tab {
+    padding: 0 9px;
+  }
+  .results-run-label,
+  .results-header .sim-tag,
+  .compare-select,
+  .results-tab .count-badge {
+    display: none;
+  }
+  /* Metrics stay in Output and in the assistant; the chart gets the room */
+  .charts-metrics {
+    display: none;
   }
 }

@@ -212,12 +212,11 @@ function VariablesView({ traceView, run }) {
   );
 }
 
-function ChartsView({ run, runs, actions }) {
-  const [figureIndex, setFigureIndex] = useState(null);
-  useEffect(() => setFigureIndex(null), [run?.id]);
-
+// The figure fills the panel; its controls live in the results header
+// (see ChartControls) so there is one row of chrome, not two.
+function ChartsView({ run, figure }) {
   if (!run) return <Empty title="No charts yet" text="Charts appear here when a run creates plots." />;
-  if (!run.figures.length) {
+  if (!figure) {
     return (
       <Empty
         title={`Run #${run.number} didn’t create any charts`}
@@ -225,65 +224,61 @@ function ChartsView({ run, runs, actions }) {
       />
     );
   }
-  const index = figureIndex ?? run.figures.length - 1; // newest figure first
-  const figure = run.figures[Math.min(index, run.figures.length - 1)];
-  const others = runs.filter((r) => r.id !== run.id && r.figures.length > 0);
-
   return (
-    <div className="charts-view">
-      <div className="charts-toolbar">
-        {run.figures.length > 1 && (
-          <div className="segmented" role="tablist" aria-label="Figures">
-            {run.figures.map((f, i) => (
-              <button
-                key={f.id}
-                type="button"
-                role="tab"
-                aria-selected={i === index}
-                className={i === index ? 'is-active' : ''}
-                onClick={() => setFigureIndex(i)}
-              >
-                Figure {i + 1}
-              </button>
-            ))}
-          </div>
-        )}
-        <span className="charts-caption">
-          {figure.title} · run #{run.number} · <span className="sample-tag">Sample data</span>
-        </span>
-        <div className="charts-actions">
-          {others.length > 0 && (
-            <label className="compare-select">
-              <GitCompare size={16} aria-hidden="true" />
-              <span className="sr-only">Compare with another run</span>
-              <select
-                value=""
-                onChange={(e) => e.target.value && actions.onExpand(run.id, e.target.value)}
-                aria-label="Compare with another run"
-              >
-                <option value="">Compare with…</option>
-                {others.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    Run #{r.number} · {r.versionLabel}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => actions.onAskModify(run, figure)}>
-            <MessageSquarePlus size={16} aria-hidden="true" /> Ask AI to modify
-          </button>
-          <IconButton icon={Maximize2} label="Expand results" onClick={() => actions.onExpand(run.id, null)} tooltipSide="left" />
+    <div className="charts-body">
+      <FigureView figure={figure} />
+      {run.metrics && (
+        <aside className="charts-metrics" aria-label="Metrics">
+          <MetricsList metrics={run.metrics} />
+        </aside>
+      )}
+    </div>
+  );
+}
+
+function ChartControls({ run, runs, figure, index, onIndex, actions }) {
+  const others = runs.filter((r) => r.id !== run.id && r.figures.length > 0);
+  return (
+    <div className="results-actions">
+      <span className="results-run-label" data-tooltip={`${figure.title} · sample data`}>
+        Run #{run.number}
+      </span>
+      {run.figures.length > 1 && (
+        <div className="segmented" role="tablist" aria-label="Figures">
+          {run.figures.map((f, i) => (
+            <button
+              key={f.id}
+              type="button"
+              role="tab"
+              aria-selected={i === index}
+              className={i === index ? 'is-active' : ''}
+              onClick={() => onIndex(i)}
+              data-tooltip={f.title}
+            >
+              {i + 1}
+            </button>
+          ))}
         </div>
-      </div>
-      <div className="charts-body">
-        <FigureView figure={figure} />
-        {run.metrics && (
-          <aside className="charts-metrics" aria-label="Metrics">
-            <MetricsList metrics={run.metrics} />
-          </aside>
-        )}
-      </div>
+      )}
+      {others.length > 0 && (
+        <label className="compare-select" data-tooltip="Compare with another run">
+          <GitCompare size={16} aria-hidden="true" />
+          <select
+            value=""
+            onChange={(e) => e.target.value && actions.onExpand(run.id, e.target.value)}
+            aria-label="Compare with another run"
+          >
+            <option value="">Compare with…</option>
+            {others.map((r) => (
+              <option key={r.id} value={r.id}>
+                Run #{r.number} · {r.versionLabel}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <IconButton icon={MessageSquarePlus} label="Ask AI to modify this chart" onClick={() => actions.onAskModify(run, figure)} />
+      <IconButton icon={Maximize2} label="Expand results" onClick={() => actions.onExpand(run.id, null)} />
     </div>
   );
 }
@@ -354,6 +349,12 @@ function RunsView({ runs, selectedRunId, onSelect, onCompare }) {
 }
 
 export default function ResultsPanel({ tab, onTab, session, traceView, notice, runs, run, runTarget, newCharts, actions, onClose }) {
+  const [figureIndex, setFigureIndex] = useState(null);
+  useEffect(() => setFigureIndex(null), [run?.id]);
+  const figures = run?.figures || [];
+  const index = Math.min(figureIndex ?? figures.length - 1, figures.length - 1); // newest figure first
+  const figure = figures[index] || null;
+
   return (
     <section className="results-inner" aria-label="Results">
       <div className="results-header">
@@ -371,6 +372,7 @@ export default function ResultsPanel({ tab, onTab, session, traceView, notice, r
               {name === 'Charts' && newCharts && tab !== 'Charts' && (
                 <span className="new-dot" aria-label="new charts" />
               )}
+              {name === 'Charts' && figures.length > 0 && <span className="count-badge">{figures.length}</span>}
               {name === 'Runs' && runs.length > 0 && <span className="count-badge">{runs.length}</span>}
             </button>
           ))}
@@ -378,14 +380,19 @@ export default function ResultsPanel({ tab, onTab, session, traceView, notice, r
         <span className="sim-tag" data-tooltip="Python execution is simulated with prepared sample results.">
           Simulated
         </span>
-        <IconButton icon={X} label="Hide results" className="push-right" onClick={onClose} tooltipSide="left" />
+        <div className="push-right results-header-end">
+          {tab === 'Charts' && figure && (
+            <ChartControls run={run} runs={runs} figure={figure} index={index} onIndex={setFigureIndex} actions={actions} />
+          )}
+          <IconButton icon={X} label="Hide results" onClick={onClose} tooltipSide="left" />
+        </div>
       </div>
       <div className="results-content" role="tabpanel" aria-label={tab}>
         {tab === 'Output' && (
           <OutputView session={session} traceView={traceView} notice={notice} run={run} runTarget={runTarget} actions={actions} />
         )}
         {tab === 'Variables' && <VariablesView traceView={traceView} run={run} />}
-        {tab === 'Charts' && <ChartsView run={run} runs={runs} actions={actions} />}
+        {tab === 'Charts' && <ChartsView run={run} figure={figure} />}
         {tab === 'Runs' && (
           <RunsView runs={runs} selectedRunId={run?.id} onSelect={actions.onSelectRun} onCompare={actions.onExpand} />
         )}

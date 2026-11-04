@@ -19,19 +19,23 @@ Kept: the dark workspace, the layout and panel behaviour, rounded geometry, the 
 
 ## Shell and materials
 
-Everything sits in one application shell: a window inset 10px from the screen edge, radius 22px, a 1px white edge at 8%, a faint top highlight and one soft shadow. The shell only tints the wallpaper (13, 16, 22 at 16%) and has no blur of its own, so the panels inside still blur the wallpaper directly. On phones the shell fills the screen with no edge.
+Everything sits in one application shell: a window inset 10px from the screen edge, radius 22px, a 1px white edge at 7% and one soft shadow. The shell barely tints the wallpaper (13, 16, 22 at 8%) and has no blur of its own, so the panels inside blur the wallpaper directly and it stays visible in the rail column, the gaps and the margin below the panels.
 
-The wallpaper is a secondary layer: gently blurred (4px), slightly darkened and desaturated, under a neutral cool shade. No vignette or other decorative lighting.
+The default wallpaper is a sunset over a mountain lake seen from a wooden deck: warm light behind the mountain on the left, cool sky to the right, glints on the deck below. It is lightly blurred (3px) and slightly desaturated. A person's own image replaces it (⋯ menu → Wallpaper).
 
 | Material | Used for | Tint (RGB) | Balanced opacity |
 | --- | --- | --- | --- |
-| Editor | Code | 30, 35, 47 (charcoal, cool undertone) | 0.93 |
-| Panel | Files, results, assistant | 38, 42, 54 | 0.74 |
-| Floating | Menus, popovers, dialogs, toasts | 44, 48, 61 | 0.88, blur +8px |
+| Editor | Code | 34, 39, 52 (charcoal slate) | 0.86 |
+| Panel | Files, results, assistant | 34, 38, 50 | 0.58 |
+| Floating | Menus, popovers, dialogs, toasts | 40, 44, 57 | 0.87, blur +8px |
 
-The brief's starting values (17, 20, 28 / 29, 33, 43 / 36, 40, 52) rendered about a third as bright as the golden reference, so the tints were raised part-way toward it while staying charcoal.
+Every glass slab has the same finish:
+- **Rim:** a 1px gradient edge, white at 20% along the top fading to 3.5% on the sides and 7% at the bottom, drawn as a masked pseudo-element so it follows the 16px corners.
+- **Sheen:** white at 4% across the top 120px.
+- **Shadow:** one soft drop (0 12px 32px, black at 20%).
+- **Blur:** 28px backdrop blur with low saturation (115%) so warm light glows through without tinting text.
 
-Every panel has a 1px white edge (`--glass-border-opacity` 0.08), an inner top highlight (`--glass-highlight-strength` 0.07) and one small shadow; only the shell casts a large one. Backdrop saturation is kept low (115%) so warm light doesn't tint the glass. Only backgrounds are translucent; text and icons are never faded.
+Only backgrounds are translucent; text and icons are never faded.
 
 ### Glass setting
 
@@ -39,11 +43,11 @@ One level from 0 (clearest) to 100 (most solid) drives all surfaces (`src/lib/gl
 
 | | Clear | Balanced | Solid |
 | --- | --- | --- | --- |
-| Editor opacity | 0.88 | 0.93 | 0.99 |
-| Panel opacity | 0.61 | 0.74 | 0.88 |
-| Floating opacity | 0.82 | 0.88 | 0.94 |
-| Blur | 25px | 22px | 19px |
-| Wallpaper brightness | 0.99 | 0.92 | 0.84 |
+| Editor opacity | 0.79 | 0.86 | 0.94 |
+| Panel opacity | 0.43 | 0.58 | 0.76 |
+| Floating opacity | 0.82 | 0.87 | 0.93 |
+| Blur | 32px | 28px | 23px |
+| Wallpaper brightness | 1.01 | 0.95 | 0.88 |
 
 Browsers without backdrop blur fall back to near-solid panels.
 
@@ -53,10 +57,15 @@ Inside panels, grouped content sits on inset cards (white at 4%, 1px edge at 7%,
 
 | Component | Rules |
 | --- | --- |
-| Navigation rail | 44px wide, no container. 19px outline icons, muted grey; hover lifts to white; the selected item gets a soft blue tint. Files toggles the explorer; Charts and Runs open the results on that view (a dot marks new charts). Tooltips on the right. Hidden on phones, where the Files toggle returns to the toolbar. |
+| Navigation rail | 52px wide, no container. 19px outline icons, muted grey; hover lifts to white; the selected item gets a soft blue tint. Files toggles the explorer; Charts and Runs open the results on that view (a dot marks new charts). Tooltips on the right. Hidden on phones, where the Files toggle returns to the toolbar. |
 | File explorer | 30px rows. Every row has the same columns: disclosure arrow (blank for files), 16px icon, name; each level indents 18px, with a faint guide line inside folders. Selection is a neutral 8% white lift, not blue. "Collapse folders" appears on hover or focus. Arrow keys move between rows, Left/Right close and open folders, Home/End jump. |
 | Editor tabs | One strip with a hairline under it, no separators. 28px tabs, radius 8; the open file is a 7.5% white lift. Close appears on the open or hovered tab. A grey dot marks a file edited from the sample. |
+| Layout | Rail 52px; files 196px; assistant 380px; results 330px tall (never more than the space that leaves the editor 200px); 16px gaps; 16px right and 24px bottom margins inside the shell. |
 | Editor | Charcoal surface; current line is a 2.4% white band with no border; line numbers #6B7282, current #C9CED8; 14px gutter spacing; 8px scrollbars. The debugger's current line is a 9% blue band with a 2px marker at the left. |
+
+## Results
+
+One glass surface with one header row: Output, Variables, Charts and Runs as pill tabs (Charts and Runs show counts), then the chart controls on the right (run number, figure 1/2, compare, Ask AI to modify, expand) and close. The chart sits directly on the panel glass with its title and legend in one line; only the metrics table gets a quiet inset surface beside it. Grid lines are white at 4.5%, the axis at 16%. Linear regression is blue circles (#6F95EC), the decision tree orange squares (#E8A352). The area adapts to its own width: under 620px it drops the counts, run label, compare and metrics so the chart keeps its room.
 
 ## Assistant states
 
@@ -65,7 +74,7 @@ Inside panels, grouped content sits on inset cards (white at 4%, 1px edge at 7%,
 | Empty | Title and one-line explanation; project context (project, open file, last run); three suggested actions as quiet rows; input at the bottom |
 | Working | Reply card with live steps and Cancel |
 | Review | Reply card with the change summary; "Reviewing in the editor" (Accept and Reject live above the code) |
-| Completed | Only after the accepted change has actually run: what ran, metrics from the run, an insight computed from those metrics, next steps |
+| Completed | Only after the accepted change has actually run. A 20px "Analysis complete" heading with the run number, then sibling groups on quiet inset surfaces (what ran, metrics, insight) and next steps, open. The panel scrolls the heading into view. No per-message "Tandem" label; replies only get a header row when they show a status. |
 
 ## Colour
 
@@ -88,7 +97,7 @@ One primary action per area. Panel toggles show their state with a brighter icon
 
 - Interface 13/18, metadata 12/16, badges 11/14, assistant replies 13/20, dialog titles 15/22. Weights 400, 500 and 600 only.
 - Code in JetBrains Mono.
-- Spacing steps 4, 8, 12, 16, 24, 32. Controls 26, 28 and 30 px high; file rows 30 px; headers 44 px; panel gap 12 px; shell inset 10 px and inner margin 12 px (8 px on phones).
+- Spacing steps 4, 8, 12, 16, 24, 32. Controls 26, 28 and 30 px high; file rows 30 px; headers 44 px; panel gap 16 px; shell inset 10 px, inner margins 16 px right and 24 px bottom (8 px on phones).
 - Radii: 6 (badges, small icon buttons), 8 (editor tabs), 10 (buttons, rows, rail items), 12 (cards, floating surfaces), 16 (panels), 22 (the shell); pills for result tabs and Run, a circle for Send.
 
 ## Motion

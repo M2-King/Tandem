@@ -16,11 +16,11 @@ export function glassVariables(level) {
   const t = Math.min(100, Math.max(0, Number(level) || 0)) / 100;
   return {
     // The editor always stays more opaque than the panels around it.
-    '--glass-opacity-editor': round(lerp(0.86, 1, t)), // 0.93 at Balanced
-    '--glass-opacity': round(lerp(0.56, 0.92, t)), // 0.74
-    '--glass-opacity-float': round(lerp(0.8, 0.96, t)), // 0.88
-    '--glass-blur': `${round(lerp(26, 18, t), 1)}px`, // 22px; clearer glass is more frosted
-    '--wallpaper-brightness': round(lerp(1.02, 0.82, t)), // 0.92
+    '--glass-opacity-editor': round(lerp(0.76, 0.96, t)), // 0.86 at Balanced
+    '--glass-opacity': round(lerp(0.36, 0.8, t)), // 0.58
+    '--glass-opacity-float': round(lerp(0.8, 0.94, t)), // 0.87
+    '--glass-blur': `${round(lerp(34, 22, t), 1)}px`, // 28px; clearer glass is more frosted
+    '--wallpaper-brightness': round(lerp(1.04, 0.86, t)), // 0.95
   };
 }
 

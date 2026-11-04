@@ -14,28 +14,28 @@
    Blue is reserved for the primary action, focus, selection and the active item. */
 :root {
   /* ---- Glass controls ---- */
-  --glass-tint-editor: 30, 35, 47;
-  --glass-tint: 38, 42, 54;
-  --glass-tint-float: 44, 48, 61;
-  --glass-opacity-editor: 0.94;
-  --glass-opacity: 0.74;
-  --glass-opacity-float: 0.88;
-  --glass-blur: 22px;
+  --glass-tint-editor: 34, 39, 52;
+  --glass-tint: 34, 38, 50;
+  --glass-tint-float: 40, 44, 57;
+  --glass-opacity-editor: 0.86;
+  --glass-opacity: 0.58;
+  --glass-opacity-float: 0.87;
+  --glass-blur: 28px;
   --glass-saturate: 115%; /* low, so warm light doesn't tint the glass */
   --glass-border-opacity: 0.08;
   --glass-highlight-strength: 0.07;
 
   /* ---- Shell: one window that holds every panel ---- */
-  --shell-tint: rgba(13, 16, 22, 0.16);
-  --shell-edge: rgba(255, 255, 255, 0.08);
+  --shell-tint: rgba(13, 16, 22, 0.08);
+  --shell-edge: rgba(255, 255, 255, 0.07);
   --shell-margin: 10px;
-  --rail-width: 44px;
+  --rail-width: 52px;
 
   /* ---- Backdrop ---- */
   --bg-app: #11141a;
-  --wallpaper-blur: 4px;
-  --wallpaper-brightness: 0.92;
-  --wallpaper-saturate: 0.8;
+  --wallpaper-blur: 3px;
+  --wallpaper-brightness: 0.96;
+  --wallpaper-saturate: 0.9;
   --wallpaper-shade: rgba(12, 15, 22, 0.12); /* neutral, slightly cool */
 
   /* ---- Materials (derived) ---- */
@@ -50,6 +50,16 @@
   --blur-3: blur(calc(var(--glass-blur) + 8px)) saturate(var(--glass-saturate));
   --glass-edge: rgba(255, 255, 255, var(--glass-border-opacity));
   --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, var(--glass-highlight-strength));
+  /* Edge rim: brighter along the top, as if lit from above */
+  --glass-rim: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.2),
+    rgba(255, 255, 255, 0.06) 22%,
+    rgba(255, 255, 255, 0.035) 70%,
+    rgba(255, 255, 255, 0.07)
+  );
+  /* A faint sheen across the top of each panel */
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 120px);
 
   /* Fills on top of a surface */
   --bg-subtle: rgba(255, 255, 255, 0.03);
@@ -89,8 +99,8 @@
   --warning: #d9b25c;
   --warning-soft: rgba(217, 178, 92, 0.1);
 
-  --series-1: #7895db;
-  --series-2: #d9a05b;
+  --series-1: #6f95ec;
+  --series-2: #e8a352;
 
   /* Type */
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -116,14 +126,14 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
-  --gap-panel: 12px;
+  --gap-panel: 16px;
 
   /* Sizes */
   --control-sm: 26px;
   --control: 28px;
   --control-lg: 30px;
   --row: 32px;
-  --toolbar-height: 52px;
+  --toolbar-height: 56px;
   --header-height: 44px;
   --icon-sm: 14px;
   --icon: 16px;
@@ -140,8 +150,8 @@
   --radius-shell: 22px; /* the application window */
 
   /* Depth */
-  --shadow-panel: var(--glass-highlight), 0 1px 2px rgba(0, 0, 0, 0.16);
-  --shadow-shell: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 30px 80px rgba(0, 0, 0, 0.35);
+  --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.2);
+  --shadow-shell: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 30px 80px rgba(0, 0, 0, 0.3);
   --shadow-menu: var(--glass-highlight), 0 2px 8px rgba(0, 0, 0, 0.22), 0 18px 44px rgba(0, 0, 0, 0.45);
   --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.22), 0 24px 64px rgba(0, 0, 0, 0.45);
   --focus-ring: 0 0 0 2px rgba(11, 12, 16, 0.9), 0 0 0 4px rgba(128, 155, 220, 0.9);

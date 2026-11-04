@@ -4,9 +4,9 @@ import { STORAGE_KEYS } from '../lib/storage.js';
 import { DEFAULT_GLASS, normalizeGlass } from '../lib/glass.js';
 
 export const LIMITS = {
-  sidebar: { min: 160, max: 280, initial: 200 },
-  assistant: { min: 320, max: 480, initial: 360 },
-  results: { min: 120, initial: 240 },
+  sidebar: { min: 160, max: 280, initial: 196 },
+  assistant: { min: 320, max: 480, initial: 380 },
+  results: { min: 120, initial: 330 },
   fontSize: { min: 11, max: 20, initial: 14 },
 };
 
