@@ -27,13 +27,13 @@ The interface has three layers, each with one job:
 | --- | --- | --- |
 | Window | One smoked-glass sheet holding the toolbar, rail and every pane. The only surface that frosts the wallpaper. | Backdrop blur 22px, saturation 165%, transmission (backdrop brightness) 0.88 over dark images down to 0.42 over bright ones, tint 13,15,21 at 0.49. Radius 24px. A dark 1px outer line, a light 1px inner line, a brighter top edge and one deep soft shadow. |
 | Tool panes | Files and Assistant: lighter, raised glass for tools. | No blur of their own. White at 8.5% fading to 5%, a 1px inner hairline (7.5%) with a brighter top edge (11%), a small contact shadow. Radius 14px. |
-| Content panes | Editor and Results: darker smoked glass for the document and what it produces. | No blur of their own. Near-black 8,10,15 at 0.55 with a faint top fade, the same hairline edges. |
+| Content panes | Editor and Results: charcoal glass for the document and what it produces, a step denser than the tool panes. | A light frost of their own (11px, on a `::before` layer so the editor's pop-ups keep their position), neutral charcoal 22,26,36 at 0.40, white at 4.5% fading to 2.5%, the same hairline edges. The extra frost evens out the background behind code, which is what lets the tint stay light. |
 | Floating | Menus, popovers, dialogs, toasts. | Their own frosted glass: blur 28px, tint 29,32,43 at 0.90, crisp border. |
 
 Why this works:
 - **Clean colour, no mud:** the window darkens what's behind it through transmission instead of laying grey over it, so warm light stays warm and doesn't turn brown.
-- **Crisp, not soft:** only one layer blurs. Panes are plain translucent sheets, so there's never blur on top of blur.
-- **Clear hierarchy:** tools are lighter and the document is darker, all inside one window. Edges are hairlines, not glows.
+- **Crisp, not soft:** the window does the main frosting. Tool panes add none; content panes add only a light frost so code sits on an even background.
+- **One family:** tools and document use the same edges, radius and shadow; the document is only a step denser (measured on the sample wallpaper: editor 40,39,47 vs assistant 46,45,53), never a black box.
 
 Menus inside the window keep their own frost because the window's glass is drawn on a `::before` layer: an element with a backdrop filter would trap the backdrop of everything inside it.
 
@@ -41,13 +41,13 @@ Menus inside the window keep their own frost because the window's glass is drawn
 
 When a wallpaper is chosen, Tandem measures its brightness once (a 32×32 sample, blending the mean with the 80th percentile so bright patches count). Over a bright image the window passes less light and gets denser, the document panes darken, and the faintest text steps up. Over a dark image nothing changes. Toolbar text, the only text sitting on the window glass alone, uses a brighter grey.
 
-Measured worst case (text over the brightest 10% of what's behind it) on four test wallpapers (bright sky, near-white, saturated colour, near-black): secondary text 4.7:1 or better everywhere, code comments 5.3:1 or better.
+Measured worst case (text over the brightest 10% of what's behind it) on the sample and four test wallpapers (bright sky, near-white, saturated colour, near-black): secondary text 4.7:1 or better, code 10.5:1 or better, comments 4.7:1 or better.
 
 ### Glass settings (⋯ menu → Glass)
 
 - **Clear / Balanced / Solid** set Opacity to 15, 50 or 90.
-- **Opacity:** window tint 0.18 to 0.80 and document pane 0.34 to 0.82.
-- **Frost:** window blur 8px to 36px.
+- **Opacity:** window tint 0.12 to 0.76 and document panes 0.14 to 0.66.
+- **Frost:** window blur 8px to 36px, document panes 4px to 18px.
 
 Browsers without backdrop blur fall back to near-solid surfaces.
 
@@ -59,7 +59,7 @@ Browsers without backdrop blur fall back to near-solid surfaces.
 | File explorer | 30px rows. Every row has the same columns: disclosure arrow (blank for files), 16px icon, name; each level indents 18px, with a faint guide line inside folders. Selection is a neutral 8% white lift, not blue. "Collapse folders" appears on hover or focus. Arrow keys move between rows, Left/Right close and open folders, Home/End jump. |
 | Editor tabs | One 44px header with a hairline under it, no separators; file type and length on the right ("Python · 64 lines"). 28px tabs, radius 8; the open file is a 7.5% white lift. Close appears on the open or hovered tab. A grey dot marks a file edited from the sample. |
 | Layout | Window inset 10px from the screen; 52px toolbar; 56px rail; files 196px; assistant 380px; results 330px tall (never squeezing the editor below 200px); 10px between panes; 12px window padding. Every pane header is 44px, so headers line up across the window. |
-| Editor | The darker document pane. The current line is marked only by its brighter line number (#C9CED8), with no band across the code; other line numbers #7A8190; comments #868D9A italic; 18px gutter spacing; 14px top and bottom padding; 8px scrollbars. The debugger's current line is a 9% blue band with a 2px marker at the left. |
+| Editor | The darker document pane. The current line is marked only by its brighter line number (#C9CED8), with no band across the code; other line numbers #858C9A; comments #939AA7 italic; 18px gutter spacing; 14px top and bottom padding; 8px scrollbars. The debugger's current line is a 9% blue band with a 2px marker at the left. |
 
 ## Results
 

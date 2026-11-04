@@ -33,12 +33,14 @@ export function glassVariables(level, frost = DEFAULT_FROST, luminance = 0.3) {
   // Bright wallpapers add density, less so as the glass is already solid.
   const extra = bright * (1 - t);
   return {
-    '--window-opacity': round(Math.min(0.94, lerp(0.18, 0.8, t) + 0.44 * extra)),
+    '--window-opacity': round(Math.min(0.94, lerp(0.12, 0.76, t) + 0.44 * extra)),
     '--window-blur': `${round(lerp(8, 36, f), 1)}px`,
     // Light passing through the window glass, not a filter on the wallpaper.
     '--glass-transmission': round(lerp(0.88, 0.42, bright)),
-    // The document panes darken further, so code and charts read first.
-    '--content-opacity': round(Math.min(0.92, lerp(0.34, 0.82, t) + 0.16 * extra)),
+    // Document panes: a little denser than the tool panes and lightly frosted,
+    // so code reads first without turning into a black box.
+    '--content-opacity': round(Math.min(0.9, lerp(0.14, 0.66, t) + 0.22 * extra)),
+    '--content-blur': `${round(lerp(4, 18, f), 1)}px`,
     '--glass-opacity-float': round(Math.min(0.97, lerp(0.84, 0.96, t) + 0.1 * extra)),
     // The faintest text steps up toward the secondary grey over bright images.
     '--text-muted': mix([140, 147, 161], [160, 167, 180], bright),

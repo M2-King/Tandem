@@ -543,10 +543,28 @@ p {
   display: flex;
   flex-direction: column;
 }
-/* Content panes: darker smoked glass for the document and its results */
+/* Content panes: charcoal glass for the document and its results. The
+   frost is drawn on ::before, not on the pane: a backdrop filter on the pane
+   would become the containing block for the editor's fixed-position
+   widgets (hover, autocomplete) and shift them. */
+.editor-pane,
+.results {
+  isolation: isolate;
+}
+.editor-pane::before,
+.results::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--content-fill);
+  -webkit-backdrop-filter: var(--content-filter);
+  backdrop-filter: var(--content-filter);
+  pointer-events: none;
+}
 .editor-pane {
   position: relative;
-  background: var(--content-fill);
   border-radius: var(--radius-lg);
   box-shadow: var(--pane-shadow);
   overflow: hidden;
@@ -557,7 +575,6 @@ p {
   height: var(--h);
   max-height: calc(100% - 200px); /* the editor always keeps room on short screens */
   margin-top: var(--gap-panel);
-  background: var(--content-fill);
   border-radius: var(--radius-lg);
   box-shadow: var(--pane-shadow);
   transition: height var(--t-panel) var(--ease-out), visibility 0s;
