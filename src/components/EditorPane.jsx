@@ -3,16 +3,18 @@ import { X, FileCode2, FileSpreadsheet, FileDiff, MessageSquarePlus, MessageSqua
 import CodeEditor from './CodeEditor.jsx';
 import DiffReview from './DiffReview.jsx';
 import { TRACE } from '../services/traceService.js';
+import { SAMPLE_FILES } from '../data/sampleProject.js';
 
 const iconFor = (path) => (path.endsWith('.csv') ? FileSpreadsheet : FileCode2);
 const fileName = (path) => path.split('/').pop();
 
-function Tabs({ openTabs, activePath, onSelect, onClose, reviewPath }) {
+function Tabs({ openTabs, activePath, onSelect, onClose, reviewPath, files }) {
   return (
     <div className="tab-bar" role="tablist" aria-label="Open files">
       {openTabs.map((path) => {
         const Icon = iconFor(path);
         const active = path === activePath;
+        const edited = path in SAMPLE_FILES && files[path] !== SAMPLE_FILES[path];
         return (
           <div key={path} className={`tab ${active ? 'is-active' : ''}`}>
             <button
@@ -26,6 +28,11 @@ function Tabs({ openTabs, activePath, onSelect, onClose, reviewPath }) {
             >
               <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
               <span>{fileName(path)}</span>
+              {edited && (
+                <span className="tab-edited" data-tooltip="Changed from the sample">
+                  <span className="sr-only">(edited)</span>
+                </span>
+              )}
               {path === reviewPath && (
                 <span className="tab-badge" data-tooltip="Change ready for review">
                   Review
@@ -253,6 +260,7 @@ export default function EditorPane(props) {
         onSelect={onSelectTab}
         onClose={onCloseTab}
         reviewPath={review && !review.stale ? review.proposal.path : null}
+        files={files}
       />
       {showReviewBar && <ReviewBar review={review} {...reviewHandlers} />}
       {showSession && <SessionBar session={session} {...sessionHandlers} />}

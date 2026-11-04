@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { FileCode2, FileSpreadsheet, Folder, FolderOpen, ChevronRight, Layers } from 'lucide-react';
+import { FileCode2, FileSpreadsheet, Folder, FolderOpen, ChevronRight, ChevronsDownUp, Layers } from 'lucide-react';
+import IconButton from './IconButton.jsx';
 
 const iconFor = (path) => (path.endsWith('.csv') ? FileSpreadsheet : FileCode2);
 
@@ -22,6 +23,8 @@ function buildTree(paths) {
   return root;
 }
 
+// Every row has the same columns: disclosure arrow (empty for files), icon,
+// name. Depth only moves the row right, so icons and names line up.
 function FileRow({ node, depth, active, onOpen }) {
   const Icon = iconFor(node.path);
   return (
@@ -30,10 +33,12 @@ function FileRow({ node, depth, active, onOpen }) {
         type="button"
         role="treeitem"
         aria-selected={active}
+        aria-level={depth + 1}
         className={`file-row ${active ? 'is-active' : ''}`}
-        style={{ paddingLeft: 12 + depth * 18 }}
+        style={{ '--depth': depth }}
         onClick={() => onOpen(node.path)}
       >
+        <span className="file-twisty" aria-hidden="true" />
         <Icon size={16} strokeWidth={1.75} aria-hidden="true" className="file-icon" />
         <span className="file-name">{node.name}</span>
       </button>
@@ -41,16 +46,67 @@ function FileRow({ node, depth, active, onOpen }) {
   );
 }
 
+// Up/Down move between visible rows, Left/Right close/open folders,
+// Home/End jump to the ends. Tab still reaches every row.
+function handleTreeKeys(e, setCollapsed) {
+  const rows = [...e.currentTarget.querySelectorAll('[role="treeitem"]')];
+  const index = rows.indexOf(document.activeElement);
+  if (index === -1) return;
+  const row = rows[index];
+  const focus = (i) => rows[Math.max(0, Math.min(rows.length - 1, i))]?.focus();
+  const folder = row.dataset.folder;
+  switch (e.key) {
+    case 'ArrowDown':
+      focus(index + 1);
+      break;
+    case 'ArrowUp':
+      focus(index - 1);
+      break;
+    case 'Home':
+      focus(0);
+      break;
+    case 'End':
+      focus(rows.length - 1);
+      break;
+    case 'ArrowRight':
+      if (folder && row.getAttribute('aria-expanded') === 'false') setCollapsed((c) => ({ ...c, [folder]: false }));
+      else if (folder) focus(index + 1);
+      else return;
+      break;
+    case 'ArrowLeft':
+      if (folder && row.getAttribute('aria-expanded') === 'true') setCollapsed((c) => ({ ...c, [folder]: true }));
+      else if (!folder && row.getAttribute('aria-level') === '2') {
+        // Jump to the parent folder.
+        const parent = rows.slice(0, index).findLast((r) => r.dataset.folder);
+        parent?.focus();
+      } else return;
+      break;
+    default:
+      return;
+  }
+  e.preventDefault();
+}
+
 export default function FileSidebar({ paths, activePath, onOpen, projectName, runCount }) {
   const [collapsed, setCollapsed] = useState({});
   const tree = buildTree(paths);
+  const folders = tree.filter((n) => n.type === 'folder');
+  const anyOpen = folders.some((f) => !collapsed[f.name]);
 
   return (
     <nav className="sidebar-inner" aria-label="Project files">
       <div className="panel-header">
         <span className="panel-title">Files</span>
+        {folders.length > 0 && (
+          <IconButton
+            icon={ChevronsDownUp}
+            label={anyOpen ? 'Collapse folders' : 'Expand folders'}
+            className="icon-btn-sm panel-header-action push-right"
+            onClick={() => setCollapsed(Object.fromEntries(folders.map((f) => [f.name, anyOpen])))}
+          />
+        )}
       </div>
-      <ul className="file-tree" role="tree" aria-label="Files">
+      <ul className="file-tree" role="tree" aria-label="Files" onKeyDown={(e) => handleTreeKeys(e, setCollapsed)}>
         {tree.map((node) =>
           node.type === 'file' ? (
             <FileRow key={node.path} node={node} depth={0} active={node.path === activePath} onOpen={onOpen} />
@@ -59,15 +115,16 @@ export default function FileSidebar({ paths, activePath, onOpen, projectName, ru
               <button
                 type="button"
                 role="treeitem"
+                aria-level={1}
                 aria-expanded={!collapsed[node.name]}
+                data-folder={node.name}
                 className="file-row folder-row"
+                style={{ '--depth': 0 }}
                 onClick={() => setCollapsed((c) => ({ ...c, [node.name]: !c[node.name] }))}
               >
-                <ChevronRight
-                  size={16}
-                  aria-hidden="true"
-                  className={`folder-chevron ${collapsed[node.name] ? '' : 'is-open'}`}
-                />
+                <span className="file-twisty" aria-hidden="true">
+                  <ChevronRight size={14} className={`folder-chevron ${collapsed[node.name] ? '' : 'is-open'}`} />
+                </span>
                 {collapsed[node.name] ? (
                   <Folder size={16} strokeWidth={1.75} aria-hidden="true" className="file-icon" />
                 ) : (
@@ -76,7 +133,7 @@ export default function FileSidebar({ paths, activePath, onOpen, projectName, ru
                 <span className="file-name">{node.name}</span>
               </button>
               {!collapsed[node.name] && (
-                <ul role="group">
+                <ul role="group" className="file-group">
                   {node.children.map((child) => (
                     <FileRow key={child.path} node={child} depth={1} active={child.path === activePath} onOpen={onOpen} />
                   ))}

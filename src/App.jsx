@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Toolbar from './components/Toolbar.jsx';
 import FileSidebar from './components/FileSidebar.jsx';
+import NavRail from './components/NavRail.jsx';
 import EditorPane from './components/EditorPane.jsx';
 import AssistantPanel from './components/AssistantPanel.jsx';
 import ResultsPanel from './components/ResultsPanel.jsx';
@@ -404,6 +405,20 @@ export default function App() {
       />
 
       <div className="workspace">
+        <NavRail
+          filesOpen={sidebarVisible}
+          onToggleFiles={toggleFiles}
+          resultsOpen={resultsOpen}
+          resultsTab={resultsTab}
+          newCharts={newCharts}
+          onResultsView={(tab) => {
+            if (resultsOpen && resultsTab === tab) setResultsOpen(false);
+            else {
+              setResultsTab(tab);
+              setResultsOpen(true);
+            }
+          }}
+        />
         <aside
           className={`sidebar ${compact ? 'is-overlay' : ''} ${sidebarVisible ? 'is-open' : 'is-closed'}`}
           style={{ '--w': `${prefs.sidebarWidth}px` }}

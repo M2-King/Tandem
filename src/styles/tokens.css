@@ -1,8 +1,9 @@
 /* Design tokens. Components use these variables instead of raw values.
 
-   Dark glass over a quiet wallpaper. Three materials:
-   1. Editor: charcoal glass, the most opaque, for code.
-   2. Panels (files, results, assistant): slate frosted glass, a little clearer.
+   Near-black glass over a quiet wallpaper, inside one application shell.
+   Three materials:
+   1. Editor: near-opaque charcoal with a cool undertone. Code comes first.
+   2. Panels (files, results, assistant): frosted glass, a little clearer.
    3. Floating (menus, popovers, dialogs, toasts): lighter glass, stronger blur, soft shadow.
 
    The Glass setting (More menu) moves one value from clear to solid and
@@ -13,19 +14,25 @@
    Blue is reserved for the primary action, focus, selection and the active item. */
 :root {
   /* ---- Glass controls ---- */
-  --glass-tint-editor: 41, 47, 61;
-  --glass-tint: 50, 54, 66;
-  --glass-tint-float: 58, 62, 76;
-  --glass-opacity-editor: 0.9;
-  --glass-opacity: 0.7;
-  --glass-opacity-float: 0.78;
-  --glass-blur: 24px;
+  --glass-tint-editor: 30, 35, 47;
+  --glass-tint: 38, 42, 54;
+  --glass-tint-float: 44, 48, 61;
+  --glass-opacity-editor: 0.94;
+  --glass-opacity: 0.74;
+  --glass-opacity-float: 0.88;
+  --glass-blur: 22px;
   --glass-saturate: 115%; /* low, so warm light doesn't tint the glass */
-  --glass-border-opacity: 0.09;
-  --glass-highlight-strength: 0.1;
+  --glass-border-opacity: 0.08;
+  --glass-highlight-strength: 0.07;
+
+  /* ---- Shell: one window that holds every panel ---- */
+  --shell-tint: rgba(13, 16, 22, 0.16);
+  --shell-edge: rgba(255, 255, 255, 0.08);
+  --shell-margin: 10px;
+  --rail-width: 44px;
 
   /* ---- Backdrop ---- */
-  --bg-app: #0d1017;
+  --bg-app: #11141a;
   --wallpaper-blur: 4px;
   --wallpaper-brightness: 0.92;
   --wallpaper-saturate: 0.8;
@@ -35,9 +42,9 @@
   --surface-1: rgba(var(--glass-tint-editor), var(--glass-opacity-editor));
   --surface-2: rgba(var(--glass-tint), var(--glass-opacity));
   --surface-3: rgba(var(--glass-tint-float), var(--glass-opacity-float));
-  --surface-1-solid: #161a22;
-  --surface-2-solid: #1f2230;
-  --surface-3-solid: #272b37;
+  --surface-1-solid: #11141c;
+  --surface-2-solid: #1d212b;
+  --surface-3-solid: #242834;
   --blur-1: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   --blur-2: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   --blur-3: blur(calc(var(--glass-blur) + 8px)) saturate(var(--glass-saturate));
@@ -54,24 +61,24 @@
   --card-edge: rgba(255, 255, 255, 0.07);
 
   /* Text */
-  --text-primary: #eceef2;
-  --text-secondary: #a3aab7;
-  --text-muted: #8a91a0;
+  --text-primary: #edf0f4;
+  --text-secondary: #a0a7b4;
+  --text-muted: #868d9b;
 
   /* Lines */
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.12);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.11);
   --border-float: rgba(255, 255, 255, 0.12);
 
   /* Accent */
-  --accent: #7895db; /* text, icons, indicators */
+  --accent: #809bdc; /* text, icons, indicators */
   --accent-fill: #5672bd; /* primary button background, white text 4.6:1 */
   --accent-fill-hover: #5f7bc6;
   --accent-fill-pressed: #4e6ab3;
-  --accent-soft: rgba(120, 149, 219, 0.13);
+  --accent-soft: rgba(128, 155, 220, 0.13);
   --on-accent: #ffffff;
-  --exec-line: rgba(120, 149, 219, 0.14);
-  --selection: rgba(120, 149, 219, 0.3);
+  --exec-line: rgba(128, 155, 220, 0.09);
+  --selection: rgba(128, 155, 220, 0.3);
 
   /* Status, desaturated to sit with the neutrals */
   --success: #6fbf8e;
@@ -121,20 +128,23 @@
   --icon-sm: 14px;
   --icon: 16px;
   --icon-nav: 18px;
+  --icon-rail: 19px;
   --icon-stroke: 1.75;
 
   /* Shape */
-  --radius-sm: 5px;
-  --radius: 7px;
-  --radius-float: 12px;
-  --radius-lg: 16px;
+  --radius-sm: 6px; /* badges, small icon buttons */
+  --radius: 10px; /* controls: buttons, rows, tabs */
+  --radius-float: 12px; /* menus, popovers */
+  --radius-lg: 16px; /* main panels */
   --radius-card: 12px;
+  --radius-shell: 22px; /* the application window */
 
   /* Depth */
-  --shadow-panel: var(--glass-highlight), 0 1px 2px rgba(0, 0, 0, 0.18), 0 24px 60px rgba(0, 0, 0, 0.3);
+  --shadow-panel: var(--glass-highlight), 0 1px 2px rgba(0, 0, 0, 0.16);
+  --shadow-shell: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 30px 80px rgba(0, 0, 0, 0.35);
   --shadow-menu: var(--glass-highlight), 0 2px 8px rgba(0, 0, 0, 0.22), 0 18px 44px rgba(0, 0, 0, 0.45);
   --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.22), 0 24px 64px rgba(0, 0, 0, 0.45);
-  --focus-ring: 0 0 0 2px rgba(11, 12, 16, 0.9), 0 0 0 4px rgba(120, 149, 219, 0.9);
+  --focus-ring: 0 0 0 2px rgba(11, 12, 16, 0.9), 0 0 0 4px rgba(128, 155, 220, 0.9);
 
   /* Motion */
   --ease: cubic-bezier(0.25, 0.1, 0.25, 1);

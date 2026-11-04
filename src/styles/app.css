@@ -44,9 +44,7 @@ body::before {
 }
 body::after {
   inset: 0;
-  background:
-    radial-gradient(130% 100% at 50% 35%, transparent 50%, rgba(6, 8, 12, 0.3) 100%),
-    var(--wallpaper-shade);
+  background: var(--wallpaper-shade);
 }
 body[data-wallpaper='custom']::after {
   background:
@@ -55,7 +53,7 @@ body[data-wallpaper='custom']::after {
 }
 body[data-wallpaper='plain']::before {
   background-image:
-    radial-gradient(90% 70% at 70% 10%, rgba(120, 149, 219, 0.12), transparent 60%),
+    radial-gradient(90% 70% at 70% 10%, rgba(128, 155, 220, 0.12), transparent 60%),
     radial-gradient(80% 60% at 20% 100%, rgba(217, 160, 91, 0.1), transparent 60%);
   filter: none;
 }
@@ -222,13 +220,22 @@ p {
   border-radius: var(--radius-sm);
 }
 
-/* ---------- app shell ---------- */
+/* ---------- app shell ----------
+   One window holds the toolbar, rail and panels. It only tints the
+   wallpaper (no blur of its own), so the panels inside still blur the
+   wallpaper directly. */
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
-  min-width: 360px;
+  height: calc(100vh - 2 * var(--shell-margin));
+  height: calc(100dvh - 2 * var(--shell-margin));
+  margin: var(--shell-margin);
+  min-width: 340px;
+  border-radius: var(--radius-shell);
+  background: var(--shell-tint);
+  border: 1px solid var(--shell-edge);
+  box-shadow: var(--shadow-shell);
 }
 
 .toolbar {
@@ -359,7 +366,62 @@ p {
   flex: 1;
   min-height: 0;
   display: flex;
-  padding: 2px var(--space-4) var(--space-4);
+  padding: 0 var(--space-3) var(--space-3) var(--space-1);
+  overflow-x: clip; /* closed drawers slide out sideways; don't let the page scroll */
+}
+
+/* ---------- navigation rail ---------- */
+.rail {
+  flex: none;
+  width: var(--rail-width);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}
+.rail-btn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  transition: background-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease);
+}
+.rail-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.rail-btn[aria-pressed='true'] {
+  background: rgba(128, 155, 220, 0.14);
+  color: #c3d0f0;
+}
+.rail-sep {
+  width: 16px;
+  height: 1px;
+  margin: 2px 0;
+  background: var(--border-strong);
+}
+.rail-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(17, 20, 26, 0.9);
+}
+/* The rail holds the Files toggle on wider screens */
+@media (min-width: 601px) {
+  .toolbar-files-toggle {
+    display: none;
+  }
 }
 
 /* Collapsible side panels animate their width; content keeps its width so
@@ -400,7 +462,7 @@ p {
 .assistant.is-overlay {
   position: absolute;
   top: 0;
-  bottom: var(--space-4);
+  bottom: var(--space-3);
   z-index: 30;
   background: var(--surface-3);
   -webkit-backdrop-filter: var(--blur-3);
@@ -410,12 +472,12 @@ p {
   transition: transform var(--t-panel) var(--ease-out), visibility 0s;
 }
 .sidebar.is-overlay {
-  left: var(--space-4);
-  width: min(var(--w), calc(100vw - 48px));
+  left: calc(var(--space-1) + var(--rail-width));
+  width: min(var(--w), calc(100vw - 80px));
 }
 .assistant.is-overlay {
-  right: var(--space-4);
-  width: min(var(--w), calc(100vw - 32px));
+  right: var(--space-3);
+  width: min(var(--w), calc(100vw - 44px));
 }
 .sidebar.is-overlay .sidebar-inner,
 .assistant.is-overlay .assistant-inner {
@@ -434,7 +496,7 @@ p {
 }
 .scrim {
   position: absolute;
-  inset: 2px var(--space-4) var(--space-4);
+  inset: 0 var(--space-3) var(--space-3) calc(var(--space-1) + var(--rail-width));
   z-index: 25;
   border-radius: var(--radius-lg);
   background: rgba(5, 6, 9, 0.4);
@@ -600,6 +662,20 @@ body.is-resizing .resizer:active::after {
   padding: 0 8px 8px;
   overflow: auto;
 }
+/* Folder actions only appear when the panel is in use */
+.panel-header-action {
+  opacity: 0;
+  transition: opacity var(--t-hover) var(--ease), background-color var(--t-hover) var(--ease);
+}
+.sidebar:hover .panel-header-action,
+.panel-header-action:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .panel-header-action {
+    opacity: 1;
+  }
+}
 /* Project summary at the foot of the Files panel */
 .sidebar-footer {
   flex: none;
@@ -609,8 +685,7 @@ body.is-resizing .resizer:active::after {
   margin: 0 var(--space-2) var(--space-2);
   padding: 10px var(--space-3);
   border-radius: var(--radius-card);
-  background: var(--card);
-  border: 1px solid var(--card-edge);
+  background: rgba(255, 255, 255, 0.035);
 }
 .sidebar-footer-icon {
   flex: none;
@@ -636,11 +711,11 @@ body.is-resizing .resizer:active::after {
 }
 .file-row {
   width: 100%;
-  height: var(--row);
+  height: 30px;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding-right: var(--space-2);
+  gap: 6px;
+  padding: 0 var(--space-2) 0 calc(4px + var(--depth, 0) * 18px);
   border: 0;
   border-radius: var(--radius);
   background: transparent;
@@ -651,24 +726,30 @@ body.is-resizing .resizer:active::after {
 }
 .file-tree li + li,
 .file-tree ul {
-  margin-top: 2px;
+  margin-top: 1px;
 }
 .file-row:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.045);
 }
+/* Selection is a quiet neutral lift, not a blue fill */
 .file-row.is-active {
-  background: var(--bg-pressed);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
 }
-.file-row.folder-row {
-  padding-left: 12px;
+.file-twisty {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
 }
 .file-icon {
   flex: none;
   color: var(--text-muted);
 }
 .file-row.is-active .file-icon {
-  color: var(--accent);
+  color: var(--text-secondary);
 }
 .file-name {
   overflow: hidden;
@@ -676,14 +757,23 @@ body.is-resizing .resizer:active::after {
   white-space: nowrap;
 }
 .folder-chevron {
-  flex: none;
-  color: var(--text-muted);
-  margin-left: -4px;
-  margin-right: -2px;
   transition: transform var(--t-select) var(--ease);
 }
 .folder-chevron.is-open {
   transform: rotate(90deg);
+}
+/* A faint guide shows which rows sit inside a folder */
+.file-group {
+  position: relative;
+}
+.file-group::before {
+  content: '';
+  position: absolute;
+  left: 11.5px;
+  top: 2px;
+  bottom: 2px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 /* ---------- editor ---------- */
@@ -693,36 +783,37 @@ body.is-resizing .resizer:active::after {
   display: flex;
   flex-direction: column;
 }
+/* One continuous strip along the top of the editor. Tabs have no borders
+   or separators; the open file is a slightly lighter surface. */
 .tab-bar {
-  height: var(--header-height);
+  height: 42px;
   flex: none;
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 0 var(--space-2);
   border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
   overflow-x: auto;
   scrollbar-width: none;
 }
-/* Tabs are soft chips; the open file has a lifted fill */
 .tab {
   position: relative;
   display: flex;
   align-items: center;
   flex: none;
-  height: 30px;
-  border-radius: var(--radius);
+  height: 28px;
+  border-radius: 8px;
   color: var(--text-secondary);
   transition: color var(--t-select) var(--ease), background-color var(--t-select) var(--ease);
 }
 .tab:hover {
   color: var(--text-primary);
-  background: var(--bg-subtle);
+  background: rgba(255, 255, 255, 0.035);
 }
 .tab.is-active {
   color: var(--text-primary);
-  background: var(--bg-pressed);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.075);
 }
 .tab-label {
   height: 100%;
@@ -731,12 +822,24 @@ body.is-resizing .resizer:active::after {
   gap: 6px;
   padding: 0 2px 0 10px;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: 8px;
   background: transparent;
   font-size: var(--fs-md);
 }
 .tab-label svg {
   color: var(--text-muted);
+}
+.tab-label svg,
+.tab-label span {
+  flex: none;
+}
+/* Edited compared with the sample project */
+.tab-edited {
+  width: 6px;
+  height: 6px;
+  margin-left: 1px;
+  border-radius: 50%;
+  background: var(--text-secondary);
 }
 .tab-label:focus-visible {
   box-shadow: inset 0 0 0 2px var(--accent);
@@ -753,8 +856,8 @@ body.is-resizing .resizer:active::after {
 }
 .tab-close {
   width: 20px;
-  height: 22px;
-  margin-right: 6px;
+  height: 20px;
+  margin-right: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -798,7 +901,7 @@ body.is-resizing .resizer:active::after {
 }
 .banner-review,
 .banner-session {
-  background: rgba(120, 149, 219, 0.06);
+  background: rgba(128, 155, 220, 0.06);
 }
 .banner-warning {
   background: var(--warning-soft);
@@ -881,6 +984,7 @@ body.is-resizing .resizer:active::after {
 /* Monaco decorations */
 .monaco-editor .exec-line {
   background: var(--exec-line);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 .monaco-editor .bp-glyph::before,
 .monaco-editor .bp-hover-glyph::before {
@@ -1924,7 +2028,7 @@ select {
   transition: border-color var(--t-hover) var(--ease);
 }
 .composer:focus-within {
-  border-color: rgba(120, 149, 219, 0.6);
+  border-color: rgba(128, 155, 220, 0.6);
 }
 .composer-context {
   display: flex;
@@ -2214,7 +2318,7 @@ select {
 }
 @keyframes changed-fade {
   from {
-    background: rgba(120, 149, 219, 0.28);
+    background: rgba(128, 155, 220, 0.28);
   }
   to {
     background: transparent;
@@ -2536,11 +2640,23 @@ select {
 
 /* Phones: keep the panel margins tight so code keeps its width */
 @media (max-width: 600px) {
+  /* The shell becomes the whole screen; the rail's toggle moves to the toolbar */
+  .app {
+    height: 100vh;
+    height: 100dvh;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .rail {
+    display: none;
+  }
   .workspace {
-    padding: 2px var(--space-2) var(--space-2);
+    padding: 0 var(--space-2) var(--space-2);
   }
   .scrim {
-    inset: 2px var(--space-2) var(--space-2);
+    inset: 0 var(--space-2) var(--space-2);
   }
   .sidebar.is-overlay {
     left: var(--space-2);

@@ -57,6 +57,10 @@ export default function TooltipLayer() {
     style.left = rect.left - 6;
     style.top = rect.top + rect.height / 2;
     style.transform = 'translate(-100%, -50%)';
+  } else if (side === 'right') {
+    style.left = rect.right + 8;
+    style.top = rect.top + rect.height / 2;
+    style.transform = 'translateY(-50%)';
   } else {
     style.left = Math.min(Math.max(rect.left + rect.width / 2, 60), window.innerWidth - 60);
     style.top = rect.bottom + 6;

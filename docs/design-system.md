@@ -17,33 +17,46 @@ All values live in `src/styles/tokens.css`. Components use the tokens, not raw v
 
 Kept: the dark workspace, the layout and panel behaviour, rounded geometry, the wallpaper (default dusk, plain, or the person's own image), and every workflow.
 
-## Materials
+## Shell and materials
 
-The wallpaper is a secondary layer: gently blurred (4px), slightly darkened and desaturated, under a neutral cool shade. Its warm light sits low on the horizon, so it shows at the edges and in the gaps, not behind code.
+Everything sits in one application shell: a window inset 10px from the screen edge, radius 22px, a 1px white edge at 8%, a faint top highlight and one soft shadow. The shell only tints the wallpaper (13, 16, 22 at 16%) and has no blur of its own, so the panels inside still blur the wallpaper directly. On phones the shell fills the screen with no edge.
+
+The wallpaper is a secondary layer: gently blurred (4px), slightly darkened and desaturated, under a neutral cool shade. No vignette or other decorative lighting.
 
 | Material | Used for | Tint (RGB) | Balanced opacity |
 | --- | --- | --- | --- |
-| Editor | Code | 41, 47, 61 (charcoal slate) | 0.90 |
-| Panel | Files, results, assistant | 50, 54, 66 | 0.70 |
-| Floating | Menus, popovers, dialogs, toasts | 58, 62, 76 | 0.78, blur +8px |
+| Editor | Code | 30, 35, 47 (charcoal, cool undertone) | 0.93 |
+| Panel | Files, results, assistant | 38, 42, 54 | 0.74 |
+| Floating | Menus, popovers, dialogs, toasts | 44, 48, 61 | 0.88, blur +8px |
 
-Every panel has a 1px white edge (`--glass-border-opacity` 0.09), an inner top highlight (`--glass-highlight-strength` 0.10) and a soft shadow. Backdrop saturation is kept low (115%) so warm light doesn't tint the glass. Only backgrounds are translucent; text and icons are never faded.
+The brief's starting values (17, 20, 28 / 29, 33, 43 / 36, 40, 52) rendered about a third as bright as the golden reference, so the tints were raised part-way toward it while staying charcoal.
+
+Every panel has a 1px white edge (`--glass-border-opacity` 0.08), an inner top highlight (`--glass-highlight-strength` 0.07) and one small shadow; only the shell casts a large one. Backdrop saturation is kept low (115%) so warm light doesn't tint the glass. Only backgrounds are translucent; text and icons are never faded.
 
 ### Glass setting
 
-One level from 0 (clearest) to 100 (most solid) drives all surfaces (`src/lib/glass.js`). The ⋯ menu offers Clear (15), Balanced (50, default) and Solid (90), plus a slider.
+One level from 0 (clearest) to 100 (most solid) drives all surfaces (`src/lib/glass.js`). The ⋯ menu offers Clear (15), Balanced (50, default) and Solid (90), plus a slider. The editor is always more opaque than the panels.
 
 | | Clear | Balanced | Solid |
 | --- | --- | --- | --- |
-| Editor opacity | 0.84 | 0.90 | 0.96 |
-| Panel opacity | 0.56 | 0.70 | 0.86 |
-| Floating opacity | 0.70 | 0.78 | 0.88 |
-| Blur | 30px | 24px | 18px |
+| Editor opacity | 0.88 | 0.93 | 0.99 |
+| Panel opacity | 0.61 | 0.74 | 0.88 |
+| Floating opacity | 0.82 | 0.88 | 0.94 |
+| Blur | 25px | 22px | 19px |
 | Wallpaper brightness | 0.99 | 0.92 | 0.84 |
 
 Browsers without backdrop blur fall back to near-solid panels.
 
 Inside panels, grouped content sits on inset cards (white at 4%, 1px edge at 7%, radius 12): chart figures and metrics, each Tandem reply, the project summary in Files. A proposed change is the last section of its reply card, not a card inside a card.
+
+## Workspace components
+
+| Component | Rules |
+| --- | --- |
+| Navigation rail | 44px wide, no container. 19px outline icons, muted grey; hover lifts to white; the selected item gets a soft blue tint. Files toggles the explorer; Charts and Runs open the results on that view (a dot marks new charts). Tooltips on the right. Hidden on phones, where the Files toggle returns to the toolbar. |
+| File explorer | 30px rows. Every row has the same columns: disclosure arrow (blank for files), 16px icon, name; each level indents 18px, with a faint guide line inside folders. Selection is a neutral 8% white lift, not blue. "Collapse folders" appears on hover or focus. Arrow keys move between rows, Left/Right close and open folders, Home/End jump. |
+| Editor tabs | One strip with a hairline under it, no separators. 28px tabs, radius 8; the open file is a 7.5% white lift. Close appears on the open or hovered tab. A grey dot marks a file edited from the sample. |
+| Editor | Charcoal surface; current line is a 2.4% white band with no border; line numbers #6B7282, current #C9CED8; 14px gutter spacing; 8px scrollbars. The debugger's current line is a 9% blue band with a 2px marker at the left. |
 
 ## Assistant states
 
@@ -75,8 +88,8 @@ One primary action per area. Panel toggles show their state with a brighter icon
 
 - Interface 13/18, metadata 12/16, badges 11/14, assistant replies 13/20, dialog titles 15/22. Weights 400, 500 and 600 only.
 - Code in JetBrains Mono.
-- Spacing steps 4, 8, 12, 16, 24, 32. Controls 26, 28 and 30 px high; file rows 32 px; headers 44 px; panel gap 12 px, outer margin 16 px (8 px on phones).
-- Radii: 5 (small controls), 7 (buttons, rows, tabs), 12 (cards, floating surfaces), 16 (panels); pills for result tabs and Run, a circle for Send.
+- Spacing steps 4, 8, 12, 16, 24, 32. Controls 26, 28 and 30 px high; file rows 30 px; headers 44 px; panel gap 12 px; shell inset 10 px and inner margin 12 px (8 px on phones).
+- Radii: 6 (badges, small icon buttons), 8 (editor tabs), 10 (buttons, rows, rail items), 12 (cards, floating surfaces), 16 (panels), 22 (the shell); pills for result tabs and Run, a circle for Send.
 
 ## Motion
 

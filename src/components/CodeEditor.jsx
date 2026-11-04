@@ -214,7 +214,7 @@ export default function CodeEditor({
         fontLigatures: false,
         glyphMargin: glyphEnabled,
         lineNumbersMinChars: 3,
-        lineDecorationsWidth: 10,
+        lineDecorationsWidth: 14,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         overviewRulerLanes: 0,
@@ -227,7 +227,7 @@ export default function CodeEditor({
         insertSpaces: true,
         stickyScroll: { enabled: false },
         fixedOverflowWidgets: true,
-        scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
+        scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8, useShadows: false },
         bracketPairColorization: { enabled: false },
         guides: { indentation: true },
       }}

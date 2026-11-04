@@ -90,6 +90,7 @@ export default function Toolbar({
           <IconButton
             icon={PanelLeft}
             size={18}
+            className="toolbar-files-toggle"
             label={panels.files.open ? 'Hide files' : 'Show files'}
             pressed={panels.files.open}
             onClick={panels.files.toggle}
