@@ -26,20 +26,42 @@ Status of the Python and Jupyter runtime work. Each item is marked:
 | Clear mode and status indicator; how to start the runtime | done | toolbar status / Demo badge popover |
 | Demo mode unchanged and labelled | done | existing demo browser tests re-run |
 
+## Windows app — done (verification in CI)
+
+| Item | Status | How it was verified |
+| --- | --- | --- |
+| Runs on Windows: Job Object per run, Ctrl+Break → KeyboardInterrupt, tree ends if the runtime dies | done | full test suite on `windows-latest` (Python 3.11 and 3.12) |
+| Script events over a keyed loopback socket (all platforms) | done | tests; the key is not visible to the script |
+| Saves keep exact bytes (no CRLF rewriting) | done | test |
+| `py` launcher discovery, Microsoft Store placeholder skipped | done | code path; CI uses an explicit interpreter |
+| `Tandem.exe`: double-click asks for a folder, opens the browser | done | built by PyInstaller in CI; same spec built and smoke-tested on Linux |
+| End-to-end smoke test of the exe (UI, token, run, chart, traceback, Stop, AI settings) | done | `packaging/windows/smoke.py` in CI |
+| Release with the exe for `v*` tags | done | workflow `release` job |
+| Code signing | blocked | needs a certificate; SmartScreen will ask users to confirm |
+
+## AI settings — done (provider calls from the assistant pending)
+
+| Item | Status | How it was verified |
+| --- | --- | --- |
+| Settings window: Anthropic, OpenAI-compatible, Ollama; key, address, model | done | browser test (desktop and phone width) |
+| Keys stored by the runtime only (0600 file in the user config folder) | done | tests; key absent from DOM, localStorage and every API response |
+| Keys never reach project code | done | test |
+| Test connection lists models (no tokens) | done | tests against a local fake provider; wrong key reported as 401 |
+| Real Anthropic / OpenAI / Ollama accounts | untested | no keys or Ollama in this environment |
+
 ## Pending
 
 - Phase 2: environment manager (discover interpreters, create 3.11/3.12 venvs, switch, package list, approved installs, missing-import detection).
 - Phase 3: Jupyter notebooks (real kernels, run/interrupt/restart, nbformat round-trip).
 - Phase 4: Step Run and Debug Run on debugpy (currently shown as unavailable in Real mode).
 - Phase 5: machine-learning sample project with real scikit-learn metrics.
-- Phase 6: AI providers (Anthropic, OpenAI-compatible, Ollama) with keys on the local backend; the assistant is labelled "Demo assistant" in Real mode until then.
+- Phase 6: the assistant calls the provider chosen in AI settings (context, patches, review). It stays labelled "Demo assistant" until then.
 - Phase 7: end-to-end verification and screenshots in Real mode.
 - Run history in Real mode is kept in memory only (lost on reload).
 - Development proxy so `npm run dev` can talk to the runtime (today the runtime serves the built UI).
 
 ## Blocked / not testable here
 
-- Windows: process-group handling is not implemented yet; the runtime refuses to start runs on Windows.
 - Real cloud AI and Ollama: no key or Ollama in this environment; will be tested only against a local mock server unless one is provided.
 
 ## Not a sandbox
