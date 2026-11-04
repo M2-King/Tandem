@@ -5,16 +5,39 @@ import { Check } from 'lucide-react';
 // it closes. `renderTrigger(props)` must spread props onto a <button>.
 export default function Menu({ renderTrigger, children, align = 'end', label, className = '', role = 'menu' }) {
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
+  const closeTimer = useRef(null);
 
+  // Closing fades the menu out briefly. Reopening during the fade cancels it,
+  // and with reduced motion the menu closes at once.
   const close = useCallback((returnFocus = true) => {
-    setOpen(false);
     if (returnFocus) triggerRef.current?.focus();
+    const instant = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (instant) {
+      setOpen(false);
+      return;
+    }
+    setClosing(true);
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+    }, 140);
   }, []);
+  const toggle = () => {
+    if (open && !closing) close(false);
+    else {
+      clearTimeout(closeTimer.current);
+      setClosing(false);
+      setOpen(true);
+    }
+  };
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || closing) return undefined;
     const items = () => [...(menuRef.current?.querySelectorAll('[role^="menuitem"]:not([disabled]), [data-menu-item]') || [])];
     (items()[0] || menuRef.current)?.focus();
     const onDown = (e) => {
@@ -41,18 +64,24 @@ export default function Menu({ renderTrigger, children, align = 'end', label, cl
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open, close]);
+  }, [open, closing, close]);
 
   return (
     <div className={`menu-anchor ${className}`}>
       {renderTrigger({
         ref: triggerRef,
         'aria-haspopup': role === 'menu' ? 'menu' : 'dialog',
-        'aria-expanded': open,
-        onClick: () => setOpen((o) => !o),
+        'aria-expanded': open && !closing,
+        onClick: toggle,
       })}
       {open && (
-        <div ref={menuRef} className={`menu menu-${align} menu-role-${role}`} role={role} aria-label={label} tabIndex={-1}>
+        <div
+          ref={menuRef}
+          className={`menu menu-${align} menu-role-${role} ${closing ? 'is-closing' : ''}`}
+          role={role}
+          aria-label={label}
+          tabIndex={-1}
+        >
           {typeof children === 'function' ? children(close) : children}
         </div>
       )}

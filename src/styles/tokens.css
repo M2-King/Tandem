@@ -41,7 +41,11 @@
   --window-shadow: 0 34px 80px -24px rgba(0, 0, 0, 0.65), 0 10px 28px rgba(0, 0, 0, 0.22);
 
   /* ---- Panes (inside the window, no blur of their own) ---- */
-  --pane-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.05) 180px);
+  /* A white lift over a little charcoal: the lift reads as raised glass, the
+     charcoal keeps text contrast when the wallpaper behind is bright. */
+  --pane-density: 0.24;
+  --pane-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.05) 180px),
+    rgba(13, 15, 21, var(--pane-density));
   --pane-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.075), inset 0 1px 0 rgba(255, 255, 255, 0.11);
   /* Content panes: neutral charcoal glass with a light frost of their own, so
      the wallpaper is diffused once more behind code and charts. That evens
@@ -102,8 +106,8 @@
 
   /* Text */
   --text-primary: #edf0f4;
-  --text-secondary: #a0a7b4;
-  --text-muted: #8c93a1;
+  --text-secondary: #aab0bd;
+  --text-muted: #9ea5b2;
 
   /* Lines */
   --border: rgba(255, 255, 255, 0.06);
@@ -140,11 +144,16 @@
   --fs-md: 13px; /* interface text */
   --fs-lg: 14px; /* reading text in the assistant */
   --fs-xl: 15px; /* dialog titles */
+  --fs-title: 16px; /* section heroes: assistant start */
+  --fs-display: 20px; /* one per view: "Analysis complete" */
+  --fs-code-ui: 12px; /* code set inside interface text: file names, values */
   --lh-xs: 14px;
   --lh-sm: 16px;
   --lh-md: 18px;
   --lh-lg: 21px;
   --lh-xl: 22px;
+  --lh-title: 22px;
+  --lh-display: 26px;
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;

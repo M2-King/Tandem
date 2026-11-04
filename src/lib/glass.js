@@ -41,9 +41,10 @@ export function glassVariables(level, frost = DEFAULT_FROST, luminance = 0.3) {
     // so code reads first without turning into a black box.
     '--content-opacity': round(Math.min(0.9, lerp(0.14, 0.66, t) + 0.22 * extra)),
     '--content-blur': `${round(lerp(4, 18, f), 1)}px`,
+    '--pane-density': round(Math.min(0.6, lerp(0.08, 0.4, t) + 0.2 * extra)),
     '--glass-opacity-float': round(Math.min(0.97, lerp(0.84, 0.96, t) + 0.1 * extra)),
     // The faintest text steps up toward the secondary grey over bright images.
-    '--text-muted': mix([140, 147, 161], [160, 167, 180], bright),
+    '--text-muted': mix([158, 165, 178], [170, 176, 189], bright),
   };
 }
 

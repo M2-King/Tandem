@@ -117,28 +117,45 @@ One glass surface with one header row: Output, Variables, Charts and Runs as pil
 
 ## Colour
 
-- Neutrals: backdrop `#0D1017`; glass tints as in Materials; solid fallbacks `#161A22`, `#1F2230`, `#272B37`.
-- Text: primary `#ECEEF2`, secondary `#A3AAB7`, muted `#8A91A0`.
-- Accent: `--accent #7895DB` for text, icons and indicators; `--accent-fill #5672BD` for primary buttons (white text, 4.6:1).
-- Status colours are desaturated (`--success`, `--error`, `--warning`) and always appear with an icon or a word.
+- Text: primary #EDF0F4, secondary #AAB0BD, muted #9EA5B2. Over bright wallpapers the muted grey steps up automatically.
+- Contrast is measured over the real glass, with text hidden, at the brightest 10% of the background where small text sits (assistant groups, file list footer, results header, editor gutter). At Balanced and Solid every text grey reaches 4.5:1 or better. Clear trades some contrast for transparency (secondary text 4.1 to 4.4:1); choose Balanced or Solid for maximum legibility.
+- Tool panes carry a little charcoal under their white lift (pane density 0.08 to 0.40 with Opacity, more over bright wallpapers), which is what keeps that contrast without darkening the look.
+- Accent #809BDC for text, icons and indicators; #5672BD as the fill behind white text (4.6:1). Blue only for the primary action, focus, selection and the active item.
+- Status colours are desaturated: success #6FBF8E, error #E5776F, warning #D9B25C. Chart series: linear regression #6F95EC circles, decision tree #E8A352 squares.
 
 ## Actions
 
 | Level | Look | Examples |
 | --- | --- | --- |
-| Primary | `.btn-primary`, flat accent fill | Run, Accept, Send, Step |
-| Secondary | `.btn-secondary`, neutral fill | Reject, Continue, Review in editor |
-| Tertiary | `.btn-ghost` or `.icon-btn` | Back to editing, panel toggles, close, more |
+| Primary | `.btn-primary`: flat accent fill, white text, no glow or gradient | Run, Accept, Send, Step, Ask AI to fix |
+| Secondary | `.btn-secondary`: quiet neutral fill | Reject, Continue, Restart, Compare |
+| Tertiary | `.btn-ghost`, `.icon-btn`, `.link-btn`: text or icon only, a fill on hover | Back to editing, Cancel, panel toggles, close, more |
 
-One primary action per area. Panel toggles show their state with a brighter icon, not a filled box.
+- One primary per local context: the toolbar has Run; the review bar has Accept; the session bar has Next/Step; an error callout has Ask AI to fix.
+- Disabled is shown with colour (muted text on a faint fill), never opacity.
+- No press scaling. Hover and press only change fill and colour.
+
+## Icons
+
+- One family (Lucide outline) with one stroke weight (1.75, set in CSS).
+- Sizes by role: 19px rail, 18px toolbar, 16px in buttons, rows and menus, 14px beside 12px text, 12px for filled glyphs (play, stop).
+- Icons name actions (file diff, message plus, wrench, code); no sparkles. Containers only where an icon is the identity of a row (the suggested-action tiles).
 
 ## Type and space
 
-- Interface 13/18, metadata 12/16, badges 11/14, assistant replies 13/20, dialog titles 15/22. Weights 400, 500 and 600 only.
-- Code in JetBrains Mono.
-- Spacing steps 4, 8, 12, 16, 24, 32. Controls 26, 28 and 30 px high; file rows 30 px; headers 44 px; panel gap 16 px; shell inset 10 px, inner margins 16 px right and 24 px bottom (8 px on phones).
-- Radii: 6 (badges, small icon buttons), 8 (editor tabs), 10 (buttons, rows, rail items), 12 (cards, floating surfaces), 16 (panels), 22 (the shell); pills for result tabs and Run, a circle for Send.
+- Interface 13/18, metadata 12/16, badges and tags 11/14, reading text in the assistant 13/20, dialog titles 15/22, section title 16/22 (assistant start), display 20/26 (one per view: "Analysis complete"). Code in the interface (file names, values) is JetBrains Mono at 12px; the editor uses its own size setting.
+- Weights 400, 500 and 600 only. Sentence case everywhere: no uppercase labels (the Demo badge is now the same tag as Simulated).
+- Numbers in tables use tabular figures and right alignment.
+- Spacing steps 4, 8, 12, 16, 24, 32. Controls 26, 28 and 30px high; file rows 30px; pane headers 44px; 10px between panes; 12px window padding (8px on phones).
+- Radii: 6 (badges, small icon buttons), 8 (editor tabs), 10 (buttons, rows, rail items), 12 (cards, floating surfaces), 14 (panes), 24 (the window); pills for result tabs and Run, a circle for Send.
 
 ## Motion
 
-Hover 150 ms, press 170 ms, menus and popovers 200 ms, panels 260 ms. Menus fade in with a 3 px rise and a slight scale from their anchor. Nothing loops except the running spinner. With reduced motion, all durations are 0.
+One language, all from tokens: hover 150ms, press 170ms, menus and popovers 200ms, panels 260ms, with a soft ease-out.
+
+- Panels open and close by animating their width or height; the transitions are interruptible and switch off while resizing by hand.
+- Tabs (editor and results) change colour and fill on the same 170ms.
+- Menus fade in with a 3px rise from their anchor and fade out in 150ms; reopening during the fade cancels it. Tooltips fade in.
+- Messages fade in with a 4px rise; status rows and the working step fade.
+- Nothing bounces, glows, floats or loops except the running spinner.
+- With reduced motion every duration is 0 and menus close at once.

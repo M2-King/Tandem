@@ -126,8 +126,12 @@ p {
   flex: none;
 }
 .btn:disabled {
-  opacity: 0.5;
+  color: var(--text-muted);
   cursor: default;
+}
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  background: var(--bg-surface);
 }
 .btn-sm {
   height: var(--control);
@@ -288,20 +292,20 @@ p {
   gap: 2px;
 }
 .demo-badge {
-  height: 20px;
-  padding: 0 7px;
+  height: 18px;
+  padding: 0 6px;
+  border: 0;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: transparent;
+  background: var(--bg-hover);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
-  font-weight: var(--fw-semibold);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  transition: background-color var(--t-hover) var(--ease);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-medium);
+  transition: background-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease);
 }
 .demo-badge:hover {
-  background: var(--bg-hover);
+  background: var(--bg-pressed);
+  color: var(--text-primary);
 }
 .demo-popover {
   width: 300px;
@@ -1220,6 +1224,17 @@ body.is-resizing .resizer:active::after {
     transform: translateY(-3px) scale(0.985);
   }
 }
+/* Leaving: a quicker fade back toward the trigger */
+.menu.is-closing {
+  pointer-events: none;
+  animation: menu-out var(--t-hover) var(--ease) forwards;
+}
+@keyframes menu-out {
+  to {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.99);
+  }
+}
 .menu-item {
   width: 100%;
   display: flex;
@@ -1586,8 +1601,8 @@ select {
     0 2px 6px rgba(0, 0, 0, 0.25);
 }
 .assistant-empty-title {
-  font-size: 16px;
-  line-height: 22px;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
   font-weight: var(--fw-semibold);
   letter-spacing: -0.01em;
 }
@@ -1653,7 +1668,7 @@ select {
 }
 .mono {
   font-family: var(--font-code);
-  font-size: 12px;
+  font-size: var(--fs-code-ui);
 }
 .starter {
   width: 100%;
@@ -1769,8 +1784,8 @@ select {
 }
 .analysis-title {
   margin: 0;
-  font-size: 20px;
-  line-height: 26px;
+  font-size: var(--fs-display);
+  line-height: var(--lh-display);
   font-weight: var(--fw-semibold);
   letter-spacing: -0.015em;
 }
@@ -1921,7 +1936,8 @@ select {
   color: var(--text-primary);
 }
 .suggestion:disabled {
-  opacity: 0.5;
+  color: var(--text-muted);
+  border-color: var(--border);
   cursor: default;
 }
 .suggestions-composer {
@@ -2087,7 +2103,7 @@ select {
   padding: 1px 4px;
   border-radius: 4px;
   background: var(--bg-hover);
-  font-size: 12.5px;
+  font-size: var(--fs-code-ui);
 }
 
 .context-chip {
@@ -2181,7 +2197,7 @@ button.proposal-head:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-code);
-  font-size: 12.5px;
+  font-size: var(--fs-code-ui);
   color: var(--text-primary);
 }
 .proposal-head .diff-stat {
@@ -2638,7 +2654,7 @@ button.proposal-head:focus-visible {
 }
 .var-name {
   font-family: var(--font-code);
-  font-size: 12.5px;
+  font-size: var(--fs-code-ui);
   white-space: nowrap;
   width: 1%;
 }
@@ -2649,7 +2665,7 @@ button.proposal-head:focus-visible {
 }
 .var-value {
   font-family: var(--font-code);
-  font-size: 12.5px;
+  font-size: var(--fs-code-ui);
   overflow-wrap: anywhere;
 }
 .var-table tr.is-changed td {
@@ -2902,7 +2918,7 @@ button.proposal-head:focus-visible {
 
 .metrics-table {
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 18px;
   font-variant-numeric: tabular-nums;
 }
