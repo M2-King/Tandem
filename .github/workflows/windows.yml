@@ -112,12 +112,6 @@ jobs:
           Start-Sleep -Seconds 2
           npm install --no-save "playwright@1.64.1"
           node packaging/desktop-smoke.cjs (Resolve-Path desktop/release/win-unpacked/Tandem.exe).Path (Resolve-Path smoke-project-env/Scripts/python.exe).Path desktop-screen.jpg
-          if (Test-Path desktop-screen.jpg) {
-            $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("desktop-screen.jpg"))
-            Write-Output "SCREENSHOT-BEGIN $($b64.Length)"
-            for ($i = 0; $i -lt $b64.Length; $i += 2000) { Write-Output ("S|" + $b64.Substring($i, [Math]::Min(2000, $b64.Length - $i))) }
-            Write-Output "SCREENSHOT-END"
-          }
 
       - uses: actions/upload-artifact@v4
         with:
