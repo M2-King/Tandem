@@ -83,6 +83,7 @@ export function useAssistant({ getFiles, getActivePath, onSave }) {
                 baseContent,
                 newContent: result.newContent,
                 summary: result.summary,
+                reason: result.text,
                 added: stats.added,
                 removed: stats.removed,
                 status: 'pending',

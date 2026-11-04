@@ -65,14 +65,38 @@ Browsers without backdrop blur fall back to near-solid surfaces.
 
 One glass surface with one header row: Output, Variables, Charts and Runs as pill tabs (Charts and Runs show counts), then the chart controls on the right (run number, figure 1/2, compare, Ask AI to modify, expand) and close. The chart sits directly on the panel glass with its title and legend in one line; only the metrics table gets a quiet inset surface beside it. Grid lines are white at 4.5%, the axis at 16%. Linear regression is blue circles (#6F95EC), the decision tree orange squares (#E8A352). The area adapts to its own width: under 620px it drops the counts, run label, compare and metrics so the chart keeps its room.
 
-## Assistant states
+## AI interaction
 
-| State | Layout |
+### Assistant states
+
+| State | What it shows |
 | --- | --- |
-| Empty | A header naming the project with the Tandem mark; a Context group (open file and line count, dataset rows and columns, last run, all read from the project); Suggested actions as one grouped card with icon tiles; a three-step "How changes work" (ask, review, run); the input asks about the open file. |
-| Working | Reply card with live steps and Cancel |
-| Review | Reply card with the change summary; "Reviewing in the editor" (Accept and Reject live above the code) |
-| Completed | Only after the accepted change has actually run. A 20px "Analysis complete" heading with the run number, then sibling groups on quiet inset surfaces (what ran, metrics, insight) and next steps, open. The panel scrolls the heading into view. No per-message "Tandem" label; replies only get a header row when they show a status. |
+| Empty | A header naming the project; Context (open file and line count, dataset rows and columns, last run, all read from the project); Suggested actions as one grouped card; a three-step "How changes work". The input asks about the open file. |
+| Working | One live line: spinner, the current step (fades in as it changes), Cancel. No growing checklist. |
+| Review | The reply text (why), then the change: a file row (path, +/−, "Review ›" or "In the editor"), then what changed. While it's being reviewed, the change has a blue outline. Accept and Reject exist only in the review bar above the code. |
+| Applied | The file row says "Open ›" and jumps to the file with the changed lines highlighted; a status row with Undo. Rejected, discarded and undone changes name their state in the file row and mute the summary colour (never opacity). |
+| Completed | Only after the accepted change has actually run: "Analysis complete" with the run number, what ran, a link to the metrics and chart in Results (metrics live in one place, not repeated here), an insight computed from the run, next steps. |
+
+### Messages
+
+- Replies sit directly on the pane with no card; only a proposed change gets a grouped surface. User turns are right-aligned bubbles with extra space above them, so each exchange reads as a unit.
+- When a reply is done its steps fold into a quiet "Done in N steps" line that can be opened.
+- A code reference sent with a question (for example "main.py · Line 18") is a link: it opens that file and highlights those lines.
+- Sending always scrolls to the newest message. A finished-run summary scrolls its heading into view.
+- New messages fade in with a 4px rise (260ms); status rows fade in. Reduced motion turns all of it off.
+
+### Code review
+
+- One review bar above the diff: "Review proposed change" with +/−, the reason in one line underneath, then previous/next change with "2 of 4", Back to editing, Reject, Accept.
+- The diff opens on the first change. F7 / Shift+F7 move between changes, Ctrl/⌘ Enter accepts, Esc (with focus in the editor) goes back to editing. Shortcuts never fire while typing in the assistant or a menu.
+- Restrained colour: changed lines get a 7–8% green or red tint, changed characters a little more, and the gutter strip carries the clearest marker. Both line-number columns stay visible in the inline view.
+- The bar grows and wraps on narrow editors (it no longer inherits Monaco's own fixed-height `.editor-banner` rule).
+- Closing and reopening a review no longer throws: diff models are disposed only once no open review uses them.
+
+### Selection actions
+
+- A small frosted bar under a selection: Ask AI (with its shortcut, Ctrl/⌘ L), Explain, Fix. Three actions, no more.
+- It disappears when the selection collapses (Esc or a click), the file changes, the editor loses focus, or the code changes under it.
 
 ## Colour
 

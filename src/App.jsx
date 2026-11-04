@@ -208,6 +208,14 @@ export default function App() {
       if (p) sendPrompt(p.request.prompt, { intent: p.request.intent, context: p.request.context });
     },
     onUndo: (id) => undo(id),
+    // From an applied change back to the code it touched.
+    onOpenFile: (id) => {
+      const p = proposalsRef.current[id];
+      if (!p) return;
+      setReviewingId(null);
+      openFile(p.path);
+      setFlash({ path: p.path, lines: diffStats(p.baseContent, p.newContent).changedLines, key: Date.now() });
+    },
     onStopAndApply: (id) => {
       exec.stop();
       accept(id, { force: true });
@@ -568,6 +576,18 @@ export default function App() {
             composerRef={composerRef}
             onClose={closeAssistant}
             composerSuggestions={composerSuggestions}
+            onGoToCode={(chip) => {
+              ws.openFile(chip.path);
+              setReviewingId(null);
+              const lines = [];
+              for (let l = chip.startLine; l <= chip.endLine; l++) lines.push(l);
+              setRevealRequest({ path: chip.path, line: chip.startLine, key: Date.now() });
+              setFlash({ path: chip.path, lines, key: Date.now() });
+            }}
+            onShowResults={(tab) => {
+              setResultsTab(tab);
+              setResultsOpen(true);
+            }}
             project={{
               name: PROJECT_NAME,
               activePath: ws.activePath,

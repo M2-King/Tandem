@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { X, FileCode2, FileSpreadsheet, FileDiff, MessageSquarePlus, MessageSquareText, Wrench, Check, AlertTriangle, StepForward, FastForward, RotateCcw, Square, Bug, Footprints, Info, CircleCheck } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, ChevronUp, ChevronDown, FileCode2, FileSpreadsheet, FileDiff, MessageSquarePlus, MessageSquareText, Wrench, Check, AlertTriangle, StepForward, FastForward, RotateCcw, Square, Bug, Footprints, Info, CircleCheck } from 'lucide-react';
 import CodeEditor from './CodeEditor.jsx';
 import DiffReview from './DiffReview.jsx';
 import { TRACE } from '../services/traceService.js';
@@ -64,7 +64,12 @@ function Tabs({ openTabs, activePath, onSelect, onClose, reviewPath, files }) {
   );
 }
 
-function ReviewBar({ review, onAccept, onReject, onClose, onRegenerate, onDiscard, onStopAndApply }) {
+const MOD_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
+
+// One place to review a change: what it is and why, step through each
+// changed section, then accept or reject. Shortcuts: F7 / Shift+F7 move
+// between changes, Ctrl/⌘ Enter accepts, Esc (in the editor) goes back to editing.
+function ReviewBar({ review, nav, onAccept, onReject, onClose, onRegenerate, onDiscard, onStopAndApply }) {
   const { proposal, stale, blockedBy } = review;
   if (stale) {
     return (
@@ -88,15 +93,44 @@ function ReviewBar({ review, onAccept, onReject, onClose, onRegenerate, onDiscar
   return (
     <div className="editor-banner banner-review" role="region" aria-label="Review proposed change">
       <FileDiff size={16} aria-hidden="true" className="banner-icon-accent" />
-      <span className="banner-text">
-        <strong>Review proposed change</strong>
-        <span className="diff-stat">
-          <span className="diff-add">+{proposal.added}</span> <span className="diff-del">−{proposal.removed}</span>
+      <div className="banner-text review-text">
+        <span className="review-title">
+          <strong>Review proposed change</strong>
+          <span className="diff-stat">
+            <span className="diff-add">+{proposal.added}</span> <span className="diff-del">−{proposal.removed}</span>
+          </span>
         </span>
+        {proposal.reason && <span className="review-reason">{proposal.reason}</span>}
         {blockedBy && <span className="banner-note">Stop the current run before applying.</span>}
-      </span>
+      </div>
       <div className="banner-actions">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+        {nav && nav.count > 1 && (
+          <div className="change-nav" role="group" aria-label="Changed sections">
+            <button
+              type="button"
+              className="icon-btn icon-btn-sm"
+              aria-label="Previous change"
+              data-tooltip="Previous change (Shift+F7)"
+              onClick={nav.prev}
+            >
+              <ChevronUp size={16} aria-hidden="true" />
+            </button>
+            <span className="change-count" aria-live="polite">
+              {nav.index >= 0 ? nav.index + 1 : '–'} of {nav.count}
+            </span>
+            <button
+              type="button"
+              className="icon-btn icon-btn-sm"
+              aria-label="Next change"
+              data-tooltip="Next change (F7)"
+              onClick={nav.next}
+            >
+              <ChevronDown size={16} aria-hidden="true" />
+            </button>
+          </div>
+        )}
+        {nav && nav.count === 1 && <span className="change-count">1 change</span>}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} data-tooltip="Esc">
           Back to editing
         </button>
         <button type="button" className="btn btn-secondary btn-sm" onClick={onReject}>
@@ -107,7 +141,7 @@ function ReviewBar({ review, onAccept, onReject, onClose, onRegenerate, onDiscar
             <Square size={12} fill="currentColor" aria-hidden="true" /> Stop and accept
           </button>
         ) : (
-          <button type="button" className="btn btn-primary btn-sm" onClick={onAccept}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={onAccept} data-tooltip={`Accept (${MOD_KEY} Enter)`}>
             <Check size={16} aria-hidden="true" /> Accept
           </button>
         )}
@@ -207,8 +241,16 @@ function SelectionActions({ selection, onAskAI, onExplain, onFix }) {
       role="toolbar"
       aria-label="Selection actions"
     >
-      <button type="button" className="sel-btn sel-btn-primary" onMouseDown={keep} onClick={onAskAI} data-tooltip="Add the selection to the assistant (Ctrl/⌘ L)">
+      <button
+        type="button"
+        className="sel-btn sel-btn-primary"
+        onMouseDown={keep}
+        onClick={onAskAI}
+        data-tooltip="Add the selection to the assistant"
+        aria-keyshortcuts="Control+L Meta+L"
+      >
         <MessageSquarePlus size={16} aria-hidden="true" /> Ask AI
+        <kbd className="sel-kbd">{MOD_KEY === '⌘' ? '⌘L' : 'Ctrl L'}</kbd>
       </button>
       <span className="sel-divider" aria-hidden="true" />
       <button type="button" className="sel-btn" onMouseDown={keep} onClick={onExplain}>
@@ -251,6 +293,7 @@ export default function EditorPane(props) {
     onFix,
   } = props;
   const [selection, setSelection] = useState(null);
+  const [diffNav, setDiffNav] = useState(null);
 
   // Hide the selection actions when code changes under them (accept/undo).
   useEffect(() => setSelection(null), [flash]);
@@ -262,6 +305,35 @@ export default function EditorPane(props) {
 
   const currentSelection = selection && selection.path === activePath && !showDiff ? selection : null;
 
+  // Review shortcuts, only while the diff is on screen. Typing in the
+  // assistant or a menu is never intercepted.
+  const reviewKeys = useRef(null);
+  reviewKeys.current = showDiff && review && !review.stale ? { nav: diffNav, review, handlers: reviewHandlers } : null;
+  useEffect(() => {
+    const onKey = (e) => {
+      const ctx = reviewKeys.current;
+      if (!ctx) return;
+      const t = e.target;
+      const inEditor = !!t.closest?.('.editor-pane');
+      if (!inEditor && t !== document.body && t.closest?.('textarea, input, select, [role="menu"], [role="dialog"]')) return;
+      if (e.key === 'F7') {
+        e.preventDefault();
+        e.stopPropagation();
+        (e.shiftKey ? ctx.nav?.prev : ctx.nav?.next)?.();
+      } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        (ctx.review.blockedBy ? ctx.handlers.onStopAndApply : ctx.handlers.onAccept)();
+      } else if (e.key === 'Escape' && inEditor) {
+        // Only from the editor: elsewhere Esc already closes drawers and menus.
+        e.preventDefault();
+        ctx.handlers.onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, []);
+
   return (
     <section className="editor-pane" aria-label="Editor">
       <Tabs
@@ -272,7 +344,7 @@ export default function EditorPane(props) {
         reviewPath={review && !review.stale ? review.proposal.path : null}
         files={files}
       />
-      {showReviewBar && <ReviewBar review={review} {...reviewHandlers} />}
+      {showReviewBar && <ReviewBar review={review} nav={showDiff ? diffNav : null} {...reviewHandlers} />}
       {showSession && <SessionBar session={session} {...sessionHandlers} />}
       {showNotice && <NoticeBar notice={notice} onReset={onResetFile} onDismiss={onDismissNotice} />}
       <div className="editor-body">
@@ -285,7 +357,7 @@ export default function EditorPane(props) {
             </button>
           </div>
         ) : showDiff ? (
-          <DiffReview proposal={review.proposal} inline={diffInline} fontSize={fontSize} />
+          <DiffReview proposal={review.proposal} inline={diffInline} fontSize={fontSize} onChanges={setDiffNav} />
         ) : (
           <>
             <CodeEditor

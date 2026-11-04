@@ -1,30 +1,56 @@
 import { useState } from 'react';
-import { FileCode2, FileDiff, Undo2, AlertTriangle, RefreshCw, CircleCheck, CircleSlash } from 'lucide-react';
+import { FileCode2, Undo2, AlertTriangle, RefreshCw, CircleCheck, CircleSlash, ChevronRight } from 'lucide-react';
 import { formatInline } from './Markdown.jsx';
 
-// The assistant's proposed change, with its current state and actions.
+// Applied changes say so in their status row; the others lose their summary
+// colour, so the file row names what happened.
+const STATUS_LABEL = {
+  rejected: 'Rejected',
+  discarded: 'Discarded',
+  undone: 'Undone',
+};
+
+// The assistant's proposed change: which file, what changed, and where it
+// stands. The file row is the link to the editor (review it while pending,
+// open the file once applied). Accept and Reject live only in the review bar
+// above the code, so they're never duplicated here.
 export default function ProposalCard({ view, handlers }) {
   const { proposal, stale, blockedBy, canUndo, editedSinceApply, reviewing } = view;
   const [confirmUndo, setConfirmUndo] = useState(false);
   const { id, path, status } = proposal;
+  const pending = status === 'pending';
+  const fileAction = pending && !stale ? () => handlers.onReview(id) : status === 'accepted' ? () => handlers.onOpenFile(id) : null;
+  const fileHint = pending && !stale ? (reviewing ? 'In the editor' : 'Review') : status === 'accepted' ? 'Open' : null;
+  const FileRow = fileAction ? 'button' : 'div';
 
   return (
-    <div className={`proposal-card status-${status}`}>
-      <div className="proposal-head">
-        <FileCode2 size={16} strokeWidth={1.75} aria-hidden="true" />
+    <div className={`proposal-card status-${status} ${reviewing ? 'is-reviewing' : ''}`}>
+      <FileRow
+        {...(fileAction ? { type: 'button', onClick: fileAction, 'aria-pressed': pending ? reviewing : undefined } : {})}
+        className="proposal-head"
+        aria-label={fileAction ? `${fileHint} ${path}` : undefined}
+      >
+        <FileCode2 size={16} strokeWidth={1.75} aria-hidden="true" className="proposal-file-icon" />
         <span className="proposal-file">{path}</span>
         <span className="diff-stat">
           <span className="diff-add" aria-label={`${proposal.added} lines added`}>+{proposal.added}</span>{' '}
           <span className="diff-del" aria-label={`${proposal.removed} lines removed`}>−{proposal.removed}</span>
         </span>
-      </div>
+        {STATUS_LABEL[status] && <span className={`proposal-status-tag tag-${status}`}>{STATUS_LABEL[status]}</span>}
+        {fileHint && (
+          <span className="proposal-go" aria-hidden="true">
+            {fileHint}
+            {!reviewing && <ChevronRight size={14} />}
+          </span>
+        )}
+      </FileRow>
       <ul className="proposal-summary">
         {proposal.summary.map((line, i) => (
           <li key={i}>{formatInline(line, `s${i}`)}</li>
         ))}
       </ul>
 
-      {status === 'pending' && stale && (
+      {pending && stale && (
         <div className="proposal-state state-warning" role="status">
           <AlertTriangle size={16} aria-hidden="true" />
           <span>{path} changed after this proposal was created, so it can’t be applied safely.</span>
@@ -41,28 +67,8 @@ export default function ProposalCard({ view, handlers }) {
         </div>
       )}
 
-      {/* Accept and Reject live in the editor, next to the changed lines.
-          The card explains the change and points to where it is reviewed. */}
-      {status === 'pending' && !stale && (
-        <>
-          {blockedBy && (
-            <p className="proposal-note">
-              {path} is being run. Stop the run before applying changes to it.
-            </p>
-          )}
-          {reviewing ? (
-            <p className="proposal-review-status" role="status">
-              <FileDiff size={14} aria-hidden="true" />
-              Reviewing in the editor. Accept or reject it above the code.
-            </p>
-          ) : (
-            <div className="proposal-actions">
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handlers.onReview(id)}>
-                <FileDiff size={16} aria-hidden="true" /> Review in editor
-              </button>
-            </div>
-          )}
-        </>
+      {pending && !stale && blockedBy && (
+        <p className="proposal-note">{path} is being run. Stop the run before applying changes to it.</p>
       )}
 
       {status === 'accepted' && (
@@ -105,19 +111,13 @@ export default function ProposalCard({ view, handlers }) {
       {status === 'undone' && (
         <div className="proposal-state state-muted">
           <Undo2 size={16} aria-hidden="true" />
-          <span>Undone. {path} was restored to the version before this change.</span>
+          <span>{path} was restored to the version before this change.</span>
         </div>
       )}
-      {status === 'rejected' && (
+      {(status === 'rejected' || status === 'discarded') && (
         <div className="proposal-state state-muted">
           <CircleSlash size={16} aria-hidden="true" />
-          <span>Rejected. {path} is unchanged.</span>
-        </div>
-      )}
-      {status === 'discarded' && (
-        <div className="proposal-state state-muted">
-          <CircleSlash size={16} aria-hidden="true" />
-          <span>Discarded. {path} is unchanged.</span>
+          <span>{path} is unchanged.</span>
         </div>
       )}
     </div>

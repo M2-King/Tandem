@@ -934,6 +934,7 @@ body.is-resizing .resizer:active::after {
 
 .editor-banner {
   flex: none;
+  height: auto; /* Monaco's stylesheet also uses .editor-banner, with a fixed 26px height */
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -995,6 +996,40 @@ body.is-resizing .resizer:active::after {
   margin-left: auto;
 }
 
+/* Review bar: title and the reason for the change, then the controls */
+.review-text {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.review-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.review-reason {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.change-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+}
+.change-count {
+  min-width: 44px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .diff-stat {
   font-family: var(--font-code);
   font-size: var(--fs-sm);
@@ -1127,6 +1162,16 @@ body.is-resizing .resizer:active::after {
 }
 .sel-btn-primary svg {
   color: var(--accent);
+}
+.sel-kbd {
+  margin-left: 2px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 .sel-divider {
   width: 1px;
@@ -1699,12 +1744,8 @@ select {
   font-variant-numeric: tabular-nums;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
-/* Each Tandem reply is one grouped glass card */
-.msg-assistant {
-  background: rgba(255, 255, 255, 0.045);
-  border-radius: var(--radius-card);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
+/* Replies sit directly on the pane: text reads like a document, and only a
+   proposed change gets a grouped surface. */
 
 /* Finished-run analysis: a heading, then sibling groups on quiet inset
    surfaces. No outer card and no repeated "Tandem" label. */
@@ -1766,6 +1807,44 @@ select {
 }
 .analysis-metrics .metrics-table tbody tr:last-child > * {
   border-bottom: 0;
+}
+/* Metrics live in Results; the summary links there instead of repeating them */
+.analysis-results-link {
+  display: grid;
+  grid-template-columns: 16px 1fr 16px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  text-align: left;
+  transition: background-color var(--t-hover) var(--ease);
+}
+.analysis-results-link:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+.analysis-results-link > span {
+  display: flex;
+  flex-direction: column;
+}
+.analysis-results-title {
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+}
+.analysis-results-sub {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.analysis-results-chevron {
+  color: var(--text-muted);
+  transition: transform var(--t-hover) var(--ease);
+}
+.analysis-results-link:hover .analysis-results-chevron {
+  transform: translateX(2px);
 }
 .analysis-insight {
   display: flex;
@@ -1853,6 +1932,17 @@ select {
   gap: var(--space-2);
   font-size: var(--fs-md);
   line-height: 20px;
+  animation: msg-in var(--t-panel) var(--ease-out);
+}
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+/* A user turn starts a new exchange: extra space above it, none inside */
+.msg-user:not(:first-child) {
+  margin-top: var(--space-3);
 }
 .msg-user {
   align-items: flex-end;
@@ -1861,8 +1951,8 @@ select {
   max-width: 88%;
   padding: 8px 12px;
   border-radius: 14px 14px 4px 14px;
-  background: rgba(255, 255, 255, 0.075);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1889,7 +1979,7 @@ select {
 }
 .msg-assistant {
   gap: 10px;
-  padding: var(--space-3);
+  padding: 0 2px;
 }
 .msg-head {
   display: flex;
@@ -1898,35 +1988,72 @@ select {
   font-size: var(--fs-sm);
   line-height: var(--lh-sm);
 }
-.msg-head-mark {
+/* Working: one live line. The label fades in when the step changes. */
+.working-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
   color: var(--text-secondary);
+  font-size: var(--fs-md);
 }
-.msg-head-name {
-  font-weight: var(--fw-semibold);
-  color: var(--text-secondary);
+.working-line .spin {
+  flex: none;
+  color: var(--accent);
 }
-.msg-head-state {
-  color: var(--text-secondary);
-  font-weight: var(--fw-medium);
+.working-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: fade-in var(--t-menu) var(--ease);
 }
-.msg-head-state.state-failed {
-  color: var(--error);
-}
-.msg-assistant:not(.status-working) .stages {
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
-}
-/* A proposed change is the last section of its reply card, not a card of its own */
-.msg-assistant .proposal-card {
-  margin: 2px calc(-1 * var(--space-3)) 0;
+.link-btn {
+  margin-left: auto;
+  padding: 2px 6px;
   border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  background: rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  transition: color var(--t-hover) var(--ease), background-color var(--t-hover) var(--ease);
 }
-.msg-assistant .proposal-card:last-child {
-  margin-bottom: calc(-1 * var(--space-3));
-  border-radius: 0 0 var(--radius-card) var(--radius-card);
+.link-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+/* Done: the steps fold into one quiet line */
+.msg-trace {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.msg-trace summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--radius-sm);
+}
+.msg-trace summary::-webkit-details-marker {
+  display: none;
+}
+.msg-trace summary:hover {
+  color: var(--text-secondary);
+}
+.msg-trace-chevron {
+  transition: transform var(--t-select) var(--ease);
+}
+.msg-trace[open] .msg-trace-chevron {
+  transform: rotate(90deg);
+}
+.msg-trace ol {
+  margin: 4px 0 0;
+  padding-left: 30px;
+}
+.msg-action {
+  align-self: flex-start;
 }
 .msg-limitation {
   padding: 0;
@@ -1959,34 +2086,6 @@ select {
   font-size: 12.5px;
 }
 
-.stages {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: var(--fs-sm);
-  line-height: var(--lh-sm);
-}
-.stages li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-  animation: banner-in var(--t-menu) var(--ease);
-}
-.stages li.is-active {
-  color: var(--text-primary);
-}
-.stages li.is-done svg {
-  color: var(--text-muted);
-}
-.stage-cancel {
-  align-self: flex-start;
-  margin-left: -10px;
-}
-
 .context-chip {
   display: inline-flex;
   align-items: center;
@@ -2000,6 +2099,14 @@ select {
   color: var(--text-secondary);
   font-size: var(--fs-sm);
   line-height: 16px;
+}
+button.context-chip-link {
+  cursor: pointer;
+  transition: background-color var(--t-hover) var(--ease), border-color var(--t-hover) var(--ease);
+}
+button.context-chip-link:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
 }
 .context-chip-label {
   overflow: hidden;
@@ -2024,32 +2131,83 @@ select {
   color: var(--text-primary);
 }
 
+/* A proposed change: the one grouped surface in a reply. The file row is
+   the link to the editor. */
 .proposal-card {
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-float);
-  background: var(--bg-subtle);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   overflow: hidden;
+  transition: box-shadow var(--t-select) var(--ease);
+}
+.proposal-card.is-reviewing {
+  box-shadow: inset 0 0 0 1px rgba(128, 155, 220, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 .proposal-head {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: var(--fs-md);
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
   color: var(--text-secondary);
+  font-size: var(--fs-md);
+  text-align: left;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+}
+button.proposal-head {
+  cursor: pointer;
+  transition: background-color var(--t-hover) var(--ease);
+}
+button.proposal-head:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+button.proposal-head:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.proposal-file-icon {
+  flex: none;
+  color: var(--text-muted);
 }
 .proposal-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-code);
   font-size: 12.5px;
   color: var(--text-primary);
+}
+.proposal-head .diff-stat {
   margin-right: auto;
+}
+.proposal-status-tag {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+}
+.proposal-status-tag.tag-accepted {
+  color: var(--success);
+}
+.proposal-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.is-reviewing .proposal-go {
+  color: var(--accent);
 }
 .proposal-summary {
   margin: 0;
   padding: 10px 12px 10px 28px;
   font-size: var(--fs-md);
   line-height: 20px;
+  color: var(--text-secondary);
 }
 .proposal-summary li + li {
   margin-top: 2px;
@@ -2063,20 +2221,8 @@ select {
 .proposal-actions .btn-primary {
   margin-left: auto;
 }
-.proposal-review-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 var(--space-3) var(--space-3);
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-sm);
-}
-.proposal-review-status svg {
-  color: var(--accent);
-}
 .proposal-note {
-  padding: 0 12px 8px;
+  padding: 0 12px 10px;
   font-size: var(--fs-sm);
   line-height: 16px;
   color: var(--warning);
@@ -2087,9 +2233,10 @@ select {
   flex-wrap: wrap;
   gap: 6px 8px;
   padding: 8px 12px;
-  border-top: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   font-size: var(--fs-md);
   line-height: 18px;
+  animation: fade-in var(--t-menu) var(--ease);
 }
 .proposal-state > svg {
   flex: none;
@@ -2097,9 +2244,6 @@ select {
 .proposal-state .proposal-actions {
   width: 100%;
   padding: 4px 0 0;
-}
-.state-success {
-  background: var(--success-soft);
 }
 .state-success > svg {
   color: var(--success);
@@ -2128,7 +2272,7 @@ select {
 .status-rejected .proposal-summary,
 .status-discarded .proposal-summary,
 .status-undone .proposal-summary {
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .jump-latest {

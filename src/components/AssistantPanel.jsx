@@ -1,6 +1,5 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, ChevronRight, MessageSquareText, Wrench, Lightbulb, FileCode2, Table2, History } from 'lucide-react';
-import { MetricsList } from './MetricsTable.jsx';
 import TandemMark from './TandemMark.jsx';
 import Markdown from './Markdown.jsx';
 import ProposalCard from './ProposalCard.jsx';
@@ -9,8 +8,22 @@ import { DEMO_PROMPTS } from '../services/aiService.js';
 
 const chipIcon = (type) => (type === 'chart' ? BarChart3 : type === 'error' ? AlertCircle : Code2);
 
-function ContextChip({ chip, onRemove }) {
+function ContextChip({ chip, onRemove, onOpen }) {
   const Icon = chipIcon(chip.type);
+  // A code reference in a sent message is a link back to those lines.
+  if (onOpen && chip.type === 'selection' && chip.path && chip.startLine) {
+    return (
+      <button
+        type="button"
+        className="context-chip context-chip-link"
+        onClick={() => onOpen(chip)}
+        title={`Show ${chip.label} in the editor`}
+      >
+        <Icon size={14} aria-hidden="true" />
+        <span className="context-chip-label">{chip.label}</span>
+      </button>
+    );
+  }
   return (
     <span className="context-chip" title={chip.text ? chip.text.slice(0, 400) : chip.label}>
       <Icon size={14} aria-hidden="true" />
@@ -24,33 +37,48 @@ function ContextChip({ chip, onRemove }) {
   );
 }
 
-function Stages({ stages, working }) {
+// While working: one live line with the current step, not a growing checklist.
+function WorkingLine({ stages, onCancel }) {
+  const current = stages.at(-1)?.label || 'Starting';
   return (
-    <ol className="stages" aria-live="polite">
-      {stages.map((s, i) => (
-        <li key={i} className={s.done ? 'is-done' : 'is-active'}>
-          {s.done ? <Check size={14} aria-hidden="true" /> : <Loader2 size={14} className="spin" aria-hidden="true" />}
-          <span>{s.label}</span>
-        </li>
-      ))}
-      {working && !stages.length && (
-        <li className="is-active">
-          <Loader2 size={14} className="spin" aria-hidden="true" />
-          <span>Starting</span>
-        </li>
-      )}
-    </ol>
+    <div className="working-line" role="status" aria-live="polite">
+      <Loader2 size={14} className="spin" aria-hidden="true" />
+      <span key={current} className="working-label">
+        {current}
+      </span>
+      <button type="button" className="link-btn" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
   );
 }
 
-function Message({ message, proposalView, handlers, onSuggestion, onAction, onRetry, onCancel, busy }) {
+// Once done: the steps fold into one quiet line that can be opened.
+function StepTrace({ stages }) {
+  if (!stages?.length) return null;
+  return (
+    <details className="msg-trace">
+      <summary>
+        <ChevronRight size={12} aria-hidden="true" className="msg-trace-chevron" />
+        Done in {stages.length} {stages.length === 1 ? 'step' : 'steps'}
+      </summary>
+      <ol>
+        {stages.map((s, i) => (
+          <li key={i}>{s.label}</li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+function Message({ message, proposalView, handlers, onSuggestion, onAction, onRetry, onCancel, onShowResults, onGoToCode, busy }) {
   if (message.role === 'user') {
     return (
       <div className="msg msg-user">
         {message.context?.length > 0 && (
           <div className="msg-context">
             {message.context.map((c, i) => (
-              <ContextChip key={i} chip={c} />
+              <ContextChip key={i} chip={c} onOpen={onGoToCode} />
             ))}
           </div>
         )}
@@ -59,25 +87,12 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
     );
   }
 
-  if (message.kind === 'analysis' && message.analysis) return <RunAnalysis analysis={message.analysis} />;
+  if (message.kind === 'analysis' && message.analysis) return <RunAnalysis analysis={message.analysis} onShowResults={onShowResults} />;
 
   const working = message.status === 'working';
-  const stateLabel = { working: 'Working', failed: 'Failed', cancelled: 'Cancelled' }[message.status];
   return (
     <article className={`msg msg-assistant status-${message.status}`} aria-label="Tandem reply">
-      {/* The panel already says who is talking; only a status earns a header row. */}
-      {stateLabel && (
-        <header className="msg-head">
-          <TandemMark size={14} className="msg-head-mark" />
-          <span className={`msg-head-state state-${message.status}`}>{stateLabel}</span>
-        </header>
-      )}
-      {(working || message.stages?.length > 0) && <Stages stages={message.stages || []} working={working} />}
-      {working && (
-        <button type="button" className="btn btn-ghost btn-sm stage-cancel" onClick={onCancel}>
-          Cancel
-        </button>
-      )}
+      {working && <WorkingLine stages={message.stages || []} onCancel={onCancel} />}
       {message.status === 'cancelled' && (
         <p className="msg-muted">
           <Square size={12} aria-hidden="true" /> {message.text}
@@ -94,8 +109,9 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
           )}
         </div>
       )}
+      {message.status === 'done' && <StepTrace stages={message.stages} />}
       {message.status === 'done' && message.text && (
-        <div className={message.kind === 'limitation' ? 'msg-limitation' : undefined}>
+        <div className={message.kind === 'limitation' ? 'msg-limitation' : 'msg-body'}>
           {message.kind === 'limitation' && <span className="limitation-tag">Demo limitation</span>}
           <Markdown text={message.text} />
         </div>
@@ -104,7 +120,7 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
         <ProposalCard view={proposalView(message.proposalId)} handlers={handlers} />
       )}
       {message.action && (
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => onAction(message.action)}>
+        <button type="button" className="btn btn-secondary btn-sm msg-action" onClick={() => onAction(message.action)}>
           <RotateCcw size={16} aria-hidden="true" /> {message.action.label}
         </button>
       )}
@@ -124,7 +140,7 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
 // Shown after a run of code that Tandem changed. Built from the run record,
 // so nothing here exists before the code has actually run. Sections are
 // sibling groups (no card inside a card) and the heading carries the state.
-function RunAnalysis({ analysis }) {
+function RunAnalysis({ analysis, onShowResults }) {
   return (
     <article className="msg-analysis" aria-label={`Results of run ${analysis.runNumber}`} data-analysis={analysis.runId}>
       <header className="analysis-heading">
@@ -141,9 +157,14 @@ function RunAnalysis({ analysis }) {
           </li>
         ))}
       </ul>
-      <div className="analysis-group analysis-metrics">
-        <MetricsList metrics={analysis.metrics} />
-      </div>
+      <button type="button" className="analysis-results-link" onClick={() => onShowResults?.('Charts')}>
+        <BarChart3 size={16} aria-hidden="true" />
+        <span>
+          <span className="analysis-results-title">Metrics and chart</span>
+          <span className="analysis-results-sub">Run #{analysis.runNumber} in Results</span>
+        </span>
+        <ChevronRight size={16} aria-hidden="true" className="analysis-results-chevron" />
+      </button>
       <div className="analysis-group analysis-insight">
         <Lightbulb size={16} aria-hidden="true" className="analysis-insight-icon" />
         <div>
@@ -379,6 +400,8 @@ export default function AssistantPanel({
   onClose,
   composerSuggestions,
   project,
+  onShowResults,
+  onGoToCode,
 }) {
   const listRef = useRef(null);
   const contentRef = useRef(null);
@@ -416,6 +439,21 @@ export default function AssistantPanel({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // Sending always shows what was just asked, wherever the reader had
+  // scrolled to.
+  const lastUserId = [...messages].reverse().find((m) => m.role === 'user')?.id;
+  const shownUserId = useRef(lastUserId);
+  useLayoutEffect(() => {
+    if (!lastUserId || lastUserId === shownUserId.current) return;
+    shownUserId.current = lastUserId;
+    const el = listRef.current;
+    if (!el) return;
+    atBottom.current = true;
+    el.scrollTop = el.scrollHeight;
+    lastScrollTop.current = el.scrollTop;
+    setShowJump(false);
+  }, [lastUserId]);
 
   // A finished-run summary is the answer to the whole task: show it from its
   // heading rather than from its last line.
@@ -467,6 +505,8 @@ export default function AssistantPanel({
               onAction={onAction}
               onRetry={onRetry}
               onCancel={onCancel}
+              onShowResults={onShowResults}
+              onGoToCode={onGoToCode}
               busy={busy}
             />
           ))
