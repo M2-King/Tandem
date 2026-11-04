@@ -109,6 +109,10 @@ jobs:
           $bmp.Save($wall, [System.Drawing.Imaging.ImageFormat]::Bmp)
           Add-Type -Namespace Win32 -Name Desk -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool SystemParametersInfo(int a, int b, string c, int d);'
           [Win32.Desk]::SystemParametersInfo(20, 0, $wall, 3) | Out-Null
+          # Windows' "Transparency effects" setting (needed for acrylic and Mica).
+          New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Force | Out-Null
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name EnableTransparency -Value 1 -Type DWord
+          Write-Output ("Windows build: " + [Environment]::OSVersion.Version)
           Start-Sleep -Seconds 2
           npm install --no-save "playwright@1.64.1"
           node packaging/desktop-smoke.cjs (Resolve-Path desktop/release/win-unpacked/Tandem.exe).Path (Resolve-Path smoke-project-env/Scripts/python.exe).Path desktop-screen.jpg

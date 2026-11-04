@@ -3442,3 +3442,10 @@ html[data-shell='desktop'][data-platform='darwin']:not([data-material='clear']) 
 html[data-shell='desktop'][data-material='clear']:not([data-maximized='true']) .window-controls .window-close {
   border-top-right-radius: 10px;
 }
+/* With Frosted or Mica glass the system material already tints and diffuses
+   what is behind the window, so the app's own window tint is lighter. */
+html[data-shell='desktop'][data-material='acrylic'] .app::before,
+html[data-shell='desktop'][data-material='mica'] .app::before,
+html[data-shell='desktop'][data-material='vibrancy'] .app::before {
+  opacity: 0.55;
+}

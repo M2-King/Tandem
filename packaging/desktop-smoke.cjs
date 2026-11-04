@@ -150,6 +150,23 @@ async function seeThrough(app, win, label) {
   check(probe.node === 'undefined/undefined', 'the page has no Node access');
   if (IS_WIN) check(['acrylic', 'mica', 'clear'].includes(probe.material), `window glass: ${probe.material}`);
 
+  // Tandem's own layers must be see-through, whatever the system then does.
+  await win.waitForTimeout(800);
+  const page = await app.evaluate(async ({ app: electronApp, BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows()[0];
+    const img = await w.webContents.capturePage();
+    const { width, height } = img.getSize();
+    const bmp = img.toBitmap();
+    const alpha = (fx, fy) => bmp[(Math.round(height * fy) * width + Math.round(width * fx)) * 4 + 3];
+    return {
+      alpha: { toolbar: alpha(0.5, 0.02), editor: alpha(0.4, 0.5), panel: alpha(0.08, 0.8) },
+      gpu: electronApp.getGPUFeatureStatus(),
+    };
+  });
+  console.log(`     page opacity (0-255): ${JSON.stringify(page.alpha)}; gpu compositing: ${page.gpu.gpu_compositing}`);
+  check(page.alpha.toolbar < 200 && page.alpha.panel < 230 && page.alpha.editor < 240,
+    'Tandem\'s glass layers are see-through');
+
   if (IS_WIN && screenshot) {
     // Leave a margin of desktop around the window, so the screenshot shows the
     // wallpaper both around and through the glass.
