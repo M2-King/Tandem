@@ -96,22 +96,29 @@ $small.Save('${file.replace(/'/g, "''")}', $codec, $p)
   check(probe.node === 'undefined/undefined', 'the page has no Node access');
   if (IS_WIN) check(['acrylic', 'mica', 'clear'].includes(probe.material), `window glass: ${probe.material}`);
 
-  await win.getByRole('treeitem', { name: 'check.py' }).click();
+  if (IS_WIN && screenshot) {
+    // Leave a margin of desktop around the window, so the screenshot shows the
+    // wallpaper both around and through the glass.
+    const size = await app.evaluate(({ BrowserWindow, screen }) => {
+      const area = screen.getPrimaryDisplay().workArea;
+      const w = BrowserWindow.getAllWindows()[0];
+      w.setBounds({ x: area.x + 60, y: area.y + 40, width: area.width - 120, height: area.height - 80 });
+      w.focus();
+      return `${area.width}x${area.height}`;
+    });
+    await win.waitForTimeout(1500);
+    console.log(`     work area ${size}; screenshot ${screenCapture(path.resolve(screenshot))}`);
+  }
+
+  // On a small screen Tandem folds the file list away; open it first.
+  const file = win.getByRole('treeitem', { name: 'check.py' });
+  if (!(await file.isVisible())) await win.getByRole('button', { name: 'Show files' }).first().click();
+  await file.click();
   await win.getByRole('button', { name: 'Run', exact: true }).click();
   await win.getByText('   x   y').first().waitFor({ timeout: 90000 });
   await win.getByRole('tab', { name: /Charts/ }).click();
   await win.locator('.figure-image').first().waitFor({ timeout: 15000 });
   check(true, 'acceptance script ran in the app: DataFrame printed, chart shown');
-
-  if (IS_WIN && screenshot) {
-    await app.evaluate(({ BrowserWindow }) => {
-      const w = BrowserWindow.getAllWindows()[0];
-      w.setBounds({ x: 160, y: 90, width: 1440, height: 860 });
-      w.focus();
-    });
-    await win.waitForTimeout(1500);
-    console.log(`     screen ${screenCapture(path.resolve(screenshot))}`);
-  }
 
   const href = await app.evaluate(async ({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
