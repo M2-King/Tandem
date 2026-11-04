@@ -1,42 +1,35 @@
 /* Design tokens. Components use these variables instead of raw values.
 
-   Near-black glass over a quiet wallpaper, inside one application shell.
-   Three materials:
-   1. Editor: near-opaque charcoal with a cool undertone. Code comes first.
-   2. Panels (files, results, assistant): frosted glass, a little clearer.
-   3. Floating (menus, popovers, dialogs, toasts): lighter glass, stronger blur, soft shadow.
+   Near-black glass floating over the person's own wallpaper. The wallpaper is
+   never filtered, tinted or dimmed; all depth comes from the materials:
+   1. Editor: the densest glass, so code reads first.
+   2. Panels (files, results, assistant, rail, toolbar capsules): frosted glass.
+   3. Floating (menus, popovers, dialogs, toasts): denser, stronger frost.
 
-   The Glass setting (More menu) moves one value from clear to solid and
-   writes --glass-opacity, --glass-opacity-editor, --glass-opacity-float,
-   --glass-blur and --wallpaper-brightness on :root (see lib/glass.js).
-   The defaults below are the Balanced preset. Only backgrounds are
-   translucent; text and icons are never faded.
+   Each material is the same recipe: backdrop frost + transmission, a
+   near-black tint, fine grain, a soft top-left reflection, a lit 1px rim and
+   a contact + ambient shadow. lib/glass.js writes the opacity, frost and
+   transmission variables from the person's settings and the wallpaper's
+   brightness. Only backgrounds are translucent; text and icons never fade.
    Blue is reserved for the primary action, focus, selection and the active item. */
 :root {
   /* ---- Glass controls ---- */
-  --glass-tint-editor: 34, 39, 52;
-  --glass-tint: 34, 38, 50;
-  --glass-tint-float: 40, 44, 57;
-  --glass-opacity-editor: 0.86;
-  --glass-opacity: 0.58;
-  --glass-opacity-float: 0.87;
-  --glass-blur: 28px;
-  --glass-saturate: 115%; /* low, so warm light doesn't tint the glass */
+  --glass-tint-editor: 20, 24, 34;
+  --glass-tint: 24, 28, 39;
+  --glass-tint-float: 29, 32, 43;
+  --glass-opacity-editor: 0.8;
+  --glass-opacity: 0.61;
+  --glass-opacity-float: 0.9;
+  --glass-blur: 29px;
+  --glass-transmission: 1; /* lowered by lib/glass.js over bright wallpapers */
+  --glass-saturate: 135%; /* colour from behind glows through, like real frosted glass */
   --glass-border-opacity: 0.08;
   --glass-highlight-strength: 0.07;
 
-  /* ---- Shell: one window that holds every panel ---- */
-  --shell-tint: rgba(13, 16, 22, 0.08);
-  --shell-edge: rgba(255, 255, 255, 0.07);
+  /* ---- Layout ---- */
   --shell-margin: 10px;
-  --rail-width: 52px;
-
-  /* ---- Backdrop ---- */
-  --bg-app: #11141a;
-  --wallpaper-blur: 3px;
-  --wallpaper-brightness: 0.96;
-  --wallpaper-saturate: 0.9;
-  --wallpaper-shade: rgba(12, 15, 22, 0.12); /* neutral, slightly cool */
+  --rail-width: 62px;
+  --bg-app: #11141a; /* only seen before the wallpaper loads */
 
   /* ---- Materials (derived) ---- */
   --surface-1: rgba(var(--glass-tint-editor), var(--glass-opacity-editor));
@@ -45,9 +38,10 @@
   --surface-1-solid: #11141c;
   --surface-2-solid: #1d212b;
   --surface-3-solid: #242834;
-  --blur-1: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  --blur-2: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  --blur-3: blur(calc(var(--glass-blur) + 8px)) saturate(var(--glass-saturate));
+  --blur-1: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-transmission));
+  --blur-2: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-transmission));
+  --blur-3: blur(calc(var(--glass-blur) + 10px)) saturate(var(--glass-saturate))
+    brightness(var(--glass-transmission));
   --glass-edge: rgba(255, 255, 255, var(--glass-border-opacity));
   --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, var(--glass-highlight-strength));
   /* Edge rim: brighter along the top, as if lit from above */
@@ -58,8 +52,16 @@
     rgba(255, 255, 255, 0.035) 70%,
     rgba(255, 255, 255, 0.07)
   );
-  /* A faint sheen across the top of each panel */
-  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 120px);
+  /* A soft reflection, strongest at the top-left where light enters */
+  --glass-sheen: radial-gradient(140% 90% at 0% 0%, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 140px);
+  /* Fine grain: real frosted glass is never perfectly smooth, and grain stops
+     blurred gradients from banding. White noise at a few percent alpha. */
+  --glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --material-1: var(--glass-grain), linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 120px),
+    var(--surface-1);
+  --material-2: var(--glass-grain), var(--glass-sheen), var(--surface-2);
+  --material-3: var(--glass-grain), var(--glass-sheen), var(--surface-3);
 
   /* Fills on top of a surface */
   --bg-subtle: rgba(255, 255, 255, 0.03);
@@ -73,7 +75,7 @@
   /* Text */
   --text-primary: #edf0f4;
   --text-secondary: #a0a7b4;
-  --text-muted: #868d9b;
+  --text-muted: #8c93a1;
 
   /* Lines */
   --border: rgba(255, 255, 255, 0.06);
@@ -150,8 +152,9 @@
   --radius-shell: 22px; /* the application window */
 
   /* Depth */
-  --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.2);
-  --shadow-shell: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 30px 80px rgba(0, 0, 0, 0.3);
+  /* Contact shadow + soft ambient lift: the slab rests just above the wallpaper */
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.16), 0 22px 48px -18px rgba(0, 0, 0, 0.55);
+  --shadow-capsule: 0 1px 2px rgba(0, 0, 0, 0.16), 0 10px 24px -10px rgba(0, 0, 0, 0.5);
   --shadow-menu: var(--glass-highlight), 0 2px 8px rgba(0, 0, 0, 0.22), 0 18px 44px rgba(0, 0, 0, 0.45);
   --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.22), 0 24px 64px rgba(0, 0, 0, 0.45);
   --focus-ring: 0 0 0 2px rgba(11, 12, 16, 0.9), 0 0 0 4px rgba(128, 155, 220, 0.9);

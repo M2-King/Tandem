@@ -46,7 +46,7 @@ export default function App() {
   const { prefs, update, setSidebarWidth, setAssistantWidth, setResultsHeight, changeFontSize, reset: resetPrefs } =
     usePrefs();
   const wall = useWallpaper(notify);
-  useEffect(() => applyGlass(prefs.glass), [prefs.glass]);
+  useEffect(() => applyGlass(prefs.glass, prefs.frost, wall.luminance), [prefs.glass, prefs.frost, wall.luminance]);
   const ws = useWorkspace(onSave);
   const exec = useExecution({ onSave });
 
@@ -399,6 +399,8 @@ export default function App() {
         onReset={() => setConfirmReset(true)}
         glass={prefs.glass}
         onGlass={(glass) => update({ glass })}
+        frost={prefs.frost}
+        onFrost={(frost) => update({ frost })}
         wallpaper={wall.wallpaper}
         onWallpaper={wall.choose}
         onWallpaperFile={wall.pickImage}

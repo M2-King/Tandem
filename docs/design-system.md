@@ -7,7 +7,7 @@ All values live in `src/styles/tokens.css`. Components use the tokens, not raw v
 | Problem in the dusk-glass version | Change |
 | --- | --- |
 | Blue on many ordinary controls, glowing gradient Run button | Blue is kept for the primary action, focus, selection and the active item. Run is a flat fill with no glow. |
-| Wallpaper competing with the interface | The wallpaper is blurred, darkened and desaturated; panels are near-black glass, and the editor is the most solid. |
+| Wallpaper competing with the interface | (Superseded) The wallpaper is now shown untouched; the glass adapts to it instead. |
 | Separate panels with no clear order | Four floating glass panels with one hierarchy: the editor is the most solid, files, results and assistant are lighter. |
 | Sparkle icons used as decoration | Replaced with icons that name the action: file diff for review, message-plus for "Ask AI", wrench for fixes. |
 | Mixed icon sizes (11–18 px) and stroke weights | 16 px in buttons and rows, 18 px in the toolbar, 14 px beside 12 px metadata. One stroke weight (1.75) set in CSS for every Lucide icon. |
@@ -17,47 +17,59 @@ All values live in `src/styles/tokens.css`. Components use the tokens, not raw v
 
 Kept: the dark workspace, the layout and panel behaviour, rounded geometry, the wallpaper (default dusk, plain, or the person's own image), and every workflow.
 
-## Shell and materials
+## Wallpaper and materials
 
-Everything sits in one application shell: a window inset 10px from the screen edge, radius 22px, a 1px white edge at 7% and one soft shadow. The shell barely tints the wallpaper (13, 16, 22 at 8%) and has no blur of its own, so the panels inside blur the wallpaper directly and it stays visible in the rail column, the gaps and the margin below the panels.
+**The wallpaper is never altered.** It is drawn exactly as chosen: no blur, tint, dimming or desaturation, and no full-window overlay. Everything that makes the interface readable is part of the glass. The default sunset image is only an example; it is painted soft in the SVG file itself, not by the app.
 
-The default wallpaper is a sunset over a mountain lake seen from a wooden deck: warm light behind the mountain on the left, cool sky to the right, glints on the deck below. It is lightly blurred (3px) and slightly desaturated. A person's own image replaces it (⋯ menu → Wallpaper).
+Panels float directly over the wallpaper with no window frame. Nothing sits on the bare wallpaper: the toolbar and the rail are small glass capsules of the panel material, so the chrome reads on any image.
+
+### The material
+
+Every glass surface uses the same recipe, at three densities:
+
+| Layer | What it does |
+| --- | --- |
+| Frost | Backdrop blur (default 29px) with 135% saturation, so colour behind the glass glows through softly |
+| Transmission | How much light passes through (backdrop brightness). 1.0 over dark wallpapers, down to 0.55 over very bright ones |
+| Tint | Near-black, slightly cool |
+| Grain | Fine noise at a few percent alpha: real frosted glass is never perfectly smooth, and grain stops blurred gradients banding |
+| Reflection | A soft radial highlight from the top-left, where light enters, plus a faint top fade |
+| Rim | A 1px gradient edge, white at 20% along the top fading to 3.5% on the sides, following the corners |
+| Shadow | A tight contact shadow plus a soft ambient lift underneath |
 
 | Material | Used for | Tint (RGB) | Balanced opacity |
 | --- | --- | --- | --- |
-| Editor | Code | 34, 39, 52 (charcoal slate) | 0.86 |
-| Panel | Files, results, assistant | 34, 38, 50 | 0.58 |
-| Floating | Menus, popovers, dialogs, toasts | 40, 44, 57 | 0.87, blur +8px |
+| Editor | Code | 20, 24, 34 | 0.80 |
+| Panel | Files, results, assistant, toolbar capsules, rail | 24, 28, 39 | 0.61 |
+| Floating | Menus, popovers, toasts (dialogs 0.92) | 29, 32, 43 | 0.90, frost +10px |
 
-Every glass slab has the same finish:
-- **Rim:** a 1px gradient edge, white at 20% along the top fading to 3.5% on the sides and 7% at the bottom, drawn as a masked pseudo-element so it follows the 16px corners.
-- **Sheen:** white at 4% across the top 120px.
-- **Shadow:** one soft drop (0 12px 32px, black at 20%).
-- **Blur:** 28px backdrop blur with low saturation (115%) so warm light glows through without tinting text.
+Capsules draw their glass on a `::before` layer: an element with a backdrop filter traps the backdrop of anything inside it, which would leave menus opening from the toolbar unfrosted and stacked under the panels.
 
-Only backgrounds are translucent; text and icons are never faded.
+### Adapting to the wallpaper
 
-### Glass setting
+When a wallpaper is chosen, Tandem measures its brightness once (a 32×32 sample, blending the mean with the 80th percentile so bright patches count). Over a bright image the glass gets denser and passes less light, and the faintest text steps up toward the secondary grey. Over a dark image nothing changes. Measured worst case (text over the brightest 10% of the glass behind it) on four test wallpapers (bright sky, near-white, saturated colour, near-black): secondary text 4.5:1 or better everywhere, code 11:1, comments about 4:1.
 
-One level from 0 (clearest) to 100 (most solid) drives all surfaces (`src/lib/glass.js`). The ⋯ menu offers Clear (15), Balanced (50, default) and Solid (90), plus a slider. The editor is always more opaque than the panels.
+### Glass settings (⋯ menu → Glass)
 
-| | Clear | Balanced | Solid |
+Three presets and two sliders, all on the same variables (`src/lib/glass.js`):
+
+- **Clear / Balanced / Solid** set Opacity to 15, 50 or 90.
+- **Opacity** (Clear to Solid): how dense the glass is. The editor always stays denser than the panels.
+- **Frost** (Light to Heavy): how strongly the glass diffuses what's behind it, 14px to 44px.
+
+| At Balanced, dark wallpaper | Clear | Balanced | Solid |
 | --- | --- | --- | --- |
-| Editor opacity | 0.79 | 0.86 | 0.94 |
-| Panel opacity | 0.43 | 0.58 | 0.76 |
-| Floating opacity | 0.82 | 0.87 | 0.93 |
-| Blur | 32px | 28px | 23px |
-| Wallpaper brightness | 1.01 | 0.95 | 0.88 |
+| Editor opacity | 0.70 | 0.80 | 0.91 |
+| Panel opacity | 0.45 | 0.61 | 0.79 |
+| Floating opacity | 0.86 | 0.90 | 0.95 |
 
 Browsers without backdrop blur fall back to near-solid panels.
-
-Inside panels, grouped content sits on inset cards (white at 4%, 1px edge at 7%, radius 12): chart figures and metrics, each Tandem reply, the project summary in Files. A proposed change is the last section of its reply card, not a card inside a card.
 
 ## Workspace components
 
 | Component | Rules |
 | --- | --- |
-| Navigation rail | 52px wide, no container. 19px outline icons, muted grey; hover lifts to white; the selected item gets a soft blue tint. Files toggles the explorer; Charts and Runs open the results on that view (a dot marks new charts). Tooltips on the right. Hidden on phones, where the Files toggle returns to the toolbar. |
+| Navigation rail | A vertical glass capsule in a 62px column, aligned with the toolbar capsule. 19px outline icons, muted grey; hover lifts to white; the selected item gets a soft blue tint. Files toggles the explorer; Charts and Runs open the results on that view (a dot marks new charts). Tooltips on the right. Hidden on phones, where the Files toggle returns to the toolbar. |
 | File explorer | 30px rows. Every row has the same columns: disclosure arrow (blank for files), 16px icon, name; each level indents 18px, with a faint guide line inside folders. Selection is a neutral 8% white lift, not blue. "Collapse folders" appears on hover or focus. Arrow keys move between rows, Left/Right close and open folders, Home/End jump. |
 | Editor tabs | One strip with a hairline under it, no separators. 28px tabs, radius 8; the open file is a 7.5% white lift. Close appears on the open or hovered tab. A grey dot marks a file edited from the sample. |
 | Layout | Rail 52px; files 196px; assistant 380px; results 330px tall (never more than the space that leaves the editor 200px); 16px gaps; 16px right and 24px bottom margins inside the shell. |

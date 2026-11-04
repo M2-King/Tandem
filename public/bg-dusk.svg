@@ -2,6 +2,11 @@
   <!-- Sunset over a mountain lake, seen from a dark wooden deck.
        Warm light comes from behind the mountain on the left; the sky to the right stays cool. -->
   <defs>
+    <!-- The sample image is painted soft, like a photo with shallow depth of field.
+         Tandem never blurs a wallpaper itself. -->
+    <filter id="soft" x="-5%" y="-5%" width="110%" height="110%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#232b3c"/>
       <stop offset="0.22" stop-color="#303849"/>
@@ -48,6 +53,7 @@
   <rect width="1600" height="1000" fill="url(#sun)"/>
   <rect width="1600" height="600" fill="url(#coolRight)"/>
 
+  <g filter="url(#soft)">
   <!-- far hills on the horizon -->
   <path d="M560 600 L700 584 L860 592 L1000 572 L1140 586 L1300 566 L1460 580 L1600 570 L1600 604 L560 604 Z" fill="url(#far)"/>
   <!-- the big mountain on the left, with a sunlit ridge -->
@@ -71,4 +77,5 @@
   <ellipse cx="40" cy="930" rx="320" ry="70" fill="url(#glint)"/>
   <ellipse cx="520" cy="955" rx="220" ry="34" fill="url(#glint)" opacity="0.5"/>
   <ellipse cx="1140" cy="958" rx="200" ry="30" fill="url(#glint)" opacity="0.45"/>
+  </g>
 </svg>

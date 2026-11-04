@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 // colour alone. Hovering a point shows its values.
 
 const COLORS = { series1: 'var(--series-1)', series2: 'var(--series-2)' };
-const M = { top: 10, right: 14, bottom: 38, left: 52 };
+const M = { top: 10, right: 24, bottom: 38, left: 52 };
 
 function niceTicks(min, max, count = 5) {
   const span = max - min || 1;

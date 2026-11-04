@@ -24,26 +24,28 @@ export default function NavRail({ filesOpen, onToggleFiles, resultsOpen, results
   const showing = (tab) => resultsOpen && resultsTab === tab;
   return (
     <nav className="rail" aria-label="Views">
-      <RailButton
-        icon={Files}
-        label={filesOpen ? 'Hide files' : 'Show files'}
-        pressed={filesOpen}
-        onClick={onToggleFiles}
-      />
-      <span className="rail-sep" aria-hidden="true" />
-      <RailButton
-        icon={ChartColumn}
-        label={showing('Charts') ? 'Hide charts' : 'Show charts'}
-        pressed={showing('Charts')}
-        onClick={() => onResultsView('Charts')}
-        badge={newCharts && !showing('Charts')}
-      />
-      <RailButton
-        icon={History}
-        label={showing('Runs') ? 'Hide runs' : 'Show runs'}
-        pressed={showing('Runs')}
-        onClick={() => onResultsView('Runs')}
-      />
+      <div className="rail-capsule capsule">
+        <RailButton
+          icon={Files}
+          label={filesOpen ? 'Hide files' : 'Show files'}
+          pressed={filesOpen}
+          onClick={onToggleFiles}
+        />
+        <span className="rail-sep" aria-hidden="true" />
+        <RailButton
+          icon={ChartColumn}
+          label={showing('Charts') ? 'Hide charts' : 'Show charts'}
+          pressed={showing('Charts')}
+          onClick={() => onResultsView('Charts')}
+          badge={newCharts && !showing('Charts')}
+        />
+        <RailButton
+          icon={History}
+          label={showing('Runs') ? 'Hide runs' : 'Show runs'}
+          pressed={showing('Runs')}
+          onClick={() => onResultsView('Runs')}
+        />
+      </div>
     </nav>
   );
 }

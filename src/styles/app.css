@@ -24,38 +24,22 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
-/* The wallpaper: blurred, darkened and desaturated so the glass reads as
-   depth, not decoration. A person's own image (see useWallpaper) is shaded
-   further by its brightness. */
-body::before,
-body::after {
+/* The wallpaper, exactly as chosen: no blur, tint or dimming. All depth
+   and readability come from the glass materials above it. */
+body::before {
   content: '';
   position: fixed;
+  inset: 0;
   z-index: -1;
   pointer-events: none;
-}
-body::before {
-  inset: calc(var(--wallpaper-blur) * -3);
   background-image: var(--wallpaper-image, url('/bg-dusk.svg'));
   background-size: cover;
-  background-position: center bottom;
-  filter: blur(var(--wallpaper-blur)) brightness(var(--wallpaper-brightness))
-    saturate(var(--wallpaper-saturate));
-}
-body::after {
-  inset: 0;
-  background: var(--wallpaper-shade);
-}
-body[data-wallpaper='custom']::after {
-  background:
-    radial-gradient(120% 90% at 50% 40%, transparent 40%, rgba(5, 6, 8, 0.45) 100%),
-    rgba(8, 9, 12, var(--wallpaper-dim, 0.3));
+  background-position: center;
 }
 body[data-wallpaper='plain']::before {
   background-image:
     radial-gradient(90% 70% at 70% 10%, rgba(128, 155, 220, 0.12), transparent 60%),
     radial-gradient(80% 60% at 20% 100%, rgba(217, 160, 91, 0.1), transparent 60%);
-  filter: none;
 }
 ::selection {
   background: var(--selection);
@@ -221,9 +205,9 @@ p {
 }
 
 /* ---------- app shell ----------
-   One window holds the toolbar, rail and panels. It only tints the
-   wallpaper (no blur of its own), so the panels inside still blur the
-   wallpaper directly. */
+   The panels float directly over the wallpaper. Nothing sits on the bare
+   wallpaper: the toolbar and rail are small glass capsules of the same
+   material, so the interface reads on any image. */
 .app {
   position: relative;
   display: flex;
@@ -232,20 +216,63 @@ p {
   height: calc(100dvh - 2 * var(--shell-margin));
   margin: var(--shell-margin);
   min-width: 340px;
-  border-radius: var(--radius-shell);
-  background: var(--shell-tint);
-  border: 1px solid var(--shell-edge);
-  box-shadow: var(--shadow-shell);
+}
+
+/* Capsule: the panel material at toolbar scale. The glass is drawn on a
+   ::before layer, not on the capsule itself: an element with a backdrop
+   filter traps its descendants' own backdrop, which would leave menus that
+   open from a capsule unfrosted and stacked under the panels. */
+.capsule {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  border-radius: 999px;
+  box-shadow: var(--shadow-capsule);
+}
+.capsule::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--material-2);
+  -webkit-backdrop-filter: var(--blur-2);
+  backdrop-filter: var(--blur-2);
+  pointer-events: none;
+}
+.capsule::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: var(--glass-rim);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
 }
 
 .toolbar {
+  position: relative;
+  z-index: 40; /* menus opened from the toolbar sit above the panels */
   height: var(--toolbar-height);
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: 0 var(--space-3) 0 var(--space-4);
+  padding: 0 var(--space-4) 0 0;
+}
+.toolbar-left.capsule {
+  height: 38px;
+  padding: 0 10px 0 14px;
+}
+.toolbar-tools.capsule {
+  height: 38px;
+  padding: 0 4px;
+  gap: 2px;
 }
 .toolbar-left,
 .toolbar-right {
@@ -278,9 +305,6 @@ p {
 .toolbar-group {
   display: flex;
   gap: 2px;
-  padding: 0 2px 0 var(--space-2);
-  margin-left: var(--space-1);
-  border-left: 1px solid var(--border-strong);
 }
 .demo-badge {
   height: 20px;
@@ -349,6 +373,11 @@ p {
   border-radius: 0 999px 999px 0;
   border-left: 1px solid rgba(255, 255, 255, 0.2);
 }
+.run-control-active {
+  height: 38px;
+  padding: 0 4px 0 14px;
+  gap: 10px;
+}
 .run-status {
   display: inline-flex;
   align-items: center;
@@ -375,10 +404,14 @@ p {
   flex: none;
   width: var(--rail-width);
   display: flex;
+  justify-content: flex-start; /* lines up with the toolbar capsule above */
+}
+.rail-capsule {
+  align-self: flex-start;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding-top: 2px;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 18px;
 }
 .rail-btn {
   position: relative;
@@ -402,9 +435,9 @@ p {
   color: #c3d0f0;
 }
 .rail-sep {
-  width: 16px;
+  width: 18px;
   height: 1px;
-  margin: 2px 0;
+  margin: 2px auto;
   background: var(--border-strong);
 }
 .rail-dot {
@@ -433,7 +466,7 @@ p {
   flex: none;
   width: var(--w);
   overflow: hidden;
-  background: var(--glass-sheen), var(--surface-2);
+  background: var(--material-2);
   -webkit-backdrop-filter: var(--blur-2);
   backdrop-filter: var(--blur-2);
   border-radius: var(--radius-lg);
@@ -481,7 +514,7 @@ p {
   top: 0;
   bottom: var(--space-5);
   z-index: 30;
-  background: var(--surface-3);
+  background: var(--material-3);
   -webkit-backdrop-filter: var(--blur-3);
   backdrop-filter: var(--blur-3);
   border-color: var(--border-float);
@@ -535,7 +568,7 @@ p {
 }
 .editor-pane {
   position: relative;
-  background: var(--glass-sheen), var(--surface-1);
+  background: var(--material-1);
   -webkit-backdrop-filter: var(--blur-1);
   backdrop-filter: var(--blur-1);
   border-radius: var(--radius-lg);
@@ -548,7 +581,7 @@ p {
   height: var(--h);
   max-height: calc(100% - 200px); /* the editor always keeps room on short screens */
   margin-top: var(--gap-panel);
-  background: var(--glass-sheen), var(--surface-2);
+  background: var(--material-2);
   -webkit-backdrop-filter: var(--blur-2);
   backdrop-filter: var(--blur-2);
   border-radius: var(--radius-lg);
@@ -1060,7 +1093,7 @@ body.is-resizing .resizer:active::after {
   align-items: center;
   gap: 2px;
   padding: 3px;
-  background: var(--surface-3);
+  background: var(--material-3);
   -webkit-backdrop-filter: var(--blur-3);
   backdrop-filter: var(--blur-3);
   border: 1px solid var(--border-float);
@@ -1109,7 +1142,7 @@ body.is-resizing .resizer:active::after {
   z-index: 50;
   min-width: 240px;
   padding: var(--space-1);
-  background: var(--surface-3);
+  background: var(--material-3);
   -webkit-backdrop-filter: var(--blur-3);
   backdrop-filter: var(--blur-3);
   border: 1px solid var(--border-float);
@@ -1224,15 +1257,22 @@ body.is-resizing .resizer:active::after {
   padding-bottom: 6px;
 }
 .glass-slider {
-  display: flex;
+  display: grid;
+  grid-template-columns: 56px 34px minmax(140px, 1fr) 40px;
   align-items: center;
   gap: var(--space-2);
   padding: 2px 10px 0;
   color: var(--text-muted);
   font-size: var(--fs-xs);
 }
+.glass-slider-label {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.glass-slider-end:last-child {
+  text-align: right;
+}
 .glass-slider input {
-  flex: 1;
   min-width: 0;
   accent-color: var(--accent);
 }
@@ -1428,7 +1468,7 @@ select {
   min-height: 40px;
   padding: 4px 6px 4px 14px;
   border-radius: var(--radius-float);
-  background: var(--surface-3);
+  background: var(--material-3);
   -webkit-backdrop-filter: var(--blur-3);
   backdrop-filter: var(--blur-3);
   border: 1px solid var(--border-float);
