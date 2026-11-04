@@ -414,8 +414,8 @@ p {
   color: var(--text-primary);
 }
 .rail-btn[aria-pressed='true'] {
-  background: rgba(128, 155, 220, 0.14);
-  color: #c3d0f0;
+  background: var(--accent-tint);
+  color: var(--on-accent-tint);
 }
 .rail-sep {
   width: 18px;
@@ -774,7 +774,7 @@ body.is-resizing .resizer:active::after {
   margin-top: 1px;
 }
 .file-row:hover {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--group-fill);
 }
 /* Selection is a quiet neutral lift, not a blue fill */
 .file-row.is-active {
@@ -1485,7 +1485,7 @@ select {
 .expanded-figure + .expanded-figure {
   margin-top: 12px;
   padding-top: 16px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: var(--divider);
 }
 .expanded-figure-title {
   font-size: var(--fs-sm);
@@ -1633,12 +1633,12 @@ select {
   padding: 0;
   list-style: none;
   border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.045);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: var(--group-fill);
+  box-shadow: var(--group-edge);
   overflow: hidden;
 }
 .group-card > * + * {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: var(--divider);
 }
 .context-list li {
   display: grid;
@@ -1698,8 +1698,8 @@ select {
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  color: #c3d0f0;
-  background: rgba(128, 155, 220, 0.14);
+  color: var(--on-accent-tint);
+  background: var(--accent-tint);
 }
 .starter-text {
   min-width: 0;
@@ -1798,8 +1798,8 @@ select {
   margin: 0;
   padding: 12px 14px;
   border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.045);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: var(--group-fill);
+  box-shadow: var(--group-edge);
 }
 .analysis-checks {
   list-style: none;
@@ -1818,15 +1818,6 @@ select {
   margin-top: 3px;
   color: var(--success);
 }
-.analysis-metrics {
-  padding: 6px 14px 4px;
-}
-.analysis-metrics .metrics-table {
-  width: 100%;
-}
-.analysis-metrics .metrics-table tbody tr:last-child > * {
-  border-bottom: 0;
-}
 /* Metrics live in Results; the summary links there instead of repeating them */
 .analysis-results-link {
   display: grid;
@@ -1837,8 +1828,8 @@ select {
   padding: 10px 14px;
   border: 0;
   border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.045);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: var(--group-fill);
+  box-shadow: var(--group-edge);
   color: var(--text-secondary);
   text-align: left;
   transition: background-color var(--t-hover) var(--ease);
@@ -1972,7 +1963,7 @@ select {
   padding: 8px 12px;
   border-radius: 14px 14px 4px 14px;
   background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px var(--hairline);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -2000,13 +1991,6 @@ select {
 .msg-assistant {
   gap: 10px;
   padding: 0 2px;
-}
-.msg-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-sm);
-  line-height: var(--lh-sm);
 }
 /* Working: one live line. The label fades in when the step changes. */
 .working-line {
@@ -2155,8 +2139,8 @@ button.context-chip-link:hover {
    the link to the editor. */
 .proposal-card {
   border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.045);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  background: var(--group-fill);
+  box-shadow: inset 0 0 0 1px var(--hairline), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   overflow: hidden;
   transition: box-shadow var(--t-select) var(--ease);
 }
@@ -2175,7 +2159,7 @@ button.context-chip-link:hover {
   color: var(--text-secondary);
   font-size: var(--fs-md);
   text-align: left;
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 -1px 0 var(--hairline);
 }
 button.proposal-head {
   cursor: pointer;
@@ -2207,9 +2191,6 @@ button.proposal-head:focus-visible {
   font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
   color: var(--text-muted);
-}
-.proposal-status-tag.tag-accepted {
-  color: var(--success);
 }
 .proposal-go {
   display: inline-flex;
@@ -2253,7 +2234,7 @@ button.proposal-head:focus-visible {
   flex-wrap: wrap;
   gap: 6px 8px;
   padding: 8px 12px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: var(--divider);
   font-size: var(--fs-md);
   line-height: 18px;
   animation: fade-in var(--t-menu) var(--ease);
@@ -2807,7 +2788,7 @@ button.proposal-head:focus-visible {
   overflow: auto;
   margin-top: 28px;
   padding: var(--space-1) var(--space-1) 2px;
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--group-fill);
   border-radius: var(--radius-card);
 }
 

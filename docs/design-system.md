@@ -2,20 +2,18 @@
 
 All values live in `src/styles/tokens.css`. Components use the tokens, not raw values.
 
-## What changed in the refinement, and why
+## What changed, and why
 
-| Problem in the dusk-glass version | Change |
-| --- | --- |
-| Blue on many ordinary controls, glowing gradient Run button | Blue is kept for the primary action, focus, selection and the active item. Run is a flat fill with no glow. |
-| Wallpaper competing with the interface | (Superseded) The wallpaper is now shown untouched; the glass adapts to it instead. |
-| Separate panels with no clear order | Four floating glass panels with one hierarchy: the editor is the most solid, files, results and assistant are lighter. |
-| Sparkle icons used as decoration | Replaced with icons that name the action: file diff for review, message-plus for "Ask AI", wrench for fixes. |
-| Mixed icon sizes (11–18 px) and stroke weights | 16 px in buttons and rows, 18 px in the toolbar, 14 px beside 12 px metadata. One stroke weight (1.75) set in CSS for every Lucide icon. |
-| Accept and Reject both in the editor and in the assistant | They live only in the review bar above the code. The assistant card explains the change and shows "Review in editor" or "Reviewing in the editor". |
-| Letter "T" in a glass square | A geometric mark: a T with a second, half-tone stem. One colour, readable at 16 px. |
-| Pill tabs, glow shadows, tinted chat bubbles | Underlined tabs, quiet neutral fills, one shadow scale. |
+| Phase | Problem | Change |
+| --- | --- | --- |
+| 1 · Foundation | Muddy, soft glass with no hierarchy; the wallpaper was filtered | One smoked-glass window that does all the frosting; lighter tool panes and charcoal content panes inside it; crisp hairline edges; the wallpaper is never altered and the glass adapts to its brightness |
+| 1 · Foundation | Black editor between two glass panels | Editor and results are charcoal glass with a light frost of their own, one step denser than the tool panes |
+| 2 · AI interaction | Cards inside cards, a growing checklist, duplicated review buttons and metrics | Replies on the pane; one live status line; the change block links to the editor; Accept and Reject only above the code; metrics only in Results; change navigation and review shortcuts |
+| 3 · Results | IDE-style output band, loud errors, metrics without meaning, no path back to code | Quiet run line linking to the file; only the final traceback line in red; better values marked by weight; R² in the runs list; "Show code" for each chart |
+| 4 · Consistency | Stray type sizes, uppercase badge, faded disabled text, measured contrast below 4.5:1 | One type scale; sentence case; colour-based disabled states; tool panes carry a little charcoal so text greys reach 4.5:1 at Balanced and Solid; menus fade out |
+| 5 · Validation | Leftover CSS and tokens from earlier passes | Dead rules and 15 unused tokens removed; repeated colours named as shared tokens (pixel-identical before and after); every state rendered and checked |
 
-Kept: the dark workspace, the layout and panel behaviour, rounded geometry, the wallpaper (default dusk, plain, or the person's own image), and every workflow.
+Kept throughout: the layout and panel behaviour, the person's wallpaper and its settings, and every workflow.
 
 ## Structure and materials
 
@@ -114,6 +112,18 @@ One glass surface with one header row: Output, Variables, Charts and Runs as pil
 
 - A small frosted bar under a selection: Ask AI (with its shortcut, Ctrl/⌘ L), Explain, Fix. Three actions, no more.
 - It disappears when the selection collapses (Esc or a click), the file changes, the editor loses focus, or the code changes under it.
+
+## Shared tokens for grouped content
+
+Grouped content inside a pane (the assistant's context and suggestions, a proposed change, run-summary groups, the results link) uses one recipe:
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--group-fill` | white 4.5% | the group's surface |
+| `--group-edge` | 1px white 5% inside, 1px `--hairline` top | its edge |
+| `--hairline` | white 6% | every thin separator |
+| `--divider` | 1px `--hairline` top | between rows inside a group |
+| `--accent-tint` / `--on-accent-tint` | blue 14% / #C3D0F0 | the selected rail item, suggestion icon tiles |
 
 ## Colour
 

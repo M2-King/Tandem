@@ -17,17 +17,10 @@
    never fade. Blue is reserved for the primary action, focus, selection and
    the active item. */
 :root {
-  /* ---- Glass controls ---- */
-  --glass-tint-editor: 20, 24, 34;
-  --glass-tint: 24, 28, 39;
+  /* ---- Glass controls (lib/glass.js writes the live values) ---- */
   --glass-tint-float: 29, 32, 43;
-  --glass-opacity-editor: 0.8;
-  --glass-opacity: 0.61;
   --glass-opacity-float: 0.9;
-  --glass-blur: 29px;
   --glass-transmission: 0.88; /* light passing through the window; lower over bright wallpapers */
-  --glass-saturate: 135%; /* colour from behind glows through, like real frosted glass */
-  --glass-border-opacity: 0.08;
   --glass-highlight-strength: 0.07;
 
   /* ---- Window ---- */
@@ -64,36 +57,20 @@
   --rail-width: 56px;
   --bg-app: #11141a; /* only seen before the wallpaper loads */
 
-  /* ---- Materials (derived) ---- */
-  --surface-1: rgba(var(--glass-tint-editor), var(--glass-opacity-editor));
-  --surface-2: rgba(var(--glass-tint), var(--glass-opacity));
+  /* ---- Floating material (menus, popovers, dialogs, toasts) ---- */
   --surface-3: rgba(var(--glass-tint-float), var(--glass-opacity-float));
   --surface-1-solid: #11141c;
-  --surface-2-solid: #1d212b;
   --surface-3-solid: #242834;
-  --blur-1: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-transmission));
-  --blur-2: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-transmission));
   --blur-3: blur(28px) saturate(160%) brightness(0.8);
-  --glass-edge: rgba(255, 255, 255, var(--glass-border-opacity));
   --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, var(--glass-highlight-strength));
-  /* Edge rim: brighter along the top, as if lit from above */
-  --glass-rim: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.2),
-    rgba(255, 255, 255, 0.06) 22%,
-    rgba(255, 255, 255, 0.035) 70%,
-    rgba(255, 255, 255, 0.07)
-  );
-  /* A soft reflection, strongest at the top-left where light enters */
-  --glass-sheen: radial-gradient(140% 90% at 0% 0%, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0) 55%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 140px);
-  /* Fine grain: real frosted glass is never perfectly smooth, and grain stops
-     blurred gradients from banding. White noise at a few percent alpha. */
-  --glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  --material-1: var(--glass-grain), linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 120px),
-    var(--surface-1);
-  --material-2: var(--glass-grain), var(--glass-sheen), var(--surface-2);
   --material-3: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 90px), var(--surface-3);
+
+  /* Grouped content inside a pane (context, suggestions, a proposed change,
+     run summary groups): one fill, one hairline edge with a lit top */
+  --hairline: rgba(255, 255, 255, 0.06);
+  --group-fill: rgba(255, 255, 255, 0.045);
+  --group-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 var(--hairline);
+  --divider: inset 0 1px 0 var(--hairline); /* between rows inside a group */
 
   /* Fills on top of a surface */
   --bg-subtle: rgba(255, 255, 255, 0.03);
@@ -101,8 +78,6 @@
   --bg-hover: rgba(255, 255, 255, 0.065);
   --bg-pressed: rgba(255, 255, 255, 0.1);
   --bg-selected: rgba(255, 255, 255, 0.085);
-  --card: rgba(255, 255, 255, 0.04);
-  --card-edge: rgba(255, 255, 255, 0.07);
 
   /* Text */
   --text-primary: #edf0f4;
@@ -120,16 +95,16 @@
   --accent-fill-hover: #5f7bc6;
   --accent-fill-pressed: #4e6ab3;
   --accent-soft: rgba(128, 155, 220, 0.13);
+  --accent-tint: rgba(128, 155, 220, 0.14); /* selected rail item, suggestion icon tiles */
+  --on-accent-tint: #c3d0f0;
   --on-accent: #ffffff;
   --exec-line: rgba(128, 155, 220, 0.09);
   --selection: rgba(128, 155, 220, 0.3);
 
   /* Status, desaturated to sit with the neutrals */
   --success: #6fbf8e;
-  --success-soft: rgba(111, 191, 142, 0.11);
   --error: #e5776f;
   --error-fill: #b9524b;
-  --error-soft: rgba(229, 119, 111, 0.11);
   --warning: #d9b25c;
   --warning-soft: rgba(217, 178, 92, 0.1);
 
@@ -171,7 +146,6 @@
   --control-sm: 26px;
   --control: 28px;
   --control-lg: 30px;
-  --row: 32px;
   --toolbar-height: 52px;
   --header-height: 44px;
   --icon-sm: 14px;
@@ -190,8 +164,6 @@
 
   /* Depth */
   /* Contact shadow + soft ambient lift: the slab rests just above the wallpaper */
-  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.16), 0 22px 48px -18px rgba(0, 0, 0, 0.55);
-  --shadow-capsule: 0 1px 2px rgba(0, 0, 0, 0.16), 0 10px 24px -10px rgba(0, 0, 0, 0.5);
   --shadow-menu: var(--glass-highlight), 0 2px 8px rgba(0, 0, 0, 0.22), 0 18px 44px rgba(0, 0, 0, 0.45);
   --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.22), 0 24px 64px rgba(0, 0, 0, 0.45);
   --focus-ring: 0 0 0 2px rgba(11, 12, 16, 0.9), 0 0 0 4px rgba(128, 155, 220, 0.9);
@@ -209,8 +181,9 @@
 /* Without backdrop blur, glass would show a sharp wallpaper: go more solid. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root {
-    --glass-opacity-editor: 0.96 !important;
-    --glass-opacity: 0.92 !important;
+    --window-opacity: 0.94 !important;
+    --content-opacity: 0.85 !important;
+    --pane-density: 0.6 !important;
     --glass-opacity-float: 0.96 !important;
   }
 }
