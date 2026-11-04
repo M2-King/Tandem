@@ -13,7 +13,7 @@ export default function RunControl({ session, runTarget, onRun, onStep, onDebug,
           ? `Stepping through ${session.path}`
           : `Debugging ${session.path}`;
     return (
-      <div className="run-control run-control-active capsule">
+      <div className="run-control run-control-active">
         <span className="run-status" role="status">
           {session.mode === 'run' && <Loader2 size={16} className="spin" aria-hidden="true" />}
           {session.mode === 'step' && <Footprints size={16} aria-hidden="true" />}

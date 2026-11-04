@@ -204,53 +204,32 @@ p {
   border-radius: var(--radius-sm);
 }
 
-/* ---------- app shell ----------
-   The panels float directly over the wallpaper. Nothing sits on the bare
-   wallpaper: the toolbar and rail are small glass capsules of the same
-   material, so the interface reads on any image. */
+/* ---------- window ----------
+   One smoked-glass window holds everything. Its glass is a ::before layer
+   behind the content (an element with a backdrop filter would trap the
+   backdrop of menus inside it). Panes inside the window have no blur of
+   their own: they are lighter or darker sheets on top of this glass. */
 .app {
   position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   height: calc(100vh - 2 * var(--shell-margin));
   height: calc(100dvh - 2 * var(--shell-margin));
   margin: var(--shell-margin);
   min-width: 340px;
+  border-radius: var(--radius-shell);
 }
-
-/* Capsule: the panel material at toolbar scale. The glass is drawn on a
-   ::before layer, not on the capsule itself: an element with a backdrop
-   filter traps its descendants' own backdrop, which would leave menus that
-   open from a capsule unfrosted and stacked under the panels. */
-.capsule {
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  align-items: center;
-  border-radius: 999px;
-  box-shadow: var(--shadow-capsule);
-}
-.capsule::before {
+.app::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: var(--material-2);
-  -webkit-backdrop-filter: var(--blur-2);
-  backdrop-filter: var(--blur-2);
-  pointer-events: none;
-}
-.capsule::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  padding: 1px;
-  border-radius: inherit;
-  background: var(--glass-rim);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  background: rgba(var(--window-tint), var(--window-opacity));
+  -webkit-backdrop-filter: var(--window-filter);
+  backdrop-filter: var(--window-filter);
+  box-shadow: var(--window-edge), var(--window-shadow);
   pointer-events: none;
 }
 
@@ -263,16 +242,18 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: 0 var(--space-4) 0 0;
+  padding: 0 var(--space-3) 0 20px;
+  /* Toolbar text sits on the window glass alone, so its greys are a step brighter */
+  --text-secondary: #b3b9c4;
+  --text-muted: #a0a7b4;
 }
-.toolbar-left.capsule {
-  height: 38px;
-  padding: 0 10px 0 14px;
-}
-.toolbar-tools.capsule {
-  height: 38px;
-  padding: 0 4px;
+.toolbar-tools {
+  display: flex;
+  align-items: center;
   gap: 2px;
+  margin-left: var(--space-1);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--border-strong);
 }
 .toolbar-left,
 .toolbar-right {
@@ -374,8 +355,6 @@ p {
   border-left: 1px solid rgba(255, 255, 255, 0.2);
 }
 .run-control-active {
-  height: 38px;
-  padding: 0 4px 0 14px;
   gap: 10px;
 }
 .run-status {
@@ -395,7 +374,7 @@ p {
   flex: 1;
   min-height: 0;
   display: flex;
-  padding: 0 var(--space-4) var(--space-5) 0;
+  padding: 0 var(--window-pad) var(--window-pad) 0;
   overflow-x: clip; /* closed drawers slide out sideways; don't let the page scroll */
 }
 
@@ -404,14 +383,14 @@ p {
   flex: none;
   width: var(--rail-width);
   display: flex;
-  justify-content: flex-start; /* lines up with the toolbar capsule above */
+  justify-content: center;
 }
 .rail-capsule {
-  align-self: flex-start;
+  display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 4px;
-  padding: 5px;
-  border-radius: 18px;
+  padding-top: 4px;
 }
 .rail-btn {
   position: relative;
@@ -460,21 +439,19 @@ p {
 /* Collapsible side panels animate their width; content keeps its width so
    it doesn't reflow while animating. */
 /* Level 2 material: supporting panels */
+/* Tool panes: lighter raised glass. The hairline edge is drawn on ::after so
+   content scrolling underneath never covers it. */
 .sidebar,
 .assistant {
   position: relative;
   flex: none;
   width: var(--w);
   overflow: hidden;
-  background: var(--material-2);
-  -webkit-backdrop-filter: var(--blur-2);
-  backdrop-filter: var(--blur-2);
+  background: var(--pane-fill);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--pane-shadow);
   transition: width var(--t-panel) var(--ease-out), visibility 0s;
 }
-/* Every glass slab gets the same 1px rim: brighter along the top edge.
-   Drawn as a masked gradient so it follows the rounded corners. */
 .sidebar::after,
 .assistant::after,
 .editor-pane::after,
@@ -483,13 +460,13 @@ p {
   position: absolute;
   inset: 0;
   z-index: 6;
-  padding: 1px;
   border-radius: inherit;
-  background: var(--glass-rim);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  box-shadow: var(--pane-edge);
   pointer-events: none;
+}
+.editor-pane::after,
+.results::after {
+  box-shadow: var(--content-edge);
 }
 .sidebar.is-closed,
 .assistant.is-closed {
@@ -512,7 +489,7 @@ p {
 .assistant.is-overlay {
   position: absolute;
   top: 0;
-  bottom: var(--space-5);
+  bottom: var(--window-pad);
   z-index: 30;
   background: var(--material-3);
   -webkit-backdrop-filter: var(--blur-3);
@@ -526,7 +503,7 @@ p {
   width: min(var(--w), calc(100vw - 80px));
 }
 .assistant.is-overlay {
-  right: var(--space-4);
+  right: var(--window-pad);
   width: min(var(--w), calc(100vw - 44px));
 }
 .sidebar.is-overlay .sidebar-inner,
@@ -546,7 +523,7 @@ p {
 }
 .scrim {
   position: absolute;
-  inset: 0 var(--space-4) var(--space-5) var(--rail-width);
+  inset: 0 var(--window-pad) var(--window-pad) var(--rail-width);
   z-index: 25;
   border-radius: var(--radius-lg);
   background: rgba(5, 6, 9, 0.4);
@@ -566,13 +543,12 @@ p {
   display: flex;
   flex-direction: column;
 }
+/* Content panes: darker smoked glass for the document and its results */
 .editor-pane {
   position: relative;
-  background: var(--material-1);
-  -webkit-backdrop-filter: var(--blur-1);
-  backdrop-filter: var(--blur-1);
+  background: var(--content-fill);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--pane-shadow);
   overflow: hidden;
 }
 .results {
@@ -581,11 +557,9 @@ p {
   height: var(--h);
   max-height: calc(100% - 200px); /* the editor always keeps room on short screens */
   margin-top: var(--gap-panel);
-  background: var(--material-2);
-  -webkit-backdrop-filter: var(--blur-2);
-  backdrop-filter: var(--blur-2);
+  background: var(--content-fill);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--pane-shadow);
   transition: height var(--t-panel) var(--ease-out), visibility 0s;
 }
 .results-inner {
@@ -836,16 +810,29 @@ body.is-resizing .resizer:active::after {
 /* One continuous strip along the top of the editor. Tabs have no borders
    or separators; the open file is a slightly lighter surface. */
 .tab-bar {
-  height: 42px;
+  height: var(--header-height);
   flex: none;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 var(--space-2);
+  gap: var(--space-3);
+  padding: 0 var(--space-4) 0 var(--space-2);
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.015);
+}
+.tab-list {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
   overflow-x: auto;
   scrollbar-width: none;
+}
+.editor-meta {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
 }
 .tab {
   position: relative;
@@ -1506,96 +1493,138 @@ select {
   gap: var(--space-3);
   padding: var(--space-1) var(--space-3) var(--space-4);
 }
+/* ---- Assistant start screen ---- */
 .assistant-empty {
-  padding: var(--space-2) 0 var(--space-4);
+  padding: var(--space-3) 0 var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: 22px;
 }
-/* What the assistant is looking at: a quiet key/value list, not a card */
-.assistant-context {
-  margin: 0;
+.assistant-intro {
   display: grid;
-  gap: 6px;
-  padding: 0 var(--space-1);
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 0 2px;
+}
+.assistant-intro-mark {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--text-primary);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 2px 6px rgba(0, 0, 0, 0.25);
+}
+.assistant-empty-title {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.01em;
+}
+.assistant-empty-text {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: var(--fs-md);
+  line-height: 19px;
+}
+.assistant-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* Small caps-free section label: weight and colour carry it */
+.section-label {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--text-muted);
   font-size: var(--fs-sm);
   line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
 }
-.assistant-context > div {
+/* One grouped surface with hairline separators between rows (the same
+   surface as the run summary groups) */
+.group-card {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.group-card > * + * {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.context-list li {
   display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: var(--space-2);
+  grid-template-columns: 16px minmax(0, auto) 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: var(--fs-md);
 }
-.assistant-context dt {
+.context-list svg {
   color: var(--text-muted);
 }
-.assistant-context dd {
-  margin: 0;
-  min-width: 0;
+.context-name {
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.context-meta {
+  justify-self: end;
   color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .mono {
   font-family: var(--font-code);
-  font-size: 11.5px;
-}
-.starters {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.assistant-intro {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0 var(--space-1);
-}
-/* Each Tandem reply is one grouped glass card */
-.msg-assistant {
-  background: var(--card);
-  border: 1px solid var(--card-edge);
-  border-radius: var(--radius-card);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-.starter-title {
-  padding: 0 var(--space-1) 6px;
-  color: var(--text-muted);
-  font-size: var(--fs-xs);
-  line-height: var(--lh-xs);
-  font-weight: var(--fw-semibold);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 12px;
 }
 .starter {
   width: 100%;
   display: grid;
-  grid-template-columns: 16px 1fr 16px;
-  align-items: start;
-  gap: 10px;
-  padding: 9px 10px;
+  grid-template-columns: 28px 1fr 16px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: 0;
   background: transparent;
   text-align: left;
   transition: background-color var(--t-hover) var(--ease);
 }
 .starter:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.04);
 }
 .starter:focus-visible {
-  box-shadow: var(--focus-ring);
+  position: relative;
+  z-index: 1;
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .starter-icon {
-  margin-top: 1px;
-  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #c3d0f0;
+  background: rgba(128, 155, 220, 0.14);
 }
 .starter-text {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 .starter-name {
   font-size: var(--fs-md);
@@ -1612,7 +1641,6 @@ select {
   overflow: hidden;
 }
 .starter-chevron {
-  margin-top: 1px;
   color: var(--text-muted);
   transition: transform var(--t-hover) var(--ease), color var(--t-hover) var(--ease);
 }
@@ -1620,19 +1648,45 @@ select {
   color: var(--text-secondary);
   transform: translateX(2px);
 }
-.assistant-empty-icon {
-  color: var(--text-muted);
-  margin-bottom: var(--space-1);
-}
-.assistant-empty-title {
-  font-size: var(--fs-xl);
-  line-height: var(--lh-xl);
-  font-weight: var(--fw-semibold);
-}
-.assistant-empty-text {
+.flow-steps {
+  margin: 0;
+  padding: 0 4px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   color: var(--text-secondary);
   font-size: var(--fs-md);
   line-height: 19px;
+}
+.flow-steps li {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.flow-steps strong {
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+}
+.flow-num {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+/* Each Tandem reply is one grouped glass card */
+.msg-assistant {
+  background: rgba(255, 255, 255, 0.045);
+  border-radius: var(--radius-card);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 /* Finished-run analysis: a heading, then sibling groups on quiet inset
@@ -1667,8 +1721,8 @@ select {
   margin: 0;
   padding: 12px 14px;
   border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .analysis-checks {
   list-style: none;

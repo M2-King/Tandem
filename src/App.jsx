@@ -24,6 +24,15 @@ import { DEBUG_FILE, PROJECT_NAME } from './data/sampleProject.js';
 import { diffStats } from './lib/diff.js';
 import { buildRunAnalysis, proposalForRun } from './services/analysisService.js';
 
+const DATA_FILE = 'data/housing.csv';
+
+// Rows and columns of the sample CSV, read from the file as it is now.
+function datasetStats(text) {
+  if (!text) return null;
+  const lines = text.trim().split('\n').filter(Boolean);
+  return { path: DATA_FILE, rows: Math.max(0, lines.length - 1), cols: lines[0] ? lines[0].split(',').length : 0 };
+}
+
 const MIN_EDITOR_WIDTH = 480;
 
 const lineLabel = (start, end) => (start === end ? `Line ${start}` : `Lines ${start}–${end}`);
@@ -559,7 +568,13 @@ export default function App() {
             composerRef={composerRef}
             onClose={closeAssistant}
             composerSuggestions={composerSuggestions}
-            project={{ name: PROJECT_NAME, activePath: ws.activePath, lastRun: exec.runs.at(-1) || null }}
+            project={{
+              name: PROJECT_NAME,
+              activePath: ws.activePath,
+              activeLines: ws.activePath ? (ws.files[ws.activePath] || '').split('\n').length : 0,
+              dataset: datasetStats(ws.files[DATA_FILE]),
+              lastRun: exec.runs.at(-1) || null,
+            }}
           />
         </aside>
 

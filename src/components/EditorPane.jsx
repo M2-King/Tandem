@@ -8,9 +8,17 @@ import { SAMPLE_FILES } from '../data/sampleProject.js';
 const iconFor = (path) => (path.endsWith('.csv') ? FileSpreadsheet : FileCode2);
 const fileName = (path) => path.split('/').pop();
 
+// "Python · 64 lines" / "CSV · 40 rows", from the file as it is now.
+function fileMeta(path, text = '') {
+  const lines = text.split('\n').length;
+  if (path.endsWith('.csv')) return `CSV · ${Math.max(0, text.trim().split('\n').length - 1)} rows`;
+  return `${path.endsWith('.py') ? 'Python' : 'Text'} · ${lines} lines`;
+}
+
 function Tabs({ openTabs, activePath, onSelect, onClose, reviewPath, files }) {
   return (
-    <div className="tab-bar" role="tablist" aria-label="Open files">
+    <div className="tab-bar">
+      <div className="tab-list" role="tablist" aria-label="Open files">
       {openTabs.map((path) => {
         const Icon = iconFor(path);
         const active = path === activePath;
@@ -50,6 +58,8 @@ function Tabs({ openTabs, activePath, onSelect, onClose, reviewPath, files }) {
           </div>
         );
       })}
+      </div>
+      {activePath && <span className="editor-meta">{fileMeta(activePath, files[activePath])}</span>}
     </div>
   );
 }

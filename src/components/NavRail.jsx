@@ -24,7 +24,7 @@ export default function NavRail({ filesOpen, onToggleFiles, resultsOpen, results
   const showing = (tab) => resultsOpen && resultsTab === tab;
   return (
     <nav className="rail" aria-label="Views">
-      <div className="rail-capsule capsule">
+      <div className="rail-capsule">
         <RailButton
           icon={Files}
           label={filesOpen ? 'Hide files' : 'Show files'}

@@ -1,15 +1,16 @@
 // The glass material. Two settings a person can change, plus one input the
 // app measures:
 //
-//   level      Transparency, 0 (clearest) to 100 (most solid). Presets are
-//              named points on this scale, so the slider and presets agree.
-//   frost      How strongly the glass diffuses what is behind it, 0 to 100.
+//   level      Opacity, 0 (clearest) to 100 (most solid). Presets are named
+//              points on this scale, so the slider and presets agree.
+//   frost      How strongly the window glass diffuses what is behind it.
 //   luminance  Average brightness of the current wallpaper, 0 to 1. The
 //              wallpaper itself is never filtered; instead, over a bright
-//              image the glass becomes a little denser and passes less light,
-//              so text keeps its contrast. Over a dark image nothing changes.
+//              image the window glass passes less light and gets denser, so
+//              text keeps its contrast. Over a dark image nothing changes.
 //
-// Everything is written as CSS variables on :root and used by every surface.
+// Only the window glass blurs. Panes inside it are plain translucent sheets,
+// so the result stays crisp instead of blurring blur.
 
 export const GLASS_PRESETS = [
   { id: 'clear', label: 'Clear', level: 15 },
@@ -32,13 +33,13 @@ export function glassVariables(level, frost = DEFAULT_FROST, luminance = 0.3) {
   // Bright wallpapers add density, less so as the glass is already solid.
   const extra = bright * (1 - t);
   return {
-    // The editor always stays denser than the panels around it.
-    '--glass-opacity-editor': round(Math.min(0.98, lerp(0.66, 0.94, t) + 0.24 * extra)),
-    '--glass-opacity': round(Math.min(0.95, lerp(0.38, 0.84, t) + 0.34 * extra)),
+    '--window-opacity': round(Math.min(0.94, lerp(0.18, 0.8, t) + 0.44 * extra)),
+    '--window-blur': `${round(lerp(8, 36, f), 1)}px`,
+    // Light passing through the window glass, not a filter on the wallpaper.
+    '--glass-transmission': round(lerp(0.88, 0.42, bright)),
+    // The document panes darken further, so code and charts read first.
+    '--content-opacity': round(Math.min(0.92, lerp(0.34, 0.82, t) + 0.16 * extra)),
     '--glass-opacity-float': round(Math.min(0.97, lerp(0.84, 0.96, t) + 0.1 * extra)),
-    '--glass-blur': `${round(lerp(14, 44, f), 1)}px`,
-    // Light passing through the glass, not a filter on the wallpaper.
-    '--glass-transmission': round(lerp(1, 0.55, bright)),
     // The faintest text steps up toward the secondary grey over bright images.
     '--text-muted': mix([140, 147, 161], [160, 167, 180], bright),
   };

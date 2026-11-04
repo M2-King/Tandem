@@ -120,7 +120,7 @@ export default function Toolbar({
   const custom = wallpaper.custom;
   return (
     <header className="toolbar">
-      <div className="toolbar-left capsule">
+      <div className="toolbar-left">
         <span className="app-mark" aria-hidden="true">
           <TandemMark size={18} />
         </span>
@@ -135,7 +135,7 @@ export default function Toolbar({
 
       <div className="toolbar-right">
         <RunControl {...run} />
-        <div className="toolbar-tools capsule">
+        <div className="toolbar-tools">
           <div className="toolbar-group" role="group" aria-label="Panels">
             <IconButton
               icon={PanelLeft}

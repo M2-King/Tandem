@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, ChevronRight, MessageSquareText, Wrench, Lightbulb } from 'lucide-react';
+import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, ChevronRight, MessageSquareText, Wrench, Lightbulb, FileCode2, Table2, History } from 'lucide-react';
 import { MetricsList } from './MetricsTable.jsx';
 import TandemMark from './TandemMark.jsx';
 import Markdown from './Markdown.jsx';
@@ -177,57 +177,108 @@ const STARTERS = [
   { icon: Wrench, title: 'Fix summary.py', detail: 'It stops with an error when it runs', prompt: DEMO_PROMPTS.fixSummary },
 ];
 
+const runSummary = (run) => {
+  if (!run) return 'None yet';
+  const status = run.status === 'success' ? 'completed' : run.status === 'error' ? 'failed' : 'stopped';
+  return `#${run.number} · ${run.path} · ${status}`;
+};
+
+// The assistant before the first message: what it can see, what it can do,
+// and how a change flows. Every value comes from the open project.
 function EmptyConversation({ onSuggestion, project }) {
   const lastRun = project?.lastRun;
+  const dataset = project?.dataset;
   return (
     <div className="assistant-empty">
-      <div className="assistant-intro">
-        <p className="assistant-empty-title">What should we change?</p>
-        <p className="assistant-empty-text">
-          Tandem can edit, explain and fix the code in this project. Every change opens in the editor for you to
-          review before it’s applied.
-        </p>
-      </div>
+      <header className="assistant-intro">
+        <span className="assistant-intro-mark" aria-hidden="true">
+          <TandemMark size={18} />
+        </span>
+        <div>
+          <p className="assistant-empty-title">Work on {project?.name ?? 'this project'}</p>
+          <p className="assistant-empty-text">Ask for a change, an explanation or a fix. Nothing is applied until you accept it.</p>
+        </div>
+      </header>
+
       {project && (
-        <dl className="assistant-context" aria-label="Project context">
-          <div>
-            <dt>Project</dt>
-            <dd>{project.name}</dd>
-          </div>
-          <div>
-            <dt>Open</dt>
-            <dd className="mono">{project.activePath}</dd>
-          </div>
-          <div>
-            <dt>Last run</dt>
-            <dd>
-              {lastRun
-                ? `#${lastRun.number} · ${lastRun.path} · ${lastRun.status === 'success' ? 'completed' : lastRun.status === 'error' ? 'failed' : 'stopped'}`
-                : 'None yet'}
-            </dd>
-          </div>
-        </dl>
+        <section className="assistant-section" aria-labelledby="ctx-title">
+          <h3 className="section-label" id="ctx-title">
+            Context
+          </h3>
+          <ul className="group-card context-list">
+            <li>
+              <FileCode2 size={16} aria-hidden="true" />
+              <span className="context-name mono">{project.activePath ?? 'No file open'}</span>
+              <span className="context-meta">{project.activePath ? `${project.activeLines} lines` : ''}</span>
+            </li>
+            {dataset && (
+              <li>
+                <Table2 size={16} aria-hidden="true" />
+                <span className="context-name mono">{dataset.path.split('/').pop()}</span>
+                <span className="context-meta">
+                  {dataset.rows} rows · {dataset.cols} columns
+                </span>
+              </li>
+            )}
+            <li>
+              <History size={16} aria-hidden="true" />
+              <span className="context-name">Last run</span>
+              <span className="context-meta">{runSummary(lastRun)}</span>
+            </li>
+          </ul>
+        </section>
       )}
-      <div className="starters" role="group" aria-labelledby="starter-title">
-        <p className="starter-title" id="starter-title">
+
+      <section className="assistant-section" aria-labelledby="starter-title">
+        <h3 className="section-label" id="starter-title">
           Suggested
-        </p>
-        {STARTERS.map(({ icon: Icon, title, detail, prompt }) => (
-          <button key={prompt} type="button" className="starter" onClick={() => onSuggestion(prompt)} title={prompt}>
-            <Icon size={16} aria-hidden="true" className="starter-icon" />
-            <span className="starter-text">
-              <span className="starter-name">{title}</span>
-              <span className="starter-prompt">{detail}</span>
+        </h3>
+        <div className="group-card starters">
+          {STARTERS.map(({ icon: Icon, title, detail, prompt }) => (
+            <button key={prompt} type="button" className="starter" onClick={() => onSuggestion(prompt)} title={prompt}>
+              <span className="starter-icon" aria-hidden="true">
+                <Icon size={16} />
+              </span>
+              <span className="starter-text">
+                <span className="starter-name">{title}</span>
+                <span className="starter-prompt">{detail}</span>
+              </span>
+              <ChevronRight size={16} aria-hidden="true" className="starter-chevron" />
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="assistant-section" aria-labelledby="flow-title">
+        <h3 className="section-label" id="flow-title">
+          How changes work
+        </h3>
+        <ol className="flow-steps">
+          <li>
+            <span className="flow-num">1</span>
+            <span>
+              <strong>Ask.</strong> Describe what you want.
             </span>
-            <ChevronRight size={16} aria-hidden="true" className="starter-chevron" />
-          </button>
-        ))}
-      </div>
+          </li>
+          <li>
+            <span className="flow-num">2</span>
+            <span>
+              <strong>Review.</strong> The change opens in the editor as a diff.
+            </span>
+          </li>
+          <li>
+            <span className="flow-num">3</span>
+            <span>
+              <strong>Run.</strong> Results and a summary appear here.
+            </span>
+          </li>
+        </ol>
+      </section>
     </div>
   );
 }
 
-const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, onSend, onCancel, suggestions }, ref) {
+const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, onSend, onCancel, suggestions, placeholder }, ref) {
   const [text, setText] = useState('');
   const textareaRef = useRef(null);
 
@@ -278,7 +329,7 @@ const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, 
           className="composer-input"
           rows={1}
           value={text}
-          placeholder="Ask for a change…"
+          placeholder={placeholder}
           aria-label="Message the assistant"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -435,6 +486,7 @@ export default function AssistantPanel({
         onSend={onSend}
         onCancel={onCancel}
         suggestions={composerSuggestions}
+        placeholder={project?.activePath ? `Ask about ${project.activePath.split('/').pop()}…` : 'Ask for a change…'}
       />
     </section>
   );

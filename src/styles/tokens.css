@@ -1,17 +1,21 @@
 /* Design tokens. Components use these variables instead of raw values.
 
-   Near-black glass floating over the person's own wallpaper. The wallpaper is
-   never filtered, tinted or dimmed; all depth comes from the materials:
-   1. Editor: the densest glass, so code reads first.
-   2. Panels (files, results, assistant, rail, toolbar capsules): frosted glass.
-   3. Floating (menus, popovers, dialogs, toasts): denser, stronger frost.
+   Structure, from back to front:
+   0. The person's wallpaper, never altered.
+   1. Window: one smoked-glass sheet that does all the frosting. It darkens
+      what's behind it (transmission) rather than washing it grey, so colour
+      stays clean, and it carries the toolbar, rail and panel gaps.
+   2. Panes, inside the window, with no blur of their own:
+      - Tool panes (files, assistant): lighter, raised glass.
+      - Content panes (editor, results): darker smoked glass, the document.
+   3. Floating (menus, popovers, dialogs, toasts): their own frosted glass.
 
-   Each material is the same recipe: backdrop frost + transmission, a
-   near-black tint, fine grain, a soft top-left reflection, a lit 1px rim and
-   a contact + ambient shadow. lib/glass.js writes the opacity, frost and
-   transmission variables from the person's settings and the wallpaper's
-   brightness. Only backgrounds are translucent; text and icons never fade.
-   Blue is reserved for the primary action, focus, selection and the active item. */
+   Edges are crisp hairlines (a dark outer line and a light inner line, with
+   a brighter top edge), not soft glows. lib/glass.js writes the opacity,
+   frost and transmission variables from the person's settings and the
+   wallpaper's brightness. Only backgrounds are translucent; text and icons
+   never fade. Blue is reserved for the primary action, focus, selection and
+   the active item. */
 :root {
   /* ---- Glass controls ---- */
   --glass-tint-editor: 20, 24, 34;
@@ -21,14 +25,34 @@
   --glass-opacity: 0.61;
   --glass-opacity-float: 0.9;
   --glass-blur: 29px;
-  --glass-transmission: 1; /* lowered by lib/glass.js over bright wallpapers */
+  --glass-transmission: 0.88; /* light passing through the window; lower over bright wallpapers */
   --glass-saturate: 135%; /* colour from behind glows through, like real frosted glass */
   --glass-border-opacity: 0.08;
   --glass-highlight-strength: 0.07;
 
+  /* ---- Window ---- */
+  --window-tint: 13, 15, 21;
+  --window-opacity: 0.49;
+  --window-blur: 22px;
+  --window-saturate: 165%;
+  --window-filter: blur(var(--window-blur)) saturate(var(--window-saturate)) brightness(var(--glass-transmission));
+  --window-edge: 0 0 0 1px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --window-shadow: 0 34px 80px -24px rgba(0, 0, 0, 0.65), 0 10px 28px rgba(0, 0, 0, 0.22);
+
+  /* ---- Panes (inside the window, no blur of their own) ---- */
+  --pane-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.05) 180px);
+  --pane-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.075), inset 0 1px 0 rgba(255, 255, 255, 0.11);
+  --content-opacity: 0.55;
+  --content-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0) 120px),
+    rgba(8, 10, 15, var(--content-opacity));
+  --content-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --pane-shadow: 0 1px 1px rgba(0, 0, 0, 0.22), 0 10px 24px -12px rgba(0, 0, 0, 0.45);
+
   /* ---- Layout ---- */
   --shell-margin: 10px;
-  --rail-width: 62px;
+  --window-pad: 12px;
+  --rail-width: 56px;
   --bg-app: #11141a; /* only seen before the wallpaper loads */
 
   /* ---- Materials (derived) ---- */
@@ -40,8 +64,7 @@
   --surface-3-solid: #242834;
   --blur-1: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-transmission));
   --blur-2: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-transmission));
-  --blur-3: blur(calc(var(--glass-blur) + 10px)) saturate(var(--glass-saturate))
-    brightness(var(--glass-transmission));
+  --blur-3: blur(28px) saturate(160%) brightness(0.8);
   --glass-edge: rgba(255, 255, 255, var(--glass-border-opacity));
   --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, var(--glass-highlight-strength));
   /* Edge rim: brighter along the top, as if lit from above */
@@ -61,7 +84,7 @@
   --material-1: var(--glass-grain), linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 120px),
     var(--surface-1);
   --material-2: var(--glass-grain), var(--glass-sheen), var(--surface-2);
-  --material-3: var(--glass-grain), var(--glass-sheen), var(--surface-3);
+  --material-3: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 90px), var(--surface-3);
 
   /* Fills on top of a surface */
   --bg-subtle: rgba(255, 255, 255, 0.03);
@@ -128,14 +151,14 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
-  --gap-panel: 16px;
+  --gap-panel: 10px;
 
   /* Sizes */
   --control-sm: 26px;
   --control: 28px;
   --control-lg: 30px;
   --row: 32px;
-  --toolbar-height: 56px;
+  --toolbar-height: 52px;
   --header-height: 44px;
   --icon-sm: 14px;
   --icon: 16px;
@@ -147,9 +170,9 @@
   --radius-sm: 6px; /* badges, small icon buttons */
   --radius: 10px; /* controls: buttons, rows, tabs */
   --radius-float: 12px; /* menus, popovers */
-  --radius-lg: 16px; /* main panels */
+  --radius-lg: 14px; /* panes inside the window */
   --radius-card: 12px;
-  --radius-shell: 22px; /* the application window */
+  --radius-shell: 24px; /* the application window */
 
   /* Depth */
   /* Contact shadow + soft ambient lift: the slab rests just above the wallpaper */

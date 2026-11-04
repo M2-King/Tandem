@@ -17,63 +17,49 @@ All values live in `src/styles/tokens.css`. Components use the tokens, not raw v
 
 Kept: the dark workspace, the layout and panel behaviour, rounded geometry, the wallpaper (default dusk, plain, or the person's own image), and every workflow.
 
-## Wallpaper and materials
+## Structure and materials
 
-**The wallpaper is never altered.** It is drawn exactly as chosen: no blur, tint, dimming or desaturation, and no full-window overlay. Everything that makes the interface readable is part of the glass. The default sunset image is only an example; it is painted soft in the SVG file itself, not by the app.
+**The wallpaper is never altered.** It is drawn exactly as chosen. Everything that makes the interface readable is part of the app's own glass. The default sunset is only an example (painted soft in its SVG file, not by the app).
 
-Panels float directly over the wallpaper with no window frame. Nothing sits on the bare wallpaper: the toolbar and the rail are small glass capsules of the panel material, so the chrome reads on any image.
+The interface has three layers, each with one job:
 
-### The material
+| Layer | What it is | How it's made |
+| --- | --- | --- |
+| Window | One smoked-glass sheet holding the toolbar, rail and every pane. The only surface that frosts the wallpaper. | Backdrop blur 22px, saturation 165%, transmission (backdrop brightness) 0.88 over dark images down to 0.42 over bright ones, tint 13,15,21 at 0.49. Radius 24px. A dark 1px outer line, a light 1px inner line, a brighter top edge and one deep soft shadow. |
+| Tool panes | Files and Assistant: lighter, raised glass for tools. | No blur of their own. White at 8.5% fading to 5%, a 1px inner hairline (7.5%) with a brighter top edge (11%), a small contact shadow. Radius 14px. |
+| Content panes | Editor and Results: darker smoked glass for the document and what it produces. | No blur of their own. Near-black 8,10,15 at 0.55 with a faint top fade, the same hairline edges. |
+| Floating | Menus, popovers, dialogs, toasts. | Their own frosted glass: blur 28px, tint 29,32,43 at 0.90, crisp border. |
 
-Every glass surface uses the same recipe, at three densities:
+Why this works:
+- **Clean colour, no mud:** the window darkens what's behind it through transmission instead of laying grey over it, so warm light stays warm and doesn't turn brown.
+- **Crisp, not soft:** only one layer blurs. Panes are plain translucent sheets, so there's never blur on top of blur.
+- **Clear hierarchy:** tools are lighter and the document is darker, all inside one window. Edges are hairlines, not glows.
 
-| Layer | What it does |
-| --- | --- |
-| Frost | Backdrop blur (default 29px) with 135% saturation, so colour behind the glass glows through softly |
-| Transmission | How much light passes through (backdrop brightness). 1.0 over dark wallpapers, down to 0.55 over very bright ones |
-| Tint | Near-black, slightly cool |
-| Grain | Fine noise at a few percent alpha: real frosted glass is never perfectly smooth, and grain stops blurred gradients banding |
-| Reflection | A soft radial highlight from the top-left, where light enters, plus a faint top fade |
-| Rim | A 1px gradient edge, white at 20% along the top fading to 3.5% on the sides, following the corners |
-| Shadow | A tight contact shadow plus a soft ambient lift underneath |
-
-| Material | Used for | Tint (RGB) | Balanced opacity |
-| --- | --- | --- | --- |
-| Editor | Code | 20, 24, 34 | 0.80 |
-| Panel | Files, results, assistant, toolbar capsules, rail | 24, 28, 39 | 0.61 |
-| Floating | Menus, popovers, toasts (dialogs 0.92) | 29, 32, 43 | 0.90, frost +10px |
-
-Capsules draw their glass on a `::before` layer: an element with a backdrop filter traps the backdrop of anything inside it, which would leave menus opening from the toolbar unfrosted and stacked under the panels.
+Menus inside the window keep their own frost because the window's glass is drawn on a `::before` layer: an element with a backdrop filter would trap the backdrop of everything inside it.
 
 ### Adapting to the wallpaper
 
-When a wallpaper is chosen, Tandem measures its brightness once (a 32×32 sample, blending the mean with the 80th percentile so bright patches count). Over a bright image the glass gets denser and passes less light, and the faintest text steps up toward the secondary grey. Over a dark image nothing changes. Measured worst case (text over the brightest 10% of the glass behind it) on four test wallpapers (bright sky, near-white, saturated colour, near-black): secondary text 4.5:1 or better everywhere, code 11:1, comments about 4:1.
+When a wallpaper is chosen, Tandem measures its brightness once (a 32×32 sample, blending the mean with the 80th percentile so bright patches count). Over a bright image the window passes less light and gets denser, the document panes darken, and the faintest text steps up. Over a dark image nothing changes. Toolbar text, the only text sitting on the window glass alone, uses a brighter grey.
+
+Measured worst case (text over the brightest 10% of what's behind it) on four test wallpapers (bright sky, near-white, saturated colour, near-black): secondary text 4.7:1 or better everywhere, code comments 5.3:1 or better.
 
 ### Glass settings (⋯ menu → Glass)
 
-Three presets and two sliders, all on the same variables (`src/lib/glass.js`):
-
 - **Clear / Balanced / Solid** set Opacity to 15, 50 or 90.
-- **Opacity** (Clear to Solid): how dense the glass is. The editor always stays denser than the panels.
-- **Frost** (Light to Heavy): how strongly the glass diffuses what's behind it, 14px to 44px.
+- **Opacity:** window tint 0.18 to 0.80 and document pane 0.34 to 0.82.
+- **Frost:** window blur 8px to 36px.
 
-| At Balanced, dark wallpaper | Clear | Balanced | Solid |
-| --- | --- | --- | --- |
-| Editor opacity | 0.70 | 0.80 | 0.91 |
-| Panel opacity | 0.45 | 0.61 | 0.79 |
-| Floating opacity | 0.86 | 0.90 | 0.95 |
-
-Browsers without backdrop blur fall back to near-solid panels.
+Browsers without backdrop blur fall back to near-solid surfaces.
 
 ## Workspace components
 
 | Component | Rules |
 | --- | --- |
-| Navigation rail | A vertical glass capsule in a 62px column, aligned with the toolbar capsule. 19px outline icons, muted grey; hover lifts to white; the selected item gets a soft blue tint. Files toggles the explorer; Charts and Runs open the results on that view (a dot marks new charts). Tooltips on the right. Hidden on phones, where the Files toggle returns to the toolbar. |
+| Navigation rail | 56px column on the window glass, no container. 19px outline icons, muted grey; hover lifts to white; the selected item gets a soft blue tint. Files toggles the explorer; Charts and Runs open the results on that view (a dot marks new charts). Tooltips on the right. Hidden on phones, where the Files toggle returns to the toolbar. |
 | File explorer | 30px rows. Every row has the same columns: disclosure arrow (blank for files), 16px icon, name; each level indents 18px, with a faint guide line inside folders. Selection is a neutral 8% white lift, not blue. "Collapse folders" appears on hover or focus. Arrow keys move between rows, Left/Right close and open folders, Home/End jump. |
-| Editor tabs | One strip with a hairline under it, no separators. 28px tabs, radius 8; the open file is a 7.5% white lift. Close appears on the open or hovered tab. A grey dot marks a file edited from the sample. |
-| Layout | Rail 52px; files 196px; assistant 380px; results 330px tall (never more than the space that leaves the editor 200px); 16px gaps; 16px right and 24px bottom margins inside the shell. |
-| Editor | Charcoal surface; current line is a 2.4% white band with no border; line numbers #6B7282, current #C9CED8; 14px gutter spacing; 8px scrollbars. The debugger's current line is a 9% blue band with a 2px marker at the left. |
+| Editor tabs | One 44px header with a hairline under it, no separators; file type and length on the right ("Python · 64 lines"). 28px tabs, radius 8; the open file is a 7.5% white lift. Close appears on the open or hovered tab. A grey dot marks a file edited from the sample. |
+| Layout | Window inset 10px from the screen; 52px toolbar; 56px rail; files 196px; assistant 380px; results 330px tall (never squeezing the editor below 200px); 10px between panes; 12px window padding. Every pane header is 44px, so headers line up across the window. |
+| Editor | The darker document pane. The current line is marked only by its brighter line number (#C9CED8), with no band across the code; other line numbers #7A8190; comments #868D9A italic; 18px gutter spacing; 14px top and bottom padding; 8px scrollbars. The debugger's current line is a 9% blue band with a 2px marker at the left. |
 
 ## Results
 
@@ -83,7 +69,7 @@ One glass surface with one header row: Output, Variables, Charts and Runs as pil
 
 | State | Layout |
 | --- | --- |
-| Empty | Title and one-line explanation; project context (project, open file, last run); three suggested actions as quiet rows; input at the bottom |
+| Empty | A header naming the project with the Tandem mark; a Context group (open file and line count, dataset rows and columns, last run, all read from the project); Suggested actions as one grouped card with icon tiles; a three-step "How changes work" (ask, review, run); the input asks about the open file. |
 | Working | Reply card with live steps and Cancel |
 | Review | Reply card with the change summary; "Reviewing in the editor" (Accept and Reject live above the code) |
 | Completed | Only after the accepted change has actually run. A 20px "Analysis complete" heading with the run number, then sibling groups on quiet inset surfaces (what ran, metrics, insight) and next steps, open. The panel scrolls the heading into view. No per-message "Tandem" label; replies only get a header row when they show a status. |
