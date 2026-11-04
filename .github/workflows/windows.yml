@@ -1,0 +1,107 @@
+name: Windows app
+
+# Tests the runtime on Windows, builds Tandem.exe and checks it end to end.
+# Pushing a tag like v0.1.0 also publishes the exe as a GitHub release.
+
+on:
+  push:
+    branches: [main, dusk-glass-style]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Runtime tests (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        id: py311
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-python@v5
+        id: py312
+        with:
+          python-version: "3.12"
+
+      - name: Project environments for the tests (3.11 and 3.12)
+        shell: pwsh
+        run: |
+          & "${{ steps.py311.outputs.python-path }}" -m venv runtime/.test-envs/py311
+          & "${{ steps.py312.outputs.python-path }}" -m venv runtime/.test-envs/py312
+          foreach ($v in "py311", "py312") {
+            & "runtime/.test-envs/$v/Scripts/python.exe" -m pip install --quiet numpy pandas matplotlib
+          }
+
+      - name: Install the runtime
+        run: python -m pip install -e "runtime[test]"
+
+      - name: Run the tests
+        working-directory: runtime
+        run: python -m pytest -v
+
+  build:
+    name: Build Tandem.exe
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Build the UI
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the exe
+        run: |
+          python -m pip install ./runtime "pyinstaller==6.11.1"
+          pyinstaller --noconfirm --distpath out --workpath build-pyi packaging/windows/tandem.spec
+
+      - name: Smoke test the exe
+        shell: pwsh
+        run: |
+          python -m venv smoke-project-env
+          smoke-project-env/Scripts/python.exe -m pip install --quiet numpy pandas matplotlib
+          python packaging/windows/smoke.py out/Tandem.exe (Resolve-Path smoke-project-env/Scripts/python.exe).Path
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tandem-windows-x64
+          path: out/Tandem.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Tandem-windows-x64
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: Tandem.exe
+          generate_release_notes: true
+          body: |
+            Tandem for Windows: download **Tandem.exe** and double-click it, then choose a project folder.
+
+            Needs Python 3.11 or newer installed for your project code (python.org or `winget install Python.Python.3.12`);
+            Tandem uses the project's `.venv` when it has one.
+
+            Code runs on your computer with your permissions. Tandem is a local runtime for your own projects, not a sandbox.
+            The exe isn't code-signed yet, so Windows SmartScreen may ask you to confirm ("More info" → "Run anyway").

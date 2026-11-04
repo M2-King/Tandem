@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import socket
 import sys
 import threading
@@ -15,12 +16,19 @@ from .security import AccessPolicy, new_token
 from .server import create_app
 
 DEFAULT_PORT = 8765
-DEFAULT_UI = Path(__file__).resolve().parents[2] / "dist"
+if getattr(sys, "frozen", False):  # packaged app (PyInstaller): the UI is bundled next to the code
+    DEFAULT_UI = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "ui"
+else:
+    DEFAULT_UI = Path(__file__).resolve().parents[2] / "dist"
 
 
 def _bind(port: int) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if sys.platform == "win32":
+        # On Windows SO_REUSEADDR would let another program take over the port.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    else:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("127.0.0.1", port))  # loopback only: never reachable from the network
     sock.listen(64)
     return sock
@@ -33,8 +41,8 @@ def main(argv: list[str] | None = None) -> int:
                             ("serve", "start the runtime without opening a browser (for desktop shells)")):
         p = sub.add_parser(name, help=help_text)
         p.add_argument("project", nargs="?", default=".", help="project folder (default: current folder)")
-        p.add_argument("--port", type=int, default=DEFAULT_PORT if name == "open" else 0,
-                       help="port on 127.0.0.1 (0 picks a free one)")
+        p.add_argument("--port", type=int, default=None,
+                       help=f"port on 127.0.0.1 (default {DEFAULT_PORT} for open, a free one for serve; 0 picks a free one)")
         p.add_argument("--python", help="interpreter to use when the project has no environment of its own")
         p.add_argument("--ui", type=Path, default=DEFAULT_UI, help="folder with the built Tandem UI")
         p.add_argument("--print-url", action="store_true", help="print only the URL (for desktop shells)")
@@ -44,11 +52,24 @@ def main(argv: list[str] | None = None) -> int:
     if not project.is_dir():
         print(f"tandem: {project} is not a folder", file=sys.stderr)
         return 2
+    if args.python:
+        # Runs start inside the project folder, so make a relative path absolute now, without
+        # following links (a venv's python is often a symlink to the base interpreter).
+        given = Path(args.python).expanduser()
+        found = given.absolute() if given.exists() else (shutil.which(args.python) and Path(shutil.which(args.python)))
+        if not found:
+            print(f"tandem: no Python at {args.python}", file=sys.stderr)
+            return 2
+        args.python = str(found)
+    port_wanted = args.port if args.port is not None else (DEFAULT_PORT if args.command == "open" else 0)
     try:
-        sock = _bind(args.port)
+        sock = _bind(port_wanted)
     except OSError as exc:
-        print(f"tandem: can't listen on 127.0.0.1:{args.port} ({exc}). Try --port 0.", file=sys.stderr)
-        return 2
+        if args.port is None and port_wanted:
+            sock = _bind(0)  # the usual port is taken (another Tandem?): use a free one
+        else:
+            print(f"tandem: can't listen on 127.0.0.1:{port_wanted} ({exc}). Try --port 0.", file=sys.stderr)
+            return 2
     port = sock.getsockname()[1]
     policy = AccessPolicy(token=new_token(), port=port)
     ui_dir = args.ui.resolve() if args.ui and args.ui.exists() else None
@@ -60,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"Tandem runtime for {project}\n  {url}\n"
               "  Code runs on this computer with your permissions. This is not a sandbox.\n"
-              "  Press Ctrl+C to stop.", flush=True)
+              f"  {'Close this window' if getattr(sys, 'frozen', False) else 'Press Ctrl+C'} to stop.", flush=True)
         if ui_dir is None:
             print("  The UI isn't built yet: run `npm run build` in the Tandem folder.", flush=True)
     if args.command == "open":

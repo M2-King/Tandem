@@ -3,8 +3,9 @@
 Started as:  <project python> -u tandem_run.py <script> [args...]
 
 The script runs as __main__, exactly as `python script.py` would, with the
-same sys.argv and sys.path[0]. This wrapper only adds a side channel (a pipe
-whose number is in TANDEM_EVENT_FD) that reports, as JSON lines:
+same sys.argv and sys.path[0]. This wrapper only adds a side channel (a
+loopback connection to the runtime, at TANDEM_EVENT_ADDR, opened with the
+run's key from TANDEM_EVENT_KEY) that reports, as JSON lines:
 
 * figures shown with matplotlib (see tandem_mpl.py)
 * a summary of the script's top-level variables when it ends
@@ -154,13 +155,42 @@ def _watch_parent():
     threading.Thread(target=watch, name="tandem-parent-watch", daemon=True).start()
 
 
-def main():
+def _connect_events():
+    """Open the side channel; the variables are removed so child processes
+    of the script never see the key."""
     global _EVENTS
+    address = os.environ.pop("TANDEM_EVENT_ADDR", "")
+    key = os.environ.pop("TANDEM_EVENT_KEY", "")
+    if not address or not key:
+        return
+    import socket
+
+    host, _, port = address.rpartition(":")
+    try:
+        sock = socket.create_connection((host, int(port)), timeout=10)
+        sock.settimeout(None)
+        _EVENTS = sock.makefile("w", encoding="utf-8", newline="\n")
+        _EVENTS.write(key + "\n")
+        _EVENTS.flush()
+    except (OSError, ValueError):
+        _EVENTS = None
+
+
+def main():
     if os.environ.pop("TANDEM_WATCH_PARENT", "") == "1":
         _watch_parent()
-    fd = int(os.environ.pop("TANDEM_EVENT_FD", "-1"))
-    if fd >= 0:
-        _EVENTS = os.fdopen(fd, "w", buffering=1, encoding="utf-8")
+    if sys.platform == "win32":
+        # Stop sends CTRL_BREAK on Windows: make it a KeyboardInterrupt, like Ctrl+C.
+        import signal
+
+        signal.signal(signal.SIGBREAK, signal.default_int_handler)
+    _connect_events()
+    # Keep "\n" line endings on Windows too, so output reads the same everywhere.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(newline="\n")
+        except (AttributeError, ValueError):
+            pass
     # The matplotlib backend (tandem_mpl) reports figures through this.
     sys.modules["_tandem_events"] = types.SimpleNamespace(emit=emit)
 

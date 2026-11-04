@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import codecs
+import hmac
 import json
 import os
 import re
-import signal
-import sys
+import secrets
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +16,7 @@ from typing import Awaitable, Callable
 
 from .files import ProjectFiles
 from .interpreters import child_env
+from .procs import ProcessTree, spawn_options, wrapper_env
 
 SUPPORT_DIR = Path(__file__).parent / "support"
 WRAPPER = SUPPORT_DIR / "tandem_run.py"
@@ -59,9 +60,73 @@ class Run:
     path: str
     proc: asyncio.subprocess.Process
     started: float
+    tree: ProcessTree
+    events: "EventChannel"
     stopping: bool = False
     stderr_tail: str = ""
     tasks: list = field(default_factory=list)
+
+
+class EventChannel:
+    """Loopback socket the wrapper reports figures, variables and metrics on.
+
+    Only a connection that first sends this run's random key is accepted, and
+    only one; the listener closes as soon as the wrapper is connected.
+    """
+
+    def __init__(self):
+        self.key = secrets.token_hex(16)
+        self.server: asyncio.base_events.Server | None = None
+        self.address = ""
+        self.done = asyncio.Event()
+        self._claimed = False
+        self._on_event = None
+
+    async def open(self, on_event) -> None:
+        self._on_event = on_event
+        self.server = await asyncio.start_server(self._handle, "127.0.0.1", 0, limit=64 * 1024 * 1024)
+        host, port = self.server.sockets[0].getsockname()[:2]
+        self.address = f"{host}:{port}"
+
+    async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            try:
+                first = await asyncio.wait_for(reader.readline(), 5)
+            except asyncio.TimeoutError:
+                return
+            if self._claimed or not hmac.compare_digest(first.strip(), self.key.encode()):
+                return
+            self._claimed = True
+            self.close_listener()
+            while True:
+                line = await reader.readline()
+                if not line:
+                    break
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                await self._on_event(event)
+        except (ConnectionError, asyncio.LimitOverrunError, ValueError):
+            pass
+        finally:
+            writer.close()
+            if self._claimed:
+                self.done.set()
+
+    def close_listener(self) -> None:
+        if self.server is not None:
+            self.server.close()
+            self.server = None
+
+    async def finish(self, timeout: float = 3) -> None:
+        """After the process exits: wait briefly for the last events, then close."""
+        if self._claimed:
+            try:
+                await asyncio.wait_for(self.done.wait(), timeout)
+            except asyncio.TimeoutError:
+                pass
+        self.close_listener()
 
 
 class RunManager:
@@ -82,14 +147,23 @@ class RunManager:
         if python is None:
             raise RunError("No Python interpreter is selected for this project.")
 
-        read_fd, write_fd = os.pipe()
+        run_box: dict = {}
+
+        async def on_event(event: dict):
+            kind = event.pop("type", "")
+            if kind in {"figure", "figure-error", "variables", "metrics"} and "run" in run_box:
+                await send({"type": f"run.{kind}", "id": run_box["run"].id, **event})
+
+        channel = EventChannel()
+        await channel.open(on_event)
         env = child_env(python, {
             "PYTHONUNBUFFERED": "1",
             "PYTHONIOENCODING": "utf-8",
             "MPLBACKEND": "module://tandem_mpl",
             "PYTHONPATH": os.pathsep.join(filter(None, [str(SUPPORT_DIR), os.environ.get("PYTHONPATH", "")])),
-            "TANDEM_EVENT_FD": str(write_fd),
-            "TANDEM_WATCH_PARENT": "1",
+            "TANDEM_EVENT_ADDR": channel.address,
+            "TANDEM_EVENT_KEY": channel.key,
+            **wrapper_env(),
         })
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -99,22 +173,20 @@ class RunManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
-                pass_fds=(write_fd,),
-                start_new_session=True,  # its own process group, so Stop reaches child processes too
+                **spawn_options(),  # its own process group / job, so Stop reaches child processes too
             )
         except OSError as exc:
-            os.close(read_fd)
+            channel.close_listener()
             raise RunError(f"Couldn't start {python}: {exc}") from exc
-        finally:
-            os.close(write_fd)
 
-        run = Run(id=run_id, path=path, proc=proc, started=time.monotonic())
+        run = Run(id=run_id, path=path, proc=proc, started=time.monotonic(), tree=ProcessTree(proc.pid),
+                  events=channel)
+        run_box["run"] = run
         self.current = run
         await send({"type": "run.started", "id": run_id, "path": path, "python": str(python), "cwd": str(self.files.root)})
         run.tasks = [
             asyncio.create_task(self._pump(run, proc.stdout, "out", send)),
             asyncio.create_task(self._pump(run, proc.stderr, "err", send)),
-            asyncio.create_task(self._events(run, read_fd, send)),
         ]
         asyncio.create_task(self._finish(run, send))
 
@@ -131,28 +203,11 @@ class RunManager:
             if not chunk:
                 break
 
-    async def _events(self, run: Run, fd: int, send: Send) -> None:
-        loop = asyncio.get_running_loop()
-        reader = asyncio.StreamReader(limit=64 * 1024 * 1024)
-        transport, _ = await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), os.fdopen(fd, "rb"))
-        try:
-            while True:
-                line = await reader.readline()
-                if not line:
-                    break
-                try:
-                    event = json.loads(line)
-                except ValueError:
-                    continue
-                kind = event.pop("type", "")
-                if kind in {"figure", "figure-error", "variables", "metrics"}:
-                    await send({"type": f"run.{kind}", "id": run.id, **event})
-        finally:
-            transport.close()
-
     async def _finish(self, run: Run, send: Send) -> None:
         code = await run.proc.wait()
         await asyncio.gather(*run.tasks, return_exceptions=True)
+        await run.events.finish()
+        run.tree.close()
         duration = int((time.monotonic() - run.started) * 1000)
         if run.stopping:
             status = "stopped"
@@ -164,15 +219,13 @@ class RunManager:
                     "duration_ms": duration, "error": error})
 
     async def stop(self, run_id: str) -> None:
-        """Interrupt, then terminate, then kill the run's whole process group."""
+        """Interrupt, then terminate, the run's whole process tree."""
         run = self.current
         if run is None or run.id != run_id or run.proc.returncode is not None:
             return
         run.stopping = True
-        for sig, wait in ((signal.SIGINT, 1.5), (signal.SIGTERM, 1.5), (signal.SIGKILL, 5)):
-            try:
-                os.killpg(run.proc.pid, sig)
-            except ProcessLookupError:
+        for action, wait in run.tree.steps():
+            if not action():
                 return
             try:
                 await asyncio.wait_for(asyncio.shield(run.proc.wait()), wait)
@@ -184,6 +237,3 @@ class RunManager:
         if self.current is not None:
             await self.stop(self.current.id)
 
-
-if sys.platform == "win32":  # pragma: no cover - documented limitation
-    raise ImportError("The Tandem runtime currently supports Linux and macOS; Windows process handling is not implemented yet.")

@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -15,7 +17,26 @@ TOKEN = "test-token"
 
 
 def env_python(version: str) -> Path:
-    return ENVS / f"py{version.replace('.', '')}" / "bin" / "python"
+    env = ENVS / f"py{version.replace('.', '')}"
+    return env / "Scripts" / "python.exe" if sys.platform == "win32" else env / "bin" / "python"
+
+
+def pid_alive(pid: int) -> bool:
+    """Is the process still running (a zombie counts as gone)?"""
+    if sys.platform == "win32":
+        import ctypes
+
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.OpenProcess.restype = ctypes.c_void_p
+        handle = k.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        k.GetExitCodeProcess(ctypes.c_void_p(handle), ctypes.byref(code))
+        k.CloseHandle(ctypes.c_void_p(handle))
+        return code.value == 259  # STILL_ACTIVE
+    state = subprocess.run(["ps", "-p", str(pid), "-o", "stat="], capture_output=True, text=True).stdout.strip()
+    return state != "" and not state.startswith("Z")
 
 
 @pytest.fixture(params=["3.11", "3.12"], ids=["py3.11", "py3.12"])

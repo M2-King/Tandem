@@ -90,6 +90,6 @@ class ProjectFiles:
             raise FileError(f"{rel} is larger than 2 MB.")
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{path.name}.tandem-tmp")
-        tmp.write_text(text, encoding="utf-8")
+        tmp.write_bytes(text.encode("utf-8"))  # exact bytes: no newline translation on Windows
         os.replace(tmp, path)
         return {"path": rel, "hash": content_hash(text), "size": path.stat().st_size}

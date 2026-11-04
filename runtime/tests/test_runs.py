@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from conftest import first, output_text, run_script, use_python
+from conftest import first, output_text, pid_alive, run_script, use_python
 
 ACCEPTANCE = textwrap.dedent('''\
     import numpy as np
@@ -115,9 +115,10 @@ def test_stop_ends_a_long_running_script_and_its_children(client, project, pytho
     assert exit_["status"] == "stopped"
     assert time.monotonic() - stop_at < 4
     child_pid = int(marker.read_text())
-    time.sleep(0.3)
-    alive = subprocess.run(["ps", "-p", str(child_pid), "-o", "stat="], capture_output=True, text=True).stdout.strip()
-    assert alive == "" or alive.startswith("Z"), "the script's child process should be gone"
+    gone_by = time.monotonic() + 3
+    while pid_alive(child_pid) and time.monotonic() < gone_by:
+        time.sleep(0.1)
+    assert not pid_alive(child_pid), "the script's child process should be gone"
 
 
 def test_only_one_run_at_a_time(client, project, python):
@@ -188,14 +189,28 @@ def test_run_ends_if_the_runtime_dies(project, python, tmp_path):
     while not pid_file.exists() and time.monotonic() < deadline:
         time.sleep(0.1)
     script_pid = int(pid_file.read_text())
-    os.kill(server.pid, signal.SIGKILL)
+    server.kill()  # SIGKILL / TerminateProcess: no cleanup code in the runtime runs
     server.wait()
     gone_by = time.monotonic() + 5
     while time.monotonic() < gone_by:
-        state = subprocess.run(["ps", "-p", str(script_pid), "-o", "stat="], capture_output=True, text=True).stdout.strip()
-        if state == "" or state.startswith("Z"):
+        if not pid_alive(script_pid):
             break
         time.sleep(0.1)
     else:
-        os.kill(script_pid, signal.SIGKILL)
+        os.kill(script_pid, signal.SIGTERM)
         raise AssertionError("the script kept running after the runtime was killed")
+
+
+def test_event_key_is_not_visible_to_the_script(client, project, python):
+    use_python(project, python)
+    (project / "env.py").write_text(
+        "import os\nprint(sorted(k for k in os.environ if k.startswith('TANDEM_')))\n")
+    events, _ = run_script(client, "env.py")
+    assert output_text(events, "out") == "[]\n"
+
+
+def test_unicode_output_and_line_endings(client, project, python):
+    use_python(project, python)
+    (project / "u.py").write_text("print('héllo · 数据 · ✓')\nprint('two')\n", encoding="utf-8")
+    events, _ = run_script(client, "u.py")
+    assert output_text(events, "out") == "héllo · 数据 · ✓\ntwo\n"

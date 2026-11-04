@@ -85,3 +85,14 @@ def test_symlink_escape_is_refused(client: TestClient, project, tmp_path):
     os.symlink(secret, project / "link.txt")
     assert client.get("/api/file", params={"path": "link.txt"}).status_code == 400
     assert "link.txt" not in [f["path"] for f in client.get("/api/files").json()["files"]]
+
+
+def test_saving_keeps_exact_line_endings(client, project):
+    (project / "a.py").write_bytes(b"x = 1\r\ny = 2\n")
+    read = client.get("/api/file", params={"path": "a.py"}).json()
+    assert read["text"] == "x = 1\r\ny = 2\n"
+    saved = client.put("/api/file", json={"path": "a.py", "text": "x = 1\ny = 3\n", "base_hash": read["hash"]}).json()
+    assert (project / "a.py").read_bytes() == b"x = 1\ny = 3\n"
+    # A second save based on the first one's hash is not a conflict.
+    again = client.put("/api/file", json={"path": "a.py", "text": "x = 2\n", "base_hash": saved["hash"]})
+    assert again.status_code == 200

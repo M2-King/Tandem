@@ -4,7 +4,8 @@ Order of preference:
 1. The interpreter saved in <project>/.tandem/settings.json ("python").
 2. The project's own virtual environment (.venv, venv or env).
 3. The interpreter given on the command line (--python).
-4. python3 on PATH.
+4. python3 on PATH (on Windows: the `py` launcher's default Python 3, then
+   python.exe on PATH, skipping the Microsoft Store placeholder).
 
 The runtime's own interpreter is never used for project code: it holds the
 runtime's dependencies, not the project's.
@@ -80,10 +81,40 @@ def resolve_interpreter(root: Path, cli_python: str | None = None) -> tuple[Path
             return py, f"project environment ({name})"
     if cli_python and Path(cli_python).exists():
         return Path(cli_python), "command line"
-    found = shutil.which("python3") or shutil.which("python")
+    found = _windows_python() if sys.platform == "win32" else (shutil.which("python3") or shutil.which("python"))
     if found and Path(found).resolve() != Path(sys.executable).resolve():
         return Path(found), "PATH"
     return None, "none"
+
+
+_WIN_CACHE: list = []
+
+
+def _windows_python() -> str | None:
+    """A real Python 3 on Windows: the py launcher's default, else python.exe on PATH."""
+    if _WIN_CACHE:
+        return _WIN_CACHE[0]
+    found = None
+    launcher = shutil.which("py")
+    if launcher:
+        try:
+            out = subprocess.run([launcher, "-3", "-c", "import sys; print(sys.executable)"],
+                                 capture_output=True, text=True, timeout=15)
+            exe = out.stdout.strip().splitlines()[-1] if out.returncode == 0 and out.stdout.strip() else ""
+            if exe and Path(exe).exists():
+                found = exe
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if found is None:
+        for name in ("python", "python3"):
+            exe = shutil.which(name)
+            # %LOCALAPPDATA%\Microsoft\WindowsApps\python.exe only opens the Store.
+            if exe and "windowsapps" not in exe.lower():
+                found = exe
+                break
+    if found:
+        _WIN_CACHE.append(found)
+    return found
 
 
 def child_env(python: Path, extra: dict[str, str]) -> dict[str, str]:
