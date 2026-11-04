@@ -91,20 +91,28 @@ Add-Type -Namespace Win32 -Name Desk2 -MemberDefinition '[DllImport("user32.dll"
 // Does the desktop show through the window? Compare the window's colour over a
 // blue and an orange wallpaper: an opaque window looks the same over both.
 async function seeThrough(app, win, label) {
-  const rect = await app.evaluate(({ BrowserWindow }) => {
-    const b = BrowserWindow.getAllWindows()[0].getContentBounds();
-    // The empty editor area, right of the file list and above the results.
-    return { x: b.x + Math.round(b.width * 0.35), y: b.y + Math.round(b.height * 0.45), width: 200, height: 120 };
+  const rects = await app.evaluate(({ BrowserWindow }) => {
+    const b = BrowserWindow.getAllWindows()[0].getBounds();
+    return {
+      // Control: bare desktop just left of the window. If this doesn't change,
+      // the wallpaper didn't change on this machine and the test says nothing.
+      desktop: { x: Math.max(0, b.x - 50), y: b.y + 100, width: 40, height: 200 },
+      // The empty editor area, right of the file list and above the results.
+      editor: { x: b.x + Math.round(b.width * 0.35), y: b.y + Math.round(b.height * 0.45), width: 200, height: 120 },
+    };
   });
+  const measure = () => ({ desktop: screenAverage(rects.desktop), editor: screenAverage(rects.editor) });
+  const diff = (a, b) => Math.round(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]));
   setWallpaper(20, 60, 200);
-  await win.waitForTimeout(1500);
-  const blue = screenAverage(rect);
+  await win.waitForTimeout(2000);
+  const blue = measure();
   setWallpaper(230, 120, 30);
-  await win.waitForTimeout(1500);
-  const orange = screenAverage(rect);
-  const delta = Math.round(Math.hypot(blue[0] - orange[0], blue[1] - orange[1], blue[2] - orange[2]));
-  console.log(`     ${label}: window colour over blue wallpaper ${blue}, over orange ${orange}, difference ${delta}`);
-  return delta;
+  await win.waitForTimeout(2000);
+  const orange = measure();
+  const result = { desktop: diff(blue.desktop, orange.desktop), window: diff(blue.editor, orange.editor) };
+  console.log(`     ${label}: desktop ${blue.desktop} -> ${orange.desktop} (change ${result.desktop}); ` +
+    `inside the window ${blue.editor} -> ${orange.editor} (change ${result.window})`);
+  return result;
 }
 
 (async () => {
@@ -175,7 +183,7 @@ async function seeThrough(app, win, label) {
       glass[material] = await seeThrough(app, win, material === 'acrylic' ? 'Frosted (acrylic)' : 'Mica');
     }
     await win.evaluate(() => window.tandemDesktop.setMaterial('acrylic'));
-    console.log(`SEE-THROUGH acrylic=${glass.acrylic} mica=${glass.mica}`);
+    console.log(`SEE-THROUGH acrylic=${JSON.stringify(glass.acrylic)} mica=${JSON.stringify(glass.mica)}`);
   }
 
   const href = await app.evaluate(async ({ BrowserWindow }) => {
@@ -211,7 +219,7 @@ async function seeThrough(app, win, label) {
     check((await win2.evaluate(() => document.documentElement.dataset.material)) === 'clear', 'Clear glass after restart');
     check((await win2.locator('.window-controls button').count()) === 3, 'Clear glass: the app draws the window buttons');
     const delta = await seeThrough(app2, win2, 'Clear');
-    console.log(`SEE-THROUGH clear=${delta}`);
+    console.log(`SEE-THROUGH clear=${JSON.stringify(delta)}`);
     await app2.close();
   }
   console.log('\nAll desktop checks passed.');
