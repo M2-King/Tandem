@@ -356,6 +356,11 @@ export default function EditorPane(props) {
               Open main.py
             </button>
           </div>
+        ) : files[activePath] === undefined ? (
+          <div className="empty-state">
+            <p className="empty-title">{fileName(activePath)} can’t be opened here</p>
+            <p className="empty-text">Only text files up to 2 MB open in the editor. The file on disk is unchanged.</p>
+          </div>
         ) : showDiff ? (
           <DiffReview proposal={review.proposal} inline={diffInline} fontSize={fontSize} onChanges={setDiffNav} />
         ) : (

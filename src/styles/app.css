@@ -3075,3 +3075,141 @@ button.proposal-head:focus-visible {
     display: none;
   }
 }
+
+/* ---------- local runtime ---------- */
+/* Runtime status: the same quiet tag as Demo, with a status dot */
+.runtime-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 7px 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  transition: background-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease);
+}
+.runtime-status:hover {
+  background: var(--bg-pressed);
+  color: var(--text-primary);
+}
+.runtime-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.tone-up .runtime-dot {
+  background: var(--success);
+}
+.tone-pending .runtime-dot {
+  background: var(--warning);
+}
+.tone-warn .runtime-dot,
+.tone-down .runtime-dot {
+  background: var(--error);
+}
+.tone-down {
+  color: var(--text-primary);
+}
+.runtime-popover {
+  width: 340px;
+}
+.runtime-facts {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.runtime-facts > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
+}
+.runtime-facts dt {
+  color: var(--text-muted);
+}
+.runtime-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+.runtime-command {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: var(--group-fill);
+  box-shadow: var(--group-edge);
+  color: var(--text-primary);
+  font-family: var(--font-code);
+  font-size: var(--fs-code-ui);
+}
+.runtime-note {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--text-muted);
+}
+.runtime-error {
+  color: var(--error);
+}
+.demo-popover code {
+  font-family: var(--font-code);
+  font-size: var(--fs-code-ui);
+}
+
+/* Form fields (New file) */
+.field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.field-label {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.field-input {
+  height: var(--control-lg);
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-primary);
+}
+.field-input:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.field-hint,
+.field-error {
+  margin-top: 6px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--text-muted);
+}
+.field-error {
+  color: var(--error);
+}
+.menu-item:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+.menu-item:disabled:hover {
+  background: transparent;
+}
+
+/* A figure drawn by the program itself (real runs) */
+.figure-image {
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+.figure-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}

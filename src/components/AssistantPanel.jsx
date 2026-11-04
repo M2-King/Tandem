@@ -5,6 +5,7 @@ import Markdown from './Markdown.jsx';
 import ProposalCard from './ProposalCard.jsx';
 import IconButton from './IconButton.jsx';
 import { DEMO_PROMPTS } from '../services/aiService.js';
+import { IS_LOCAL } from '../runtime/config.js';
 
 const chipIcon = (type) => (type === 'chart' ? BarChart3 : type === 'error' ? AlertCircle : Code2);
 
@@ -146,7 +147,7 @@ function RunAnalysis({ analysis, onShowResults }) {
       <header className="analysis-heading">
         <h3 className="analysis-title">Analysis complete</h3>
         <p className="analysis-sub">
-          Run #{analysis.runNumber} of {analysis.path} finished. Here’s a summary from its sample data:
+          Run #{analysis.runNumber} of {analysis.path} finished. Here’s a summary from its {analysis.real ? 'output' : 'sample data'}:
         </p>
       </header>
       <ul className="analysis-group analysis-checks" aria-label="What ran">
@@ -187,15 +188,23 @@ function RunAnalysis({ analysis, onShowResults }) {
   );
 }
 
+// The demo assistant's prepared tasks, each tied to a sample file.
 const STARTERS = [
   {
     icon: BarChart3,
     title: 'Compare model results',
     detail: 'Add a decision tree to main.py and compare it with linear regression',
     prompt: DEMO_PROMPTS.compare,
+    file: 'main.py',
   },
-  { icon: MessageSquareText, title: 'Explain main.py', detail: 'Walk through what the script does', prompt: DEMO_PROMPTS.explainMain },
-  { icon: Wrench, title: 'Fix summary.py', detail: 'It stops with an error when it runs', prompt: DEMO_PROMPTS.fixSummary },
+  {
+    icon: MessageSquareText,
+    title: 'Explain main.py',
+    detail: 'Walk through what the script does',
+    prompt: DEMO_PROMPTS.explainMain,
+    file: 'main.py',
+  },
+  { icon: Wrench, title: 'Fix summary.py', detail: 'It stops with an error when it runs', prompt: DEMO_PROMPTS.fixSummary, file: 'summary.py' },
 ];
 
 const runSummary = (run) => {
@@ -208,6 +217,8 @@ const runSummary = (run) => {
 // and how a change flows. Every value comes from the open project.
 function EmptyConversation({ onSuggestion, project }) {
   const lastRun = project?.lastRun;
+  // Only offer tasks whose file is in this project.
+  const starters = project?.files ? STARTERS.filter((s) => project.files.includes(s.file)) : STARTERS;
   const dataset = project?.dataset;
   return (
     <div className="assistant-empty">
@@ -250,12 +261,13 @@ function EmptyConversation({ onSuggestion, project }) {
         </section>
       )}
 
+      {starters.length > 0 && (
       <section className="assistant-section" aria-labelledby="starter-title">
         <h3 className="section-label" id="starter-title">
           Suggested
         </h3>
         <div className="group-card starters">
-          {STARTERS.map(({ icon: Icon, title, detail, prompt }) => (
+          {starters.map(({ icon: Icon, title, detail, prompt }) => (
             <button key={prompt} type="button" className="starter" onClick={() => onSuggestion(prompt)} title={prompt}>
               <span className="starter-icon" aria-hidden="true">
                 <Icon size={16} />
@@ -269,6 +281,7 @@ function EmptyConversation({ onSuggestion, project }) {
           ))}
         </div>
       </section>
+      )}
 
       <section className="assistant-section" aria-labelledby="flow-title">
         <h3 className="section-label" id="flow-title">
@@ -485,9 +498,18 @@ export default function AssistantPanel({
     <section className="assistant-inner" aria-label="AI assistant">
       <div className="panel-header">
         <span className="panel-title">Assistant</span>
-        <span className="sim-tag" data-tooltip="Responses are prepared for a few sample tasks. No AI service is connected.">
-          Simulated
-        </span>
+        {IS_LOCAL ? (
+          <span
+            className="sim-tag"
+            data-tooltip="Scripted replies for the sample project; no AI model is connected yet. Its changes still go through your review, and runs use real Python."
+          >
+            Demo assistant
+          </span>
+        ) : (
+          <span className="sim-tag" data-tooltip="Responses are prepared for a few sample tasks. No AI service is connected.">
+            Simulated
+          </span>
+        )}
         <IconButton icon={X} label="Hide assistant" className="push-right" onClick={onClose} tooltipSide="left" />
       </div>
       <div className="assistant-messages" ref={listRef} onScroll={onScroll}>

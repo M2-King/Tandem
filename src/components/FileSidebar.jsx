@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { FileCode2, FileSpreadsheet, Folder, FolderOpen, ChevronRight, ChevronsDownUp, Layers } from 'lucide-react';
+import { FileCode2, FileSpreadsheet, FileText, Folder, FolderOpen, ChevronRight, ChevronsDownUp, Layers, Plus } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 
-const iconFor = (path) => (path.endsWith('.csv') ? FileSpreadsheet : FileCode2);
+const iconFor = (path) => (path.endsWith('.csv') ? FileSpreadsheet : /\.(py|ipynb|js|json|toml|cfg)$/.test(path) ? FileCode2 : FileText);
 
 // Builds a one-level tree: top-level files, then folders with their files.
 function buildTree(paths) {
@@ -87,7 +87,7 @@ function handleTreeKeys(e, setCollapsed) {
   e.preventDefault();
 }
 
-export default function FileSidebar({ paths, activePath, onOpen, projectName, runCount }) {
+export default function FileSidebar({ paths, activePath, onOpen, projectName, runCount, onNewFile }) {
   const [collapsed, setCollapsed] = useState({});
   const tree = buildTree(paths);
   const folders = tree.filter((n) => n.type === 'folder');
@@ -103,6 +103,14 @@ export default function FileSidebar({ paths, activePath, onOpen, projectName, ru
             label={anyOpen ? 'Collapse folders' : 'Expand folders'}
             className="icon-btn-sm panel-header-action push-right"
             onClick={() => setCollapsed(Object.fromEntries(folders.map((f) => [f.name, anyOpen])))}
+          />
+        )}
+        {onNewFile && (
+          <IconButton
+            icon={Plus}
+            label="New file"
+            className={`icon-btn-sm ${folders.length > 0 ? '' : 'push-right'}`}
+            onClick={onNewFile}
           />
         )}
       </div>

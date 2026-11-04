@@ -13,8 +13,40 @@ export function proposalForRun(run, proposals) {
   );
 }
 
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const seconds = (ms) => `${(ms / 1000).toFixed(1)} s`;
+
+// A real run: every line states something the run itself recorded (exit
+// code, duration, the program's own `results` metrics, figures it showed).
+// No units or dataset facts are assumed.
+function realRunAnalysis(run) {
+  const models = Object.entries(run.metrics).filter(([, m]) => m.r2 != null);
+  if (models.length < 2) return null;
+  const [best, other] = [...models].sort((a, b) => b[1].r2 - a[1].r2);
+  const names = (m) => [m.mae != null && 'MAE', m.rmse != null && 'RMSE', 'R²'].filter(Boolean).join(', ');
+  const mae = best[1].mae != null && other[1].mae != null ? `, MAE ${fmt(best[1].mae, 2)} vs ${fmt(other[1].mae, 2)}` : '';
+  return {
+    runId: run.id,
+    runNumber: run.number,
+    path: run.path,
+    real: true,
+    metrics: Object.fromEntries(models),
+    checks: [
+      `Ran ${run.path} to the end (exit code ${run.exitCode ?? 0}, ${seconds(run.durationMs)})`,
+      `Recorded ${names(best[1])} for ${models.map(([n]) => n).join(' and ')}`,
+      ...(run.figures.length ? [`Showed ${plural(run.figures.length, 'chart', 'charts')}`] : []),
+    ],
+    insight: `${best[0]} scores higher than ${other[0]} on this run: R² ${fmt(best[1].r2, 3)} vs ${fmt(other[1].r2, 3)}${mae}.`,
+    nextSteps: [
+      'Check the result with cross-validation, not only one train/test split.',
+      `Look at where ${other[0]} misses most: plot its errors against the inputs.`,
+    ],
+  };
+}
+
 export function buildRunAnalysis(run) {
   if (run.status !== 'success' || !run.metrics) return null;
+  if (run.real) return realRunAnalysis(run);
   const linear = run.metrics['Linear regression'];
   const tree = run.metrics['Decision tree'];
   if (!linear || !tree || linear.r2 == null || tree.r2 == null) return null;

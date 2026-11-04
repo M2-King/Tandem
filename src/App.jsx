@@ -14,6 +14,12 @@ import { usePrefs } from './state/usePrefs.js';
 import { useWallpaper } from './state/useWallpaper.js';
 import { applyGlass } from './lib/glass.js';
 import { useWorkspace } from './state/useWorkspace.js';
+import { useDiskWorkspace } from './state/useDiskWorkspace.js';
+import { useRuntimeStatus } from './state/useRuntimeStatus.js';
+import { IS_LOCAL, RUNTIME_CONFIG } from './runtime/config.js';
+import { createLocalBackend } from './runtime/localBackend.js';
+import { RuntimeStatus, DemoBadge } from './components/RuntimeStatus.jsx';
+import NewFileDialog from './components/NewFileDialog.jsx';
 import { useAssistant } from './state/useAssistant.js';
 import { useExecution } from './state/useExecution.js';
 import { useViewportWidth } from './state/useViewport.js';
@@ -26,6 +32,9 @@ import { buildRunAnalysis, proposalForRun } from './services/analysisService.js'
 import { shortHash } from './lib/text.js';
 
 const DATA_FILE = 'data/housing.csv';
+
+// Real mode talks to the local runtime; Demo mode never does. Decided once.
+const backend = IS_LOCAL ? createLocalBackend(RUNTIME_CONFIG) : null;
 
 // Rows and columns of the sample CSV, read from the file as it is now.
 // The block of code that draws figure `index` in a script: each figure ends
@@ -69,8 +78,19 @@ export default function App() {
     usePrefs();
   const wall = useWallpaper(notify);
   useEffect(() => applyGlass(prefs.glass, prefs.frost, wall.luminance), [prefs.glass, prefs.frost, wall.luminance]);
-  const ws = useWorkspace(onSave);
-  const exec = useExecution({ onSave });
+  // IS_LOCAL never changes while the page is open, so the hook order is stable.
+  const ws = IS_LOCAL ? useDiskWorkspace(onSave, backend, { notify }) : useWorkspace(onSave);
+  const exec = useExecution({ onSave, backend });
+  const runtime = useRuntimeStatus(backend);
+  const projectName = IS_LOCAL ? ws.project?.name || runtime.status?.project?.name || 'Project' : PROJECT_NAME;
+  const runBlocked = !IS_LOCAL
+    ? null
+    : runtime.connection !== 'connected'
+      ? 'The Tandem runtime is disconnected'
+      : runtime.status && !runtime.status.python?.ok
+        ? 'No Python interpreter found for this project'
+        : null;
+  const [newFileOpen, setNewFileOpen] = useState(false);
 
   // Refs give async callbacks (AI requests, toasts) the latest state.
   const filesRef = useRef(ws.files);
@@ -299,8 +319,8 @@ export default function App() {
   const debugBreakpoints = ws.breakpoints[DEBUG_FILE] || [];
 
   const handleRun = () => {
-    if (exec.session) return;
-    exec.run(runTarget, ws.files);
+    if (exec.session || runBlocked) return;
+    exec.run(runTarget, ws.files, ws.flush);
     setResultsOpen(true);
     setResultsTab('Output');
   };
@@ -428,11 +448,15 @@ export default function App() {
   return (
     <div className="app">
       <Toolbar
-        projectName={PROJECT_NAME}
+        projectName={projectName}
+        modeBadge={IS_LOCAL ? <RuntimeStatus {...runtime} /> : <DemoBadge />}
+        savesToDisk={IS_LOCAL}
         saveState={saveState}
         run={{
           session,
           runTarget,
+          blockedReason: runBlocked,
+          traceNote: IS_LOCAL ? 'Not connected to the real debugger yet' : null,
           onRun: handleRun,
           onStep: () => handleTrace('step'),
           onDebug: () => handleTrace('debug'),
@@ -447,7 +471,7 @@ export default function App() {
         onFontSize={changeFontSize}
         diffInline={prefs.diffInline}
         onDiffInline={(inline) => update({ diffInline: inline })}
-        onReset={() => setConfirmReset(true)}
+        onReset={IS_LOCAL ? null : () => setConfirmReset(true)}
         glass={prefs.glass}
         onGlass={(glass) => update({ glass })}
         frost={prefs.frost}
@@ -481,8 +505,9 @@ export default function App() {
             paths={ws.fileOrder}
             activePath={ws.activePath}
             onOpen={openFile}
-            projectName={PROJECT_NAME}
+            projectName={projectName}
             runCount={exec.runs.length}
+            onNewFile={IS_LOCAL ? () => setNewFileOpen(true) : null}
           />
         </aside>
         {!compact && sidebarVisible && (
@@ -623,7 +648,8 @@ export default function App() {
               setResultsOpen(true);
             }}
             project={{
-              name: PROJECT_NAME,
+              name: projectName,
+              files: IS_LOCAL ? ws.fileOrder : null,
               activePath: ws.activePath,
               activeLines: ws.activePath ? (ws.files[ws.activePath] || '').split('\n').length : 0,
               dataset: datasetStats(ws.files[DATA_FILE]),
@@ -654,6 +680,18 @@ export default function App() {
           initialB={expanded.b}
           onClose={() => setExpanded(null)}
           onAskModify={askToModifyChart}
+        />
+      )}
+
+      {newFileOpen && (
+        <NewFileDialog
+          existing={ws.fileOrder}
+          onClose={() => setNewFileOpen(false)}
+          onCreate={async (path) => {
+            await ws.createFile(path, '');
+            setNewFileOpen(false);
+            notify(`Created ${path}`);
+          }}
         />
       )}
 

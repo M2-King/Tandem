@@ -5,8 +5,19 @@ import { shortHash } from '../lib/text.js';
 import { checkRunnable, startRun } from '../services/executionService.js';
 import { TRACE, traceMatches, nextBreakpointIndex } from '../services/traceService.js';
 import { DEBUG_FILE } from '../data/sampleProject.js';
+import { IS_LOCAL } from '../runtime/config.js';
 
 const createStore = () => ({ runs: [], nextNumber: 1 });
+
+// Demo runs are saved in the browser. Real runs (with their figures) stay in
+// memory for now: they can be far larger than browser storage allows.
+const useRunStore = IS_LOCAL
+  ? () => useState(createStore)
+  : ({ onSave }) =>
+      usePersistedState(STORAGE_KEYS.runs, createStore, {
+        onSave,
+        restore: (saved) => (Array.isArray(saved?.runs) ? saved : null),
+      });
 
 // Runs, the active execution session, and result notices.
 //
@@ -18,11 +29,8 @@ const createStore = () => ({ runs: [], nextNumber: 1 });
 //
 // Each finished run is stored as a record with its own copy of the code
 // snapshot hash and results, so later edits never change older runs.
-export function useExecution({ onSave }) {
-  const [store, setStore] = usePersistedState(STORAGE_KEYS.runs, createStore, {
-    onSave,
-    restore: (saved) => (Array.isArray(saved?.runs) ? saved : null),
-  });
+export function useExecution({ onSave, backend }) {
+  const [store, setStore] = useRunStore({ onSave });
   const [session, setSession] = useState(null);
   const [notice, setNotice] = useState(null);
   const [selectedRunId, setSelectedRunId] = useState(() => store.runs.at(-1)?.id ?? null);
@@ -32,7 +40,61 @@ export function useExecution({ onSave }) {
 
   useEffect(() => () => handleRef.current?.stop(), []);
 
-  const run = useCallback(
+  // Real run through the local runtime. Edits are saved first, so the run
+  // executes exactly what is on screen.
+  const runLocal = useCallback(
+    async (path, files, flush) => {
+      setNotice(null);
+      const snapshot = files[path] ?? '';
+      setSession({ mode: 'run', path, output: [] });
+      try {
+        await flush?.();
+        handleRef.current = backend.startRun({
+          path,
+          onOutput: (line) => setSession((s) => (s && s.mode === 'run' ? { ...s, output: [...s.output, line] } : s)),
+          onFinish: (result) => {
+            handleRef.current = null;
+            setSession(null);
+            if (result.status === 'rejected') {
+              setNotice({ kind: 'runtime', path, title: 'The run didn’t start', detail: result.message });
+              return;
+            }
+            const number = storeRef.current.nextNumber;
+            const record = {
+              id: `run-${number}`,
+              number,
+              path,
+              snapshotHash: shortHash(snapshot),
+              versionLabel: null,
+              createdAt: Date.now(),
+              durationMs: result.durationMs,
+              status: result.status,
+              exitCode: result.exitCode ?? null,
+              python: result.python,
+              lostConnection: !!result.lostConnection,
+              output: result.output,
+              variables: result.variables,
+              figures: result.figures,
+              metrics: result.metrics,
+              error: result.error || null,
+              real: true,
+            };
+            setStore((s) => ({ runs: [...s.runs, record], nextNumber: s.nextNumber + 1 }));
+            setSelectedRunId(record.id);
+          },
+        });
+      } catch (e) {
+        handleRef.current = null;
+        setSession(null);
+        setNotice({ kind: 'runtime', path, title: 'The run didn’t start', detail: e.message });
+        return false;
+      }
+      return true;
+    },
+    [backend, setStore]
+  );
+
+  const runDemo = useCallback(
     (path, files) => {
       setNotice(null);
       const check = checkRunnable(path, files);
@@ -74,7 +136,18 @@ export function useExecution({ onSave }) {
     [setStore]
   );
 
+  const run = IS_LOCAL ? runLocal : runDemo;
+
   const startTrace = useCallback((mode, files, breakpoints) => {
+    if (IS_LOCAL) {
+      setNotice({
+        kind: 'runtime',
+        path: null,
+        title: `${mode === 'debug' ? 'Debug' : 'Step through'} isn’t connected to the real runtime yet`,
+        detail: 'It comes with the debugger (debugpy) in a later phase. Tandem doesn’t simulate it in this mode.',
+      });
+      return false;
+    }
     handleRef.current?.stop();
     setNotice(null);
     if (!traceMatches(files[DEBUG_FILE] ?? '')) {

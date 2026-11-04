@@ -1,0 +1,29 @@
+[project]
+name = "tandem-runtime"
+version = "0.1.0"
+description = "Local Python runtime for Tandem: runs your project's code on your machine."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "websockets>=12",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+tandem = "tandem_runtime.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tandem_runtime*"]
+
+[tool.setuptools.package-data]
+tandem_runtime = ["support/*.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

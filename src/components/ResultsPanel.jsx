@@ -4,6 +4,9 @@ import IconButton from './IconButton.jsx';
 import FigureView from './FigureView.jsx';
 import { MetricsList, ModelHeading } from './MetricsTable.jsx';
 import { RunStatus, runTitle, formatTime, formatDuration } from './runFormat.jsx';
+import { IS_LOCAL } from '../runtime/config.js';
+
+const version = (run) => (run.versionLabel ? ` · ${run.versionLabel}` : '');
 
 const TABS = ['Output', 'Variables', 'Charts', 'Runs'];
 
@@ -42,10 +45,14 @@ function RunMeta({ run, actions }) {
         Run #{run.number} · <RunFile run={run} actions={actions} />
       </span>
       <span className="run-meta-detail" data-tooltip="Fingerprint of the code this run used. Later edits don't change it.">
-        snapshot {run.snapshotHash} · {run.versionLabel}
+        snapshot {run.snapshotHash}
+        {version(run)}
       </span>
       <RunStatus status={run.status} />
-      <span className="run-meta-detail">{formatDuration(run.durationMs)} (simulated)</span>
+      <span className="run-meta-detail">
+        {formatDuration(run.durationMs)}
+        {IS_LOCAL ? (run.exitCode != null ? ` · exit code ${run.exitCode}` : '') : ' (simulated)'}
+      </span>
     </div>
   );
 }
@@ -72,9 +79,11 @@ function NoticeCallout({ notice, onResetFile, onDismiss }) {
         <p className="callout-title">{notice.title}</p>
         <p>{notice.detail}</p>
         <div className="callout-actions">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => onResetFile(notice.resetPath)}>
-            <RotateCcw size={16} aria-hidden="true" /> Reset {notice.resetPath.split('/').pop()} to sample
-          </button>
+          {notice.resetPath && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onResetFile(notice.resetPath)}>
+              <RotateCcw size={16} aria-hidden="true" /> Reset {notice.resetPath.split('/').pop()} to sample
+            </button>
+          )}
           <button type="button" className="btn btn-ghost btn-sm" onClick={onDismiss}>
             Dismiss
           </button>
@@ -91,7 +100,7 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
         <div className="run-meta">
           <span className="run-meta-title">Running {session.path}</span>
           <span className="run-state status-running">
-            <Loader2 size={16} className="spin" aria-hidden="true" /> Running (simulated)
+            <Loader2 size={16} className="spin" aria-hidden="true" /> {IS_LOCAL ? 'Running' : 'Running (simulated)'}
           </span>
         </div>
         <OutputLines lines={session.output} />
@@ -126,21 +135,24 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
               <AlertCircle size={16} aria-hidden="true" />
               <div className="callout-body">
                 <p className="callout-title">
-                  {run.error.type} in {run.error.path}, line {run.error.line}
+                  {run.error.type}
+                  {run.error.path ? ` in ${run.error.path}, line ${run.error.line}` : ''}
                 </p>
                 <p>{run.error.explanation}</p>
-                <div className="callout-actions">
-                  <button type="button" className="btn btn-primary btn-sm" onClick={() => actions.onAskFix(run)}>
-                    <Wrench size={16} aria-hidden="true" /> Ask AI to fix
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => actions.onGoToLine(run.error.path, run.error.line)}
-                  >
-                    Go to line {run.error.line}
-                  </button>
-                </div>
+                {run.error.path && (
+                  <div className="callout-actions">
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => actions.onAskFix(run)}>
+                      <Wrench size={16} aria-hidden="true" /> Ask AI to fix
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => actions.onGoToLine(run.error.path, run.error.line)}
+                    >
+                      Go to line {run.error.line}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -224,7 +236,8 @@ function VariablesView({ traceView, run, actions }) {
       <div className="run-meta">
         <span className="run-meta-title">Variables at the end of run #{run.number}</span>
         <span className="run-meta-detail">
-          <RunFile run={run} actions={actions} /> · sample data
+          <RunFile run={run} actions={actions} />
+          {IS_LOCAL ? '' : ' · sample data'}
         </span>
       </div>
       {run.variables.length ? (
@@ -264,7 +277,7 @@ function ChartControls({ run, runs, figure, index, onIndex, actions }) {
   const others = runs.filter((r) => r.id !== run.id && r.figures.length > 0);
   return (
     <div className="results-actions">
-      <span className="results-run-label" data-tooltip={`${figure.title} · sample data`}>
+      <span className="results-run-label" data-tooltip={IS_LOCAL ? figure.title : `${figure.title} · sample data`}>
         Run #{run.number}
       </span>
       {run.figures.length > 1 && (
@@ -295,7 +308,8 @@ function ChartControls({ run, runs, figure, index, onIndex, actions }) {
             <option value="">Compare with…</option>
             {others.map((r) => (
               <option key={r.id} value={r.id}>
-                Run #{r.number} · {r.versionLabel}
+                Run #{r.number}
+                {version(r)}
               </option>
             ))}
           </select>
@@ -372,7 +386,8 @@ function RunsView({ runs, selectedRunId, onSelect, onCompare }) {
               </td>
               <td className="run-cell-title">{runTitle(run)}</td>
               <td className="muted-text">
-                <code>{run.snapshotHash}</code> · {run.versionLabel}
+                <code>{run.snapshotHash}</code>
+                {version(run)}
               </td>
               <td>
                 <RunStatus status={run.status} />
@@ -423,9 +438,11 @@ export default function ResultsPanel({ tab, onTab, session, traceView, notice, r
             </button>
           ))}
         </div>
-        <span className="sim-tag" data-tooltip="Python execution is simulated with prepared sample results.">
-          Simulated
-        </span>
+        {!IS_LOCAL && (
+          <span className="sim-tag" data-tooltip="Python execution is simulated with prepared sample results.">
+            Simulated
+          </span>
+        )}
         <div className="push-right results-header-end">
           {tab === 'Charts' && figure && (
             <ChartControls run={run} runs={runs} figure={figure} index={index} onIndex={setFigureIndex} actions={actions} />

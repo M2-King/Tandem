@@ -4,7 +4,9 @@ import { DEBUG_FILE } from '../data/sampleProject.js';
 
 // Primary Run button with the execution-mode menu next to it. While a
 // session is active it turns into a Stop button with a status label.
-export default function RunControl({ session, runTarget, onRun, onStep, onDebug, onStop }) {
+// blockedReason: why Run can't start right now (runtime disconnected, no Python).
+// traceNote: when Step through / Debug aren't available, the reason shown instead.
+export default function RunControl({ session, runTarget, onRun, onStep, onDebug, onStop, blockedReason, traceNote }) {
   if (session) {
     const label =
       session.mode === 'run'
@@ -35,7 +37,8 @@ export default function RunControl({ session, runTarget, onRun, onStep, onDebug,
           type="button"
           className="btn btn-primary split-main"
           onClick={onRun}
-          data-tooltip={`Run ${runTarget}`}
+          disabled={!!blockedReason}
+          data-tooltip={blockedReason || `Run ${runTarget}`}
         >
           <Play size={14} fill="currentColor" aria-hidden="true" />
           Run
@@ -61,17 +64,19 @@ export default function RunControl({ session, runTarget, onRun, onStep, onDebug,
                 close={close}
                 icon={Footprints}
                 label="Step through"
-                description={`Run ${DEBUG_FILE} one line at a time`}
+                description={traceNote || `Run ${DEBUG_FILE} one line at a time`}
+                disabled={!!traceNote}
                 onSelect={onStep}
               />
               <MenuItem
                 close={close}
                 icon={Bug}
                 label="Debug"
-                description={`Pause ${DEBUG_FILE} at breakpoints`}
+                description={traceNote || `Pause ${DEBUG_FILE} at breakpoints`}
+                disabled={!!traceNote}
                 onSelect={onDebug}
               />
-              <div className="menu-footnote">Execution is simulated in this demo.</div>
+              {!traceNote && <div className="menu-footnote">Execution is simulated in this demo.</div>}
             </>
           )}
         </Menu>

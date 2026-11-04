@@ -20,25 +20,33 @@ import { GLASS_PRESETS } from '../lib/glass.js';
 import Menu, { MenuItem } from './Menu.jsx';
 import RunControl from './RunControl.jsx';
 
-function SaveStatus({ state }) {
+function SaveStatus({ state, onDisk }) {
   if (state === 'failed') {
     return (
       <span
         className="save-status save-failed"
-        data-tooltip="This browser blocked local storage. Changes will be lost on reload."
+        data-tooltip={
+          onDisk
+            ? 'A file couldn’t be written to disk. See the message for the reason.'
+            : 'This browser blocked local storage. Changes will be lost on reload.'
+        }
       >
         <AlertTriangle size={14} aria-hidden="true" /> Not saved
       </span>
     );
   }
   return (
-    <span className="save-status" data-tooltip="Files and settings are saved in this browser only." tabIndex={0}>
+    <span
+      className="save-status"
+      data-tooltip={onDisk ? 'Files are saved to your project folder.' : 'Files and settings are saved in this browser only.'}
+      tabIndex={0}
+    >
       {state === 'saving' ? (
         <Loader2 size={14} className="spin" aria-hidden="true" />
       ) : (
         <Check size={14} aria-hidden="true" />
       )}
-      {state === 'saving' ? 'Saving…' : 'Saved locally'}
+      {state === 'saving' ? 'Saving…' : onDisk ? 'Saved to disk' : 'Saved locally'}
     </span>
   );
 }
@@ -74,32 +82,10 @@ function GlassSlider({ label, from, to, value, onChange }) {
   );
 }
 
-function DemoBadge() {
-  return (
-    <Menu
-      role="dialog"
-      align="start"
-      label="About this demo"
-      renderTrigger={(props) => (
-        <button type="button" className="demo-badge" {...props}>
-          Demo
-        </button>
-      )}
-    >
-      <div className="demo-popover">
-        <p className="demo-popover-title">This is a frontend prototype</p>
-        <p>
-          AI responses and Python execution are simulated with prepared, deterministic sample data. No code is executed
-          and nothing is sent to a server.
-        </p>
-        <p>Your files are saved in this browser. Use Reset demo in the ⋯ menu to start over.</p>
-      </div>
-    </Menu>
-  );
-}
-
 export default function Toolbar({
   projectName,
+  modeBadge,
+  savesToDisk,
   saveState,
   run,
   panels,
@@ -129,8 +115,8 @@ export default function Toolbar({
           /
         </span>
         <span className="project-name">{projectName}</span>
-        <DemoBadge />
-        <SaveStatus state={saveState} />
+        {modeBadge}
+        <SaveStatus state={saveState} onDisk={savesToDisk} />
       </div>
 
       <div className="toolbar-right">
@@ -276,14 +262,18 @@ export default function Toolbar({
                   description="Saved in this browser only"
                   onSelect={() => fileInput.current?.click()}
                 />
-                <div className="menu-sep" role="separator" />
-                <MenuItem
-                  close={close}
-                  icon={RotateCcw}
-                  label="Reset demo…"
-                  description="Restore the sample project"
-                  onSelect={onReset}
-                />
+                {onReset && (
+                  <>
+                    <div className="menu-sep" role="separator" />
+                    <MenuItem
+                      close={close}
+                      icon={RotateCcw}
+                      label="Reset demo…"
+                      description="Restore the sample project"
+                      onSelect={onReset}
+                    />
+                  </>
+                )}
               </>
             )}
           </Menu>

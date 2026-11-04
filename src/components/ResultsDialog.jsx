@@ -5,6 +5,9 @@ import FigureView from './FigureView.jsx';
 import { MetricsList, MetricsComparison } from './MetricsTable.jsx';
 import { RunStatus } from './runFormat.jsx';
 import { TEST_ACTUAL, LINEAR_PRED, TREE_PRED } from '../data/sampleResults.js';
+import { IS_LOCAL } from '../runtime/config.js';
+
+const version = (run) => (run.versionLabel ? ` · ${run.versionLabel}` : '');
 
 function RunColumn({ run }) {
   return (
@@ -12,7 +15,8 @@ function RunColumn({ run }) {
       <div className="expanded-col-head">
         <span className="run-meta-title">Run #{run.number}</span>
         <span className="run-meta-detail">
-          {run.path} · snapshot {run.snapshotHash} · {run.versionLabel}
+          {run.path} · snapshot {run.snapshotHash}
+          {version(run)}
         </span>
         <RunStatus status={run.status} />
       </div>
@@ -63,11 +67,13 @@ export default function ResultsDialog({ runs, initialA, initialB, onClose, onAsk
   const [showData, setShowData] = useState(false);
   const runA = runs.find((r) => r.id === aId) || runs.at(-1);
   const runB = runs.find((r) => r.id === bId && r.id !== runA.id) || null;
-  const hasPredictions = [runA, runB].some((r) => r?.metrics?.['Decision tree']);
+  // The data table shows the demo's prepared sample predictions, so only in Demo mode.
+  const hasPredictions = !IS_LOCAL && [runA, runB].some((r) => r?.metrics?.['Decision tree']);
 
   const runOptions = runs.map((r) => (
     <option key={r.id} value={r.id}>
-      Run #{r.number} · {r.path} · {r.versionLabel}
+      Run #{r.number} · {r.path}
+      {version(r)}
     </option>
   ));
 
@@ -75,7 +81,7 @@ export default function ResultsDialog({ runs, initialA, initialB, onClose, onAsk
     <Dialog title="Results" onClose={onClose} className="dialog-results">
       <div className="dialog-header">
         <h2 className="dialog-title">Results</h2>
-        <span className="sample-tag">Sample data</span>
+        {!IS_LOCAL && <span className="sample-tag">Sample data</span>}
         <div className="dialog-header-controls">
           <label className="field-inline">
             <span>Run</span>
@@ -111,8 +117,9 @@ export default function ResultsDialog({ runs, initialA, initialB, onClose, onAsk
               <p className="muted-text">This run didn’t print model metrics.</p>
             )}
             <p className="muted-text small">
-              Calculated from the fixed sample predictions. A different model isn’t necessarily better: on this small
-              sample, compare the errors before drawing conclusions.
+              {IS_LOCAL
+                ? 'Read from the program’s own `results` variable when the run ended.'
+                : 'Calculated from the fixed sample predictions. A different model isn’t necessarily better: on this small sample, compare the errors before drawing conclusions.'}
             </p>
           </div>
           <div className="expanded-side-actions">
