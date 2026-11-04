@@ -14,12 +14,15 @@ import {
   Rows2,
   Columns2,
   Sparkles,
+  FolderOpen,
 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import TandemMark from './TandemMark.jsx';
 import { GLASS_PRESETS } from '../lib/glass.js';
 import Menu, { MenuItem } from './Menu.jsx';
 import RunControl from './RunControl.jsx';
+import WindowControls from './WindowControls.jsx';
+import { MATERIAL_LABELS } from '../state/useDesktop.js';
 
 function SaveStatus({ state, onDisk }) {
   if (state === 'failed') {
@@ -96,6 +99,8 @@ export default function Toolbar({
   onDiffInline,
   onReset,
   onAISettings,
+  desktop,
+  onOpenFolder,
   glass,
   onGlass,
   frost,
@@ -157,6 +162,9 @@ export default function Toolbar({
           >
             {(close) => (
               <>
+                {onOpenFolder && (
+                  <MenuItem close={close} icon={FolderOpen} label="Open folder…" description="Switch to another project" onSelect={onOpenFolder} />
+                )}
                 {onAISettings && (
                   <>
                     <MenuItem
@@ -234,11 +242,30 @@ export default function Toolbar({
                     </div>
                   </div>
                   <GlassSlider label="Opacity" from="Clear" to="Solid" value={glass} onChange={onGlass} />
-                  <GlassSlider label="Frost" from="Light" to="Heavy" value={frost} onChange={onFrost} />
+                  {!desktop?.active && <GlassSlider label="Frost" from="Light" to="Heavy" value={frost} onChange={onFrost} />}
                   <p className="menu-footnote">
-                    Glass adapts to your wallpaper’s brightness. The wallpaper itself is never changed.
+                    {desktop?.active
+                      ? 'The glass sits over your own desktop and adapts to your wallpaper’s brightness. Your wallpaper is never changed.'
+                      : 'Glass adapts to your wallpaper’s brightness. The wallpaper itself is never changed.'}
                   </p>
                 </div>
+                {desktop?.active ? (
+                  <>
+                    <div className="menu-label">Window glass</div>
+                    {(desktop.info?.materials || []).map((m) => (
+                      <MenuItem
+                        key={m}
+                        close={close}
+                        role="menuitemradio"
+                        checked={desktop.info?.material === m}
+                        label={MATERIAL_LABELS[m]?.label ?? m}
+                        description={MATERIAL_LABELS[m]?.description}
+                        onSelect={() => desktop.setMaterial(m)}
+                      />
+                    ))}
+                  </>
+                ) : (
+                <>
                 <div className="menu-label">Wallpaper</div>
                 <MenuItem
                   close={close}
@@ -276,6 +303,8 @@ export default function Toolbar({
                   description="Saved in this browser only"
                   onSelect={() => fileInput.current?.click()}
                 />
+                </>
+                )}
                 {onReset && (
                   <>
                     <div className="menu-sep" role="separator" />
@@ -292,6 +321,7 @@ export default function Toolbar({
             )}
           </Menu>
         </div>
+        {desktop?.active && desktop.info?.material === 'clear' && <WindowControls maximized={desktop.maximized} />}
         <input
           ref={fileInput}
           type="file"

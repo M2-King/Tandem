@@ -96,3 +96,25 @@ def test_saving_keeps_exact_line_endings(client, project):
     # A second save based on the first one's hash is not a conflict.
     again = client.put("/api/file", json={"path": "a.py", "text": "x = 2\n", "base_hash": saved["hash"]})
     assert again.status_code == 200
+
+
+def test_runtime_exits_with_the_desktop_app(tmp_path):
+    """`--watch-pid`: when the app that started the runtime is gone, the runtime ends too."""
+    import subprocess
+    import sys
+    import time
+
+    app = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    (tmp_path / "p").mkdir()
+    runtime = subprocess.Popen([sys.executable, "-m", "tandem_runtime", "serve", str(tmp_path / "p"), "--port", "0",
+                                "--print-url", "--watch-pid", str(app.pid)], stdout=subprocess.PIPE, text=True)
+    try:
+        assert runtime.stdout.readline().startswith("http://127.0.0.1:")
+        time.sleep(1.5)
+        assert runtime.poll() is None
+        app.kill()
+        app.wait()
+        runtime.wait(timeout=10)
+    finally:
+        app.kill()
+        runtime.kill()

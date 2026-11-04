@@ -12,6 +12,8 @@ import TooltipLayer from './components/Tooltip.jsx';
 import Toasts, { useToasts } from './components/Toasts.jsx';
 import { usePrefs } from './state/usePrefs.js';
 import { useWallpaper } from './state/useWallpaper.js';
+import { useDesktop } from './state/useDesktop.js';
+import { DESKTOP } from './runtime/desktop.js';
 import { applyGlass } from './lib/glass.js';
 import { useWorkspace } from './state/useWorkspace.js';
 import { useDiskWorkspace } from './state/useDiskWorkspace.js';
@@ -78,7 +80,10 @@ export default function App() {
   const { prefs, update, setSidebarWidth, setAssistantWidth, setResultsHeight, changeFontSize, reset: resetPrefs } =
     usePrefs();
   const wall = useWallpaper(notify);
-  useEffect(() => applyGlass(prefs.glass, prefs.frost, wall.luminance), [prefs.glass, prefs.frost, wall.luminance]);
+  const desktop = useDesktop(notify);
+  // In the desktop app the glass sits over the person's own wallpaper; its brightness comes from the system.
+  const backdropLuminance = desktop.active ? (desktop.luminance ?? 0.3) : wall.luminance;
+  useEffect(() => applyGlass(prefs.glass, prefs.frost, backdropLuminance), [prefs.glass, prefs.frost, backdropLuminance]);
   // IS_LOCAL never changes while the page is open, so the hook order is stable.
   const ws = IS_LOCAL ? useDiskWorkspace(onSave, backend, { notify }) : useWorkspace(onSave);
   const exec = useExecution({ onSave, backend });
@@ -475,6 +480,15 @@ export default function App() {
         onDiffInline={(inline) => update({ diffInline: inline })}
         onReset={IS_LOCAL ? null : () => setConfirmReset(true)}
         onAISettings={IS_LOCAL ? () => setAISettingsOpen(true) : null}
+        desktop={desktop}
+        onOpenFolder={
+          DESKTOP
+            ? async () => {
+                await ws.flush?.(); // save edits before switching projects
+                await DESKTOP.openFolder();
+              }
+            : null
+        }
         glass={prefs.glass}
         onGlass={(glass) => update({ glass })}
         frost={prefs.frost}

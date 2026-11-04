@@ -1,6 +1,7 @@
 name: Windows app
 
-# Tests the runtime on Windows, builds Tandem.exe and checks it end to end.
+# Tests the runtime on Windows, builds the Tandem desktop app (installer and
+# portable exe) with the Python runtime inside, and checks it end to end.
 # Pushing a tag like v0.1.0, or running the workflow by hand with a release tag,
 # also publishes the exe as a GitHub release.
 
@@ -52,7 +53,7 @@ jobs:
         run: python -m pytest -v
 
   build:
-    name: Build Tandem.exe
+    name: Build the desktop app
     needs: test
     runs-on: windows-latest
     steps:
@@ -70,23 +71,68 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build the exe
+      - name: Bundle the Python runtime
         run: |
           python -m pip install ./runtime "pyinstaller==6.11.1"
-          pyinstaller --noconfirm --distpath out --workpath build-pyi packaging/windows/tandem.spec
+          pyinstaller --noconfirm --distpath out --workpath build-pyi packaging/tandem-runtime.spec
 
-      - name: Smoke test the exe
+      - name: Check the bundled runtime
         shell: pwsh
         run: |
           python -m venv smoke-project-env
           smoke-project-env/Scripts/python.exe -m pip install --quiet numpy pandas matplotlib
-          python packaging/windows/smoke.py out/Tandem.exe (Resolve-Path smoke-project-env/Scripts/python.exe).Path
+          python packaging/windows/smoke.py out/tandem-runtime/tandem-runtime.exe (Resolve-Path smoke-project-env/Scripts/python.exe).Path
+
+      - name: Build the installer
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npm ci
+          npx electron-builder --win --publish never
+
+      - name: Check the desktop app
+        shell: pwsh
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          # A colourful test wallpaper, so the screenshot shows the desktop through the window glass.
+          Add-Type -AssemblyName System.Drawing
+          $bmp = New-Object System.Drawing.Bitmap 1920, 1080
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $rect = New-Object System.Drawing.Rectangle 0, 0, 1920, 1080
+          $grad = New-Object System.Drawing.Drawing2D.LinearGradientBrush $rect, ([System.Drawing.Color]::FromArgb(255, 30, 60, 140)), ([System.Drawing.Color]::FromArgb(255, 230, 120, 60)), 30
+          $g.FillRectangle($grad, $rect)
+          $g.FillEllipse([System.Drawing.Brushes]::Gold, 1300, 120, 360, 360)
+          $g.FillEllipse([System.Drawing.Brushes]::MediumSeaGreen, 200, 650, 520, 520)
+          $wall = Join-Path $env:RUNNER_TEMP "tandem-test-wallpaper.bmp"
+          $bmp.Save($wall, [System.Drawing.Imaging.ImageFormat]::Bmp)
+          Add-Type -Namespace Win32 -Name Desk -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool SystemParametersInfo(int a, int b, string c, int d);'
+          [Win32.Desk]::SystemParametersInfo(20, 0, $wall, 3) | Out-Null
+          Start-Sleep -Seconds 2
+          npm install --no-save "playwright@1.64.1"
+          node packaging/desktop-smoke.cjs (Resolve-Path desktop/release/win-unpacked/Tandem.exe).Path (Resolve-Path smoke-project-env/Scripts/python.exe).Path desktop-screen.jpg
+          if (Test-Path desktop-screen.jpg) {
+            $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("desktop-screen.jpg"))
+            Write-Output "SCREENSHOT-BEGIN $($b64.Length)"
+            for ($i = 0; $i -lt $b64.Length; $i += 2000) { Write-Output ("S|" + $b64.Substring($i, [Math]::Min(2000, $b64.Length - $i))) }
+            Write-Output "SCREENSHOT-END"
+          }
 
       - uses: actions/upload-artifact@v4
         with:
           name: Tandem-windows-x64
-          path: out/Tandem.exe
+          path: |
+            desktop/release/Tandem-Setup-*.exe
+            desktop/release/Tandem-*-portable.exe
           if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-screenshot
+          path: desktop-screen.jpg
+          if-no-files-found: ignore
 
   release:
     name: Publish release
@@ -104,10 +150,14 @@ jobs:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           target_commitish: ${{ github.sha }}
           name: Tandem ${{ inputs.release_tag || github.ref_name }}
-          files: Tandem.exe
+          files: |
+            Tandem-Setup-*.exe
+            Tandem-*-portable.exe
           generate_release_notes: true
           body: |
-            Tandem for Windows: download **Tandem.exe** and double-click it, then choose a project folder.
+            Tandem for Windows, a desktop app. Download **Tandem-Setup** (installer) or the **portable** exe,
+            start Tandem and choose a project folder. The window is glass over your own desktop
+            (Windows 11: Frosted or Mica; Clear on any Windows); change it under ⋯ → Window glass.
 
             Needs Python 3.11 or newer installed for your project code (python.org or `winget install Python.Python.3.12`);
             Tandem uses the project's `.venv` when it has one.

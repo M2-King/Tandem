@@ -1,4 +1,5 @@
 import Menu from './Menu.jsx';
+import { DESKTOP } from '../runtime/desktop.js';
 
 const envName = (python) => {
   if (!python?.ok) return null;
@@ -37,7 +38,14 @@ export function RuntimeStatus({ connection, status, error }) {
         <p className="demo-popover-title">
           {connection === 'connected' ? 'Local Python runtime' : 'The runtime isn’t reachable'}
         </p>
-        {connection !== 'connected' ? (
+        {connection !== 'connected' && DESKTOP ? (
+          <>
+            <p>Tandem’s Python runtime stopped, so code can’t run. Nothing is simulated in the meantime.</p>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => DESKTOP.restartRuntime()}>
+              Restart runtime
+            </button>
+          </>
+        ) : connection !== 'connected' ? (
           <p>
             Tandem can’t run code until it reconnects. Check that <code>tandem open</code> is still running in your
             terminal; this page reconnects on its own. If you restarted it, reload this page (each start uses a new

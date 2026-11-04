@@ -5,6 +5,7 @@ import '@fontsource/jetbrains-mono/600.css';
 import './lib/monacoSetup.js';
 import './styles/tokens.css';
 import './styles/app.css';
+import './runtime/desktop.js';
 import App from './App.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(

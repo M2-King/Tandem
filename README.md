@@ -18,19 +18,27 @@ are in Real mode, everything else is the demo.
 
 ## Real Python on your computer
 
-### Windows: download the app
+### Desktop app (Windows)
 
-Download **Tandem.exe** from the repository's Releases page and double-click it. Choose a project
-folder; Tandem opens in your browser. Closing the console window stops it. Your project code needs
-Python 3.11+ installed (python.org, or `winget install Python.Python.3.12`); Tandem uses the project's
-`.venv` when it has one, otherwise the `py` launcher's Python. The exe isn't code-signed yet, so
-SmartScreen may ask you to confirm (More info → Run anyway).
+Tandem is a desktop app: download **Tandem-Setup** (installer) or the **portable** exe from the
+repository's Releases page, start Tandem and choose a project folder. The Python runtime is bundled
+inside; your project code runs with your own Python 3.11+ (python.org, or
+`winget install Python.Python.3.12`), using the project's `.venv` when it has one.
 
-Build it yourself on Windows: `npm ci && npm run build`, then
-`pip install ./runtime pyinstaller==6.11.1` and `pyinstaller packaging/windows/tandem.spec`
-(use `--distpath out` so the exe doesn't land in the UI's `dist/` folder).
-The `Windows app` GitHub workflow does this on every push, runs the tests on Windows, checks the exe
-end to end with `packaging/windows/smoke.py`, and publishes a release for `v*` tags.
+The window has no wallpaper of its own: it is glass over your real desktop. Choose the glass under
+⋯ → **Window glass**: *Frosted* (Windows acrylic, the default on Windows 11), *Mica* (tinted by your
+wallpaper), or *Clear* (your desktop exactly as it is, behind tinted panels; also on Windows 10).
+The glass density adapts to your wallpaper's brightness; the wallpaper itself is never changed.
+⋯ → **Open folder…** switches projects. The exe isn't code-signed yet, so SmartScreen may ask you to
+confirm (More info → Run anyway).
+
+The dusk image in the browser preview is only a stand-in: a web page can't see your desktop.
+
+Build it yourself (on Windows): `npm ci && npm run build`; `pip install ./runtime pyinstaller==6.11.1`;
+`pyinstaller --distpath out packaging/tandem-runtime.spec`; then in `desktop/`: `npm ci` and
+`npx electron-builder --win`. During development, `npm start` in `desktop/` runs the app with the
+runtime from `runtime/.venv`. The `Windows app` GitHub workflow builds and tests all of this on Windows
+and publishes releases.
 
 ### AI settings
 
@@ -41,7 +49,7 @@ your user config folder (`%APPDATA%\Tandem` on Windows, `~/.config/tandem` on Li
 back, and project code never sees it. *Test connection* lists the provider's models (no tokens used).
 The assistant itself starts using the provider in the next phase; until then it stays the labelled demo.
 
-### From source (macOS, Linux, Windows)
+### From source in a browser (macOS, Linux, Windows)
 
 Requires Python 3.11+ and Node.js 18+.
 
@@ -175,7 +183,9 @@ The UI never talks to these services directly except through the hooks in
 ## Project structure
 
 ```
+desktop/               Desktop app (Electron): native glass window, starts the bundled runtime
 runtime/               Local Python runtime (FastAPI): files, runs, security; tests in runtime/tests
+packaging/             Runtime bundle (PyInstaller) and end-to-end checks of the built app
 src/
   App.jsx              Layout and the glue between state and components
   runtime/             Mode detection and the client for the local runtime

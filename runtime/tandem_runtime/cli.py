@@ -46,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--python", help="interpreter to use when the project has no environment of its own")
         p.add_argument("--ui", type=Path, default=DEFAULT_UI, help="folder with the built Tandem UI")
         p.add_argument("--print-url", action="store_true", help="print only the URL (for desktop shells)")
+        p.add_argument("--watch-pid", type=int, help="exit when this process (the desktop app) exits")
     args = parser.parse_args(argv)
 
     project = Path(args.project).expanduser().resolve()
@@ -87,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "open":
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
 
+    if args.watch_pid:
+        from .procs import exit_with
+
+        exit_with(args.watch_pid)
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="on"))
     server.run(sockets=[sock])
     return 0

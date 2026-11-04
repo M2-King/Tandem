@@ -152,3 +152,43 @@ def _win_job_for(pid: int):
         k.CloseHandle(job)
         return None
     return job
+
+
+def pid_alive(pid: int) -> bool:
+    """Is the process still running? (A zombie counts as gone.)"""
+    if IS_WINDOWS:
+        import ctypes
+
+        k = _kernel32()
+        handle = k.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        k.GetExitCodeProcess(handle, ctypes.byref(code))
+        k.CloseHandle(handle)
+        return code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        with open(f"/proc/{pid}/stat", encoding="ascii") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except (OSError, IndexError):
+        return True
+
+
+def exit_with(pid: int, interval: float = 1.0) -> None:
+    """End this process when process `pid` (the desktop app) is gone, so the
+    runtime never outlives the window that started it."""
+    import threading
+    import time
+
+    def watch():
+        while pid_alive(pid):
+            time.sleep(interval)
+        os._exit(0)  # runs end too: their jobs (Windows) or parent watch (POSIX)
+
+    threading.Thread(target=watch, name="tandem-app-watch", daemon=True).start()

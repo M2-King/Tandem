@@ -26,7 +26,7 @@ Status of the Python and Jupyter runtime work. Each item is marked:
 | Clear mode and status indicator; how to start the runtime | done | toolbar status / Demo badge popover |
 | Demo mode unchanged and labelled | done | existing demo browser tests re-run |
 
-## Windows app — done (verification in CI)
+## Windows desktop app — done (verification in CI)
 
 | Item | Status | How it was verified |
 | --- | --- | --- |
@@ -34,9 +34,11 @@ Status of the Python and Jupyter runtime work. Each item is marked:
 | Script events over a keyed loopback socket (all platforms) | done | tests; the key is not visible to the script |
 | Saves keep exact bytes (no CRLF rewriting) | done | test |
 | `py` launcher discovery, Microsoft Store placeholder skipped | done | code path; CI uses an explicit interpreter |
-| `Tandem.exe`: double-click asks for a folder, opens the browser | done | built by PyInstaller in CI; same spec built and smoke-tested on Linux |
-| End-to-end smoke test of the exe (UI, token, run, chart, traceback, Stop, AI settings) | done | `packaging/windows/smoke.py` in CI |
-| Release with the exe for `v*` tags | done | workflow `release` job |
+| Desktop app (Electron): native window, installer and portable exe, Python runtime bundled | done | built in CI; packaged app tested end to end (`packaging/desktop-smoke.cjs`) |
+| Window is glass over the real desktop (no app wallpaper): Frosted/Mica on Windows 11, Clear everywhere | done | desktop mode checks in the packaged app; screenshot from the Windows runner |
+| Closing the app stops the runtime; the runtime also exits if the app crashes (`--watch-pid`) | done | tests and packaged-app check |
+| Bundled runtime checked on its own (UI, token, run, chart, traceback, Stop, AI settings) | done | `packaging/windows/smoke.py` in CI |
+| Release with installer and portable exe | done | workflow `release` job |
 | Code signing | blocked | needs a certificate; SmartScreen will ask users to confirm |
 
 ## AI settings — done (provider calls from the assistant pending)

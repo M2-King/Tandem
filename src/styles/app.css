@@ -3357,3 +3357,88 @@ button.proposal-head:focus-visible {
     padding: 0 7px;
   }
 }
+
+/* ---------- desktop app ----------
+   In the Tandem desktop app the window itself is the glass: the page draws no
+   wallpaper, and the person's real desktop shows behind it (through Windows
+   acrylic or Mica, macOS vibrancy, or unchanged with Clear). The page's own
+   backdrop blur has nothing to blur there, so it is switched off. */
+html[data-shell='desktop'],
+html[data-shell='desktop'] body {
+  background: transparent;
+}
+html[data-shell='desktop'] body::before {
+  display: none;
+}
+html[data-shell='desktop'] .app {
+  --shell-margin: 0px;
+  border-radius: 0;
+  min-width: 0;
+}
+html[data-shell='desktop'] .app::before {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+/* Clear glass: a frameless transparent window, so the app draws its rounded edge. */
+html[data-shell='desktop'][data-material='clear'] .app,
+html[data-shell='desktop'][data-material='clear'] .app::before {
+  border-radius: 10px;
+}
+html[data-shell='desktop'][data-material='clear'] .app::before {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+html[data-shell='desktop'][data-maximized='true'] .app,
+html[data-shell='desktop'][data-maximized='true'] .app::before {
+  border-radius: 0;
+}
+/* The toolbar is the title bar: drag the window by it. */
+html[data-shell='desktop'] .toolbar {
+  -webkit-app-region: drag;
+}
+html[data-shell='desktop'] .toolbar button,
+html[data-shell='desktop'] .toolbar input,
+html[data-shell='desktop'] .toolbar select,
+html[data-shell='desktop'] .toolbar a,
+html[data-shell='desktop'] .toolbar .menu,
+html[data-shell='desktop'] .toolbar [role='dialog'],
+html[data-shell='desktop'] .toolbar [role='menu'] {
+  -webkit-app-region: no-drag;
+}
+/* Room for the window buttons Windows draws (Frosted, Mica) and the macOS traffic lights. */
+html[data-shell='desktop'][data-platform='win32']:not([data-material='clear']) .toolbar {
+  padding-right: 146px;
+}
+html[data-shell='desktop'][data-platform='darwin']:not([data-material='clear']) .toolbar {
+  padding-left: 84px;
+}
+.window-controls {
+  display: flex;
+  align-self: stretch;
+  margin: 0 calc(-1 * var(--space-3)) 0 var(--space-2);
+}
+.window-controls button {
+  width: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: background-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease);
+}
+.window-controls button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.window-controls .window-close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+.window-controls button:focus-visible {
+  box-shadow: inset var(--focus-ring);
+  outline: none;
+}
+html[data-shell='desktop'][data-material='clear']:not([data-maximized='true']) .window-controls .window-close {
+  border-top-right-radius: 10px;
+}
