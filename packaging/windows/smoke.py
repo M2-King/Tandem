@@ -124,6 +124,9 @@ def main():
               f"AI connection test runs in the app ({result['message']})")
         print("\nAll smoke checks passed.")
     finally:
+        if sys.platform == "win32":
+            # A one-file exe is two processes (launcher + app): end the whole tree.
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
         proc.kill()
         proc.wait()
 
