@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from . import __version__
+from .ai_chat import AssistError, active_provider, assist
 from .ai_settings import AISettings, SettingsError, test_connection
 from .files import FileError, ProjectFiles
 from .interpreters import describe, resolve_interpreter
@@ -78,6 +79,16 @@ class AISettingsBody(BaseModel):
 
 class AITestBody(BaseModel):
     provider: str
+
+
+class AssistBody(BaseModel):
+    prompt: str
+    intent: str = "chat"
+    context: list[dict] = []
+    files: dict[str, str] = {}
+    active_path: str | None = None
+    last_run: dict | None = None
+    history: list[dict] = []
 
 
 def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cli_python: str | None = None,
@@ -163,6 +174,19 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
         except SettingsError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from None
 
+    @app.get("/api/ai/active")
+    def get_ai_active():
+        return {"active": active_provider(ai)}
+
+    @app.post("/api/ai/assist")
+    def post_ai_assist(body: AssistBody):
+        if not body.prompt.strip():
+            raise HTTPException(status_code=400, detail="Empty request.")
+        try:
+            return assist(ai, files, body.model_dump())
+        except AssistError as exc:
+            return {"kind": "error", "text": str(exc)}
+
     # ---------------- WebSocket: runs ----------------
 
     @app.websocket("/ws")
@@ -183,12 +207,22 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
                 if kind == "run.start":
                     run_id = str(message.get("id"))
                     try:
-                        await runs.start(run_id, str(message.get("path", "")), send)
+                        await runs.start(run_id, str(message.get("path", "")), send,
+                                         mode=str(message.get("mode") or "run"),
+                                         breakpoints=message.get("breakpoints") if isinstance(message.get("breakpoints"), list) else None)
                         mine.add(run_id)
                     except (RunError, FileError) as exc:
                         await send({"type": "run.rejected", "id": run_id, "message": str(exc)})
                 elif kind == "run.stop":
                     await runs.stop(str(message.get("id")))
+                elif kind == "run.input" and str(message.get("id")) in mine:
+                    await runs.send_input(str(message.get("id")), str(message.get("text", ""))[:100_000])
+                elif kind == "run.input-end" and str(message.get("id")) in mine:
+                    await runs.close_input(str(message.get("id")))
+                elif kind == "debug.command" and str(message.get("id")) in mine:
+                    bps = message.get("breakpoints")
+                    await runs.debug_command(str(message.get("id")), str(message.get("cmd", "")),
+                                             bps if isinstance(bps, list) else None)
                 elif kind == "ping":
                     await send({"type": "pong"})
         except (WebSocketDisconnect, RuntimeError, ValueError):

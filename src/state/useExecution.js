@@ -24,8 +24,11 @@ const useRunStore = IS_LOCAL
 // session is one of:
 //   null
 //   { mode: 'run', path, output: [...] }              a run in progress
-//   { mode: 'step' | 'debug', path, index, prevIndex,  a paused trace
+//   { mode: 'step' | 'debug', path, index, prevIndex,  a paused trace (demo)
 //     finished, noBreakpointHit }
+//   Real mode adds to any session: partial (an unfinished output line, such as
+//   an input() prompt), real: true, and for Step through / Debug: paused (where
+//   the debugger stopped: line, stack, variables), prevPaused, running, finished.
 //
 // Each finished run is stored as a record with its own copy of the code
 // snapshot hash and results, so later edits never change older runs.
@@ -43,18 +46,32 @@ export function useExecution({ onSave, backend }) {
   // Real run through the local runtime. Edits are saved first, so the run
   // executes exactly what is on screen.
   const runLocal = useCallback(
-    async (path, files, flush) => {
+    async (path, files, flush, { mode = 'run', breakpoints = [] } = {}) => {
       setNotice(null);
       const snapshot = files[path] ?? '';
-      setSession({ mode: 'run', path, output: [] });
+      let pauses = 0;
+      setSession({ mode, path, output: [], partial: '', real: true, running: true, paused: null, prevPaused: null, finished: false });
       try {
         await flush?.();
         handleRef.current = backend.startRun({
           path,
-          onOutput: (line) => setSession((s) => (s && s.mode === 'run' ? { ...s, output: [...s.output, line] } : s)),
+          mode,
+          breakpoints,
+          onOutput: (line) => setSession((s) => (s && s.real ? { ...s, output: [...s.output, line] } : s)),
+          onPartial: (partial) => setSession((s) => (s && s.real ? { ...s, partial } : s)),
+          onPaused: (pause) => {
+            pauses += 1;
+            setSession((s) => (s && s.real ? { ...s, running: false, prevPaused: s.paused, paused: pause } : s));
+          },
+          onResumed: () => setSession((s) => (s && s.real ? { ...s, running: true } : s)),
           onFinish: (result) => {
             handleRef.current = null;
-            setSession(null);
+            // Step through and Debug keep their panel open on "Finished" until closed.
+            setSession((s) =>
+              mode !== 'run' && s && s.real && result.status !== 'rejected'
+                ? { ...s, running: false, finished: true, partial: '', noBreakpointHit: mode === 'debug' && pauses === 0, status: result.status }
+                : null
+            );
             if (result.status === 'rejected') {
               setNotice({ kind: 'runtime', path, title: 'The run didn’t start', detail: result.message });
               return;
@@ -138,15 +155,11 @@ export function useExecution({ onSave, backend }) {
 
   const run = IS_LOCAL ? runLocal : runDemo;
 
-  const startTrace = useCallback((mode, files, breakpoints) => {
+  const startTrace = useCallback((mode, files, breakpoints, { path, flush, breakpointList } = {}) => {
     if (IS_LOCAL) {
-      setNotice({
-        kind: 'runtime',
-        path: null,
-        title: `${mode === 'debug' ? 'Debug' : 'Step through'} isn’t connected to the real runtime yet`,
-        detail: 'It comes with the debugger (debugpy) in a later phase. Tandem doesn’t simulate it in this mode.',
-      });
-      return false;
+      // Real Step through / Debug: the script runs under Python's debugger.
+      runLocal(path, files, flush, { mode, breakpoints: breakpointList || [] });
+      return true;
     }
     handleRef.current?.stop();
     setNotice(null);
@@ -169,9 +182,10 @@ export function useExecution({ onSave, backend }) {
       setSession({ mode, path: DEBUG_FILE, index: Math.max(index, 0), prevIndex: null, finished: index === -1, noBreakpointHit: index === -1 });
     }
     return true;
-  }, []);
+  }, [runLocal]);
 
   const next = useCallback(() => {
+    if (IS_LOCAL) return handleRef.current?.command?.('next');
     setSession((s) => {
       if (!s || s.mode === 'run' || s.finished) return s;
       const index = s.index + 1;
@@ -181,6 +195,7 @@ export function useExecution({ onSave, backend }) {
   }, []);
 
   const continueTrace = useCallback((breakpoints) => {
+    if (IS_LOCAL) return handleRef.current?.command?.('continue');
     setSession((s) => {
       if (!s || s.mode === 'run' || s.finished) return s;
       const index = nextBreakpointIndex(s.index, breakpoints);
@@ -193,6 +208,13 @@ export function useExecution({ onSave, backend }) {
     if (handleRef.current) handleRef.current.stop(); // onFinish records a "stopped" run
     else setSession(null);
   }, []);
+
+  // Real runs only: debugger steps, typed input, breakpoint changes mid-run.
+  const stepIn = useCallback(() => handleRef.current?.command?.('step'), []);
+  const stepOut = useCallback(() => handleRef.current?.command?.('out'), []);
+  const sendInput = useCallback((text) => handleRef.current?.input?.(text), []);
+  const endInput = useCallback(() => handleRef.current?.endInput?.(), []);
+  const updateBreakpoints = useCallback((list) => handleRef.current?.setBreakpoints?.(list), []);
 
   const reset = useCallback(() => {
     handleRef.current?.stop();
@@ -215,6 +237,11 @@ export function useExecution({ onSave, backend }) {
     startTrace,
     next,
     continueTrace,
+    stepIn,
+    stepOut,
+    sendInput,
+    endInput,
+    updateBreakpoints,
     reset,
   };
 }

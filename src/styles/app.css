@@ -3449,3 +3449,44 @@ html[data-shell='desktop'][data-material='mica'] .app::before,
 html[data-shell='desktop'][data-material='vibrancy'] .app::before {
   opacity: 0.55;
 }
+
+/* Typed input for the running program */
+.run-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px var(--space-4) var(--space-3);
+  padding: 0 4px 0 10px;
+  min-height: var(--control-lg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.18);
+}
+.run-input:focus-within {
+  box-shadow: var(--focus-ring);
+}
+.run-input-icon {
+  flex: none;
+  color: var(--accent);
+}
+.run-input-field {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  outline: none;
+  font-size: var(--fs-code-ui);
+}
+.line-typed {
+  color: var(--accent);
+}
+.line-partial {
+  white-space: pre-wrap;
+}
+.run-input-field:focus,
+.run-input-field:focus-visible {
+  box-shadow: none;
+  outline: none;
+}

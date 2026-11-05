@@ -10,6 +10,10 @@ run's key from TANDEM_EVENT_KEY) that reports, as JSON lines:
 * figures shown with matplotlib (see tandem_mpl.py)
 * a summary of the script's top-level variables when it ends
 * per-model metrics, if the script keeps them in a variable named `results`
+* in Step through and Debug runs, where execution paused (line, call stack,
+  variables); the runtime answers with next / step / out / continue on the
+  same connection. The debugger is the standard library's bdb, so this runs
+  on any Python Tandem supports without installing anything.
 
 Nothing is added to the script's stdout or stderr, except that a traceback
 starts at the script's own code instead of this file.
@@ -18,6 +22,7 @@ This file must run on every Python Tandem supports (3.11+) using only the
 standard library.
 """
 
+import bdb
 import builtins
 import json
 import math
@@ -28,6 +33,7 @@ import traceback
 import types
 
 _EVENTS = None
+_COMMANDS = None  # commands from the runtime (debug runs)
 
 
 def emit(event):
@@ -128,8 +134,8 @@ def _metrics(namespace):
 def _print_exception(exc):
     """Print the traceback as Python would, without this wrapper's frame."""
     tb = exc.__traceback__
-    here = os.path.abspath(__file__)
-    while tb is not None and os.path.abspath(tb.tb_frame.f_code.co_filename) == here:
+    hidden = {os.path.abspath(__file__), os.path.abspath(bdb.__file__)}
+    while tb is not None and os.path.abspath(tb.tb_frame.f_code.co_filename) in hidden:
         tb = tb.tb_next
     traceback.print_exception(type(exc), exc, tb, file=sys.stderr)
 
@@ -172,8 +178,102 @@ def _connect_events():
         _EVENTS = sock.makefile("w", encoding="utf-8", newline="\n")
         _EVENTS.write(key + "\n")
         _EVENTS.flush()
+        global _COMMANDS
+        _COMMANDS = sock.makefile("r", encoding="utf-8", newline="\n")
     except (OSError, ValueError):
         _EVENTS = None
+
+
+_SKIP_PARTS = {".venv", "venv", "env", "site-packages", "dist-packages", "__pycache__", ".tandem"}
+
+
+class Debugger(bdb.Bdb):
+    """Pauses only in the project's own code (never in libraries) and asks the
+    runtime what to do next."""
+
+    def __init__(self, root, mode, breakpoints):
+        super().__init__()
+        self.root = os.path.abspath(root)
+        self.mode = mode  # 'step': stop at the first line; 'debug': run to a breakpoint
+        self.first = True
+        self.pauses = 0
+        self.set_breakpoints(breakpoints)
+
+    def set_breakpoints(self, breakpoints):
+        self.clear_all_breaks()
+        self.points = set()
+        for path, line in breakpoints:
+            path = os.path.abspath(path)
+            self.points.add((path, int(line)))
+            self.set_break(path, int(line))
+
+    def in_project(self, frame):
+        name = os.path.abspath(frame.f_code.co_filename)
+        if not name.startswith(self.root + os.sep):
+            return False
+        parts = set(os.path.relpath(name, self.root).split(os.sep))
+        return not (parts & _SKIP_PARTS)
+
+    def stop_here(self, frame):
+        return self.in_project(frame) and super().stop_here(frame)
+
+    def user_line(self, frame):
+        if not self.in_project(frame):
+            return
+        here = (os.path.abspath(frame.f_code.co_filename), frame.f_lineno)
+        at_breakpoint = here in self.points
+        if self.first:
+            self.first = False
+            if self.mode == "debug" and not at_breakpoint:
+                self.set_continue()
+                return
+        self.pause(frame, "breakpoint" if at_breakpoint else "step")
+
+    def rel(self, filename):
+        return os.path.relpath(os.path.abspath(filename), self.root).replace(os.sep, "/")
+
+    def pause(self, frame, reason):
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+        stack = []
+        f = frame
+        while f is not None:
+            if self.in_project(f):
+                stack.append({"path": self.rel(f.f_code.co_filename), "line": f.f_lineno, "function": f.f_code.co_name})
+            f = f.f_back
+        function = frame.f_code.co_name
+        local_scope = None if function == "<module>" else _variables(frame.f_locals)
+        self.pauses += 1
+        emit({"type": "paused", "reason": reason, "path": self.rel(frame.f_code.co_filename), "line": frame.f_lineno,
+              "function": function, "stack": stack, "locals": local_scope, "globals": _variables(frame.f_globals),
+              "count": self.pauses})
+        while True:
+            line = _COMMANDS.readline() if _COMMANDS else ""
+            if not line:
+                raise bdb.BdbQuit  # the runtime went away
+            try:
+                command = json.loads(line)
+            except ValueError:
+                continue
+            cmd = command.get("cmd")
+            if cmd == "breakpoints":
+                self.set_breakpoints(command.get("list") or [])
+                continue
+            emit({"type": "resumed"})
+            if cmd == "next":
+                self.set_next(frame)
+            elif cmd == "step":
+                self.set_step()
+            elif cmd == "out":
+                self.set_return(frame)
+            elif cmd == "continue":
+                self.set_continue()
+            else:  # stop
+                self.set_quit()
+            return
 
 
 def main():
@@ -194,7 +294,13 @@ def main():
     # The matplotlib backend (tandem_mpl) reports figures through this.
     sys.modules["_tandem_events"] = types.SimpleNamespace(emit=emit)
 
+    debug_mode = os.environ.pop("TANDEM_DEBUG", "")
+    try:
+        breakpoints = json.loads(os.environ.pop("TANDEM_BREAKPOINTS", "[]"))
+    except ValueError:
+        breakpoints = []
     script = os.path.abspath(sys.argv[1])
+    project_root = os.environ.pop("TANDEM_PROJECT_ROOT", "") or os.path.dirname(script)
     sys.argv = sys.argv[1:]
     sys.path[0] = os.path.dirname(script)
 
@@ -209,7 +315,10 @@ def main():
         with open(script, "rb") as f:
             source = f.read()
         code = compile(source, script, "exec")
-        exec(code, namespace)
+        if debug_mode in ("step", "debug") and _COMMANDS is not None:
+            Debugger(project_root, debug_mode, breakpoints).run(code, namespace)
+        else:
+            exec(code, namespace)
     except SystemExit as exc:
         code_value = exc.code
         if code_value is None:

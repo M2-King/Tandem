@@ -28,6 +28,7 @@ inside; your project code runs with your own Python 3.11+ (python.org, or
 The window has no wallpaper of its own: it is glass over your real desktop. Choose the glass under
 ⋯ → **Window glass**: *Frosted* (Windows acrylic, the default on Windows 11), *Mica* (tinted by your
 wallpaper), or *Clear* (your desktop exactly as it is, behind tinted panels; also on Windows 10).
+Changes apply at once (Clear reopens the window in place, so it waits while code is running).
 The glass density adapts to your wallpaper's brightness; the wallpaper itself is never changed.
 ⋯ → **Open folder…** switches projects. The exe isn't code-signed yet, so SmartScreen may ask you to
 confirm (More info → Run anyway).
@@ -47,7 +48,9 @@ any OpenAI-compatible server, or a local Ollama. Keys are sent once to the local
 your user config folder (`%APPDATA%\Tandem` on Windows, `~/.config/tandem` on Linux,
 `~/Library/Application Support/Tandem` on macOS), readable by you only. The browser never gets a key
 back, and project code never sees it. *Test connection* lists the provider's models (no tokens used).
-The assistant itself starts using the provider in the next phase; until then it stays the labelled demo.
+The assistant then uses that model on your own files: ask for a change or press **Ask AI to fix** on an
+error, and it sees the file, the traceback and the output, and proposes a new version of the file. The
+change opens as a diff; nothing is written until you accept it, and nothing runs until you press Run.
 
 ### From source in a browser (macOS, Linux, Windows)
 
@@ -74,13 +77,16 @@ in `<project>/.tandem/settings.json`, the project's `.venv` / `venv` / `env`,
 for project code. (Creating and switching environments from the UI comes next.)
 
 What works in Real mode today: opening and creating files (saved to disk as you
-type), Run with live stdout/stderr, exit codes, real tracebacks with the line
-inside your project, Stop (interrupts, then terminates, the whole process tree),
-variables at the end of the run, and matplotlib charts from `plt.show()`.
+type), Run with live stdout/stderr, typing input for `input()` in the Output
+panel, exit codes, real tracebacks with the line inside your project, Stop
+(interrupts, then terminates, the whole process tree), variables at the end of
+the run, matplotlib charts from `plt.show()`, and **Step through** and **Debug**
+on your own code (Next F10, Into F11, Out Shift+F11, Continue F5; breakpoints
+beside the line numbers; live variables and call stack). The debugger is
+Python's own `bdb`, so nothing needs installing, and it never stops inside
+libraries.
 Metrics appear only if your program keeps them in a variable named `results`
-(`{model: {"MAE": .., "RMSE": .., "R2": ..}}` or a DataFrame). Step through,
-Debug and notebooks are not connected yet and are shown as unavailable rather
-than simulated. Progress is tracked in `docs/runtime-checklist.md`.
+(`{model: {"MAE": .., "RMSE": .., "R2": ..}}` or a DataFrame). Notebooks are not connected yet. Progress is tracked in `docs/runtime-checklist.md`.
 
 ### Safety
 

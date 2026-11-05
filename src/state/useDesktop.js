@@ -36,18 +36,20 @@ export function useDesktop(notify) {
     document.documentElement.dataset.maximized = maximized ? 'true' : 'false';
   }, [info, maximized]);
 
+  // Switching to or from Clear reopens the window in place (the page
+  // reloads), so it waits while code is running.
   const setMaterial = useCallback(
-    async (material) => {
-      const result = await DESKTOP.setMaterial(material);
-      if (result.applied) setInfo((i) => ({ ...i, material }));
-      else if (result.restart) {
-        notify(`${MATERIAL_LABELS[material].label} glass applies when Tandem restarts.`, {
-          label: 'Restart now',
-          onClick: () => DESKTOP.restart(),
-        });
+    async (material, { busy = false } = {}) => {
+      const current = info?.material;
+      if (material === current) return;
+      if (busy && (material === 'clear' || current === 'clear')) {
+        notify(`Stop the run first: switching to ${MATERIAL_LABELS[material].label} glass reopens the window.`);
+        return;
       }
+      const result = await DESKTOP.setMaterial(material);
+      if (result.applied && !result.replaced) setInfo((i) => ({ ...i, material }));
     },
-    [notify]
+    [notify, info]
   );
 
   return { active: !!DESKTOP, info, maximized, luminance, setMaterial };

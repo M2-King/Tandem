@@ -13,7 +13,7 @@ export class RuntimeClient {
     this.connect();
   }
 
-  async api(path, { method = 'GET', body } = {}) {
+  async api(path, { method = 'GET', body, signal } = {}) {
     let response;
     try {
       response = await fetch(path, {
@@ -21,9 +21,11 @@ export class RuntimeClient {
         headers: { 'x-tandem-token': this.token, ...(body ? { 'content-type': 'application/json' } : {}) },
         body: body ? JSON.stringify(body) : undefined,
         cache: 'no-store',
+        signal,
       });
-    } catch {
-      throw new Error('The Tandem runtime is not reachable. Is `tandem open` still running?');
+    } catch (e) {
+      if (e?.name === 'AbortError') throw e;
+      throw new Error('The Tandem runtime is not reachable. Is it still running?');
     }
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || `The runtime refused the request (${response.status}).`);

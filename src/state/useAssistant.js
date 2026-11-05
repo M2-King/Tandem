@@ -23,7 +23,7 @@ function restore(saved) {
 // Proposal lifecycle: pending → accepted | rejected | discarded,
 // and accepted → undone. A pending proposal is "stale" when its file no
 // longer matches `baseContent` (computed by the UI, never stored).
-export function useAssistant({ getFiles, getActivePath, onSave }) {
+export function useAssistant({ getFiles, getActivePath, onSave, request = sendAssistantRequest }) {
   const [chat, setChat] = usePersistedState(STORAGE_KEYS.chat, createChat, { restore, onSave });
   const [draftContext, setDraftContext] = useState([]);
   const controllerRef = useRef(null);
@@ -56,11 +56,15 @@ export function useAssistant({ getFiles, getActivePath, onSave }) {
       controllerRef.current = controller;
 
       try {
-        const result = await sendAssistantRequest({
+        const history = chat.messages
+          .filter((m) => (m.role === 'user' || m.status === 'done') && m.text && m.kind !== 'analysis')
+          .map((m) => ({ role: m.role, text: m.text }));
+        const result = await request({
           prompt: text,
           intent,
           context,
           files,
+          history,
           activePath: getActivePath(),
           signal: controller.signal,
           onStage: (label) =>
@@ -123,7 +127,7 @@ export function useAssistant({ getFiles, getActivePath, onSave }) {
           stages: [],
           text: cancelled
             ? 'Cancelled. No files were changed.'
-            : 'Something went wrong while preparing a response. No files were changed.',
+            : error?.userMessage || 'Something went wrong while preparing a response. No files were changed.',
           retry: cancelled ? null : { prompt: text, intent, context },
         }));
         return null;
@@ -131,7 +135,7 @@ export function useAssistant({ getFiles, getActivePath, onSave }) {
         controllerRef.current = null;
       }
     },
-    [getFiles, getActivePath, patchMessage, setChat]
+    [getFiles, getActivePath, patchMessage, setChat, request, chat.messages]
   );
 
   const cancel = useCallback(() => controllerRef.current?.abort(), []);

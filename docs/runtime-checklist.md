@@ -51,13 +51,24 @@ Status of the Python and Jupyter runtime work. Each item is marked:
 | Test connection lists models (no tokens) | done | tests against a local fake provider; wrong key reported as 401 |
 | Real Anthropic / OpenAI / Ollama accounts | untested | no keys or Ollama in this environment |
 
+## Input, Step through, Debug and the AI assistant — done
+
+| Item | Status | How it was verified |
+| --- | --- | --- |
+| `input()`: prompt shown as printed, typed lines sent to the program, End input = EOF | done | tests (3.11, 3.12); browser run of a looping input script |
+| Step through: Next / Into / Out / Continue on the real program, current line highlighted | done | tests follow Python's real line order, into and out of a function |
+| Debug: breakpoints in any project file, changed while running; never stops in libraries | done | tests; browser run hitting a gutter breakpoint |
+| Variables and call stack at every pause, changes marked | done | tests and browser |
+| Assistant uses the model from AI settings on any file; error, output and file sent as context | done | tests against fake Anthropic / OpenAI-compatible / Ollama servers; browser fix → review → accept → run |
+| No model connected: says so and opens AI settings (no demo answers in the app) | done | test and browser |
+| Model changes outside the project are refused | done | test |
+| Window glass switches without restarting | done | live switching checked on Windows CI |
+
 ## Pending
 
 - Phase 2: environment manager (discover interpreters, create 3.11/3.12 venvs, switch, package list, approved installs, missing-import detection).
 - Phase 3: Jupyter notebooks (real kernels, run/interrupt/restart, nbformat round-trip).
-- Phase 4: Step Run and Debug Run on debugpy (currently shown as unavailable in Real mode).
 - Phase 5: machine-learning sample project with real scikit-learn metrics.
-- Phase 6: the assistant calls the provider chosen in AI settings (context, patches, review). It stays labelled "Demo assistant" until then.
 - Phase 7: end-to-end verification and screenshots in Real mode.
 - Run history in Real mode is kept in memory only (lost on reload).
 - Development proxy so `npm run dev` can talk to the runtime (today the runtime serves the built UI).

@@ -193,19 +193,39 @@ function lockDown(contents) {
   contents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
 }
 
-function createWindow() {
+function createWindow(place) {
   const material = currentMaterial();
-  win = new BrowserWindow(windowOptions(material));
-  lockDown(win.webContents);
-  win.once('ready-to-show', () => win.show());
-  win.on('closed', () => {
-    win = null;
+  const w = new BrowserWindow({ ...windowOptions(material), ...(place?.bounds || {}) });
+  win = w;
+  lockDown(w.webContents);
+  w.once('ready-to-show', () => {
+    if (place?.maximized) w.maximize();
+    w.show();
+    place?.onShown?.();
   });
-  win.on('maximize', () => win.webContents.send('desktop:maximized', true));
-  win.on('unmaximize', () => win.webContents.send('desktop:maximized', false));
-  win.on('focus', () => win.webContents.send('desktop:wallpaper', wallpaperLuminance()));
-  win.loadURL(runtime.url);
-  return win;
+  w.on('closed', () => {
+    if (win === w) win = null;
+  });
+  w.on('maximize', () => w.webContents.send('desktop:maximized', true));
+  w.on('unmaximize', () => w.webContents.send('desktop:maximized', false));
+  w.on('focus', () => w.webContents.send('desktop:wallpaper', wallpaperLuminance()));
+  w.loadURL(runtime.url);
+  return w;
+}
+
+// Clear glass needs a transparent window, which Windows only allows when a
+// window is created: put a new window exactly where the old one is, then
+// close the old one. The page reloads in a moment; files are already on disk.
+function replaceWindow() {
+  const old = win;
+  const place = {
+    bounds: old.isMaximized() ? old.getNormalBounds() : old.getBounds(),
+    maximized: old.isMaximized(),
+    onShown: () => {
+      if (!old.isDestroyed()) old.destroy();
+    },
+  };
+  createWindow(place);
 }
 
 async function chooseFolder(parent) {
@@ -265,13 +285,13 @@ handle('desktop:set-material', (material) => {
   const before = currentMaterial();
   saveSettings({ material });
   if (material === before) return { applied: true, restart: false };
-  // Acrylic and Mica switch live; Clear needs a transparent window, which can
-  // only be set when a window is created.
+  // Acrylic and Mica switch in place; to or from Clear the window is replaced.
   if (IS_WIN && before !== 'clear' && material !== 'clear') {
     win.setBackgroundMaterial(material);
-    return { applied: true, restart: false };
+    return { applied: true, replaced: false };
   }
-  return { applied: false, restart: true };
+  setTimeout(replaceWindow, 50); // after this reply reaches the page
+  return { applied: true, replaced: true };
 });
 
 handle('desktop:restart', () => {

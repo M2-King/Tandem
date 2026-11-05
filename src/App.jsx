@@ -23,6 +23,7 @@ import { createLocalBackend } from './runtime/localBackend.js';
 import { RuntimeStatus, DemoBadge } from './components/RuntimeStatus.jsx';
 import NewFileDialog from './components/NewFileDialog.jsx';
 import AISettingsDialog from './components/AISettingsDialog.jsx';
+import { createRealAssistant } from './services/realAI.js';
 import { useAssistant } from './state/useAssistant.js';
 import { useExecution } from './state/useExecution.js';
 import { useViewportWidth } from './state/useViewport.js';
@@ -104,10 +105,32 @@ export default function App() {
   filesRef.current = ws.files;
   const activeRef = useRef(ws.activePath);
   activeRef.current = ws.activePath;
+  // In Real mode the assistant asks the AI model chosen in AI settings.
+  const [aiActive, setAIActive] = useState(null);
+  const aiActiveRef = useRef(aiActive);
+  aiActiveRef.current = aiActive;
+  const runsRef = useRef(exec.runs);
+  runsRef.current = exec.runs;
+  const refreshAI = useCallback(() => {
+    if (IS_LOCAL) backend.aiActive().then(setAIActive, () => {});
+  }, []);
+  useEffect(() => refreshAI(), [refreshAI]);
+  const realRequest = useMemo(
+    () =>
+      IS_LOCAL
+        ? createRealAssistant({
+            backend,
+            getLastRun: (path) => runsRef.current.filter((r) => r.path === path).at(-1) || null,
+            getModelLabel: () => aiActiveRef.current?.model,
+          })
+        : undefined,
+    []
+  );
   const assistant = useAssistant({
     getFiles: useCallback(() => filesRef.current, []),
     getActivePath: useCallback(() => activeRef.current, []),
     onSave,
+    request: realRequest,
   });
   const proposalsRef = useRef(assistant.proposals);
   proposalsRef.current = assistant.proposals;
@@ -331,7 +354,21 @@ export default function App() {
     setResultsOpen(true);
     setResultsTab('Output');
   };
+  // Every breakpoint in the project, for the real debugger.
+  const allBreakpoints = (bps = ws.breakpoints) =>
+    Object.entries(bps).flatMap(([path, lines]) => (lines || []).map((line) => ({ path, line })));
+
   const handleTrace = (mode) => {
+    if (IS_LOCAL) {
+      if (runBlocked) return;
+      if (exec.session && !exec.session.finished) return;
+      if (exec.session?.finished) exec.stop();
+      setReviewingId(null);
+      exec.startTrace(mode, ws.files, null, { path: runTarget, flush: ws.flush, breakpointList: allBreakpoints() });
+      setResultsOpen(true);
+      setResultsTab(mode === 'step' ? 'Variables' : 'Output');
+      return;
+    }
     if (exec.session?.mode === 'run') exec.stop();
     ws.openFile(DEBUG_FILE);
     setReviewingId(null);
@@ -360,6 +397,27 @@ export default function App() {
   const traceSession = session && session.mode !== 'run' ? session : null;
   const traceView = useMemo(() => {
     if (!traceSession) return null;
+    if (traceSession.real) {
+      const p = traceSession.paused;
+      const output = [...traceSession.output.map((l) => l.text), ...(traceSession.partial ? [traceSession.partial] : [])];
+      if (traceSession.finished || !p) {
+        return { finished: !!traceSession.finished, running: !traceSession.finished, globals: p?.globals || [], locals: null, output, changed: [], stepKey: 'end', real: true };
+      }
+      return {
+        line: p.line,
+        path: p.path,
+        scope: p.function === '<module>' ? 'module' : `${p.function}()`,
+        globals: p.globals,
+        locals: p.locals,
+        stack: p.stack,
+        output,
+        changed: changedVariables(p, traceSession.prevPaused),
+        stepKey: p.count,
+        finished: false,
+        running: traceSession.running,
+        real: true,
+      };
+    }
     if (traceSession.finished) {
       return {
         finished: true,
@@ -375,12 +433,33 @@ export default function App() {
     return { ...step, finished: false, changed: changedVariables(step, prev), stepKey: traceSession.index };
   }, [traceSession]);
 
-  const execLine =
-    traceSession && !traceSession.finished && traceSession.path === ws.activePath
+  const execLine = traceSession?.real
+    ? traceSession.paused && !traceSession.running && !traceSession.finished && traceSession.paused.path === ws.activePath
+      ? traceSession.paused.line
+      : null
+    : traceSession && !traceSession.finished && traceSession.path === ws.activePath
       ? TRACE.steps[traceSession.index].line
       : null;
 
+  // When the debugger stops in another file (a step into an imported
+  // function), show that file.
+  const pausedKey = traceSession?.real && traceSession.paused ? `${traceSession.paused.path}:${traceSession.paused.count}` : null;
+  useEffect(() => {
+    const p = sessionRef.current?.paused;
+    if (pausedKey && p && p.path !== activeRef.current && filesRef.current[p.path] !== undefined) ws.openFile(p.path);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pausedKey]);
+
   const toggleBreakpoint = (line) => {
+    if (IS_LOCAL) {
+      const path = ws.activePath;
+      const current = ws.breakpoints[path] || [];
+      const next = current.includes(line) ? current.filter((l) => l !== line) : [...current, line];
+      ws.toggleBreakpoint(path, line);
+      // A running debug session picks up the change right away.
+      if (exec.session?.real && !exec.session.finished) exec.updateBreakpoints(allBreakpoints({ ...ws.breakpoints, [path]: next }));
+      return;
+    }
     if (!EXECUTABLE_LINES.has(line)) {
       notify(`Line ${line} has no code to pause on.`);
       return;
@@ -390,7 +469,35 @@ export default function App() {
 
   const selectedRun = exec.runs.find((r) => r.id === exec.selectedRunId) || exec.runs.at(-1) || null;
 
+  // Debugger keys while a real Step through / Debug session is paused.
+  const pausedNow = !!(traceSession?.real && traceSession.paused && !traceSession.running && !traceSession.finished);
+  useEffect(() => {
+    if (!pausedNow) return undefined;
+    const onKey = (e) => {
+      const action =
+        e.key === 'F10' ? exec.next : e.key === 'F11' ? (e.shiftKey ? exec.stepOut : exec.stepIn) : e.key === 'F5' ? () => exec.continueTrace() : null;
+      if (!action) return;
+      e.preventDefault();
+      action();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pausedNow, exec]);
+
+  const restartRef = useRef(null);
+  const traceFinished = !!traceSession?.finished;
+  useEffect(() => {
+    if (traceFinished && restartRef.current) {
+      const mode = restartRef.current;
+      restartRef.current = null;
+      handleTrace(mode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [traceFinished]);
+
   const resultsActions = {
+    onInput: exec.sendInput,
+    onEndInput: exec.endInput,
     onRun: handleRun,
     onAskFix: askToFixRun,
     onGoToLine: (path, line) => {
@@ -463,7 +570,7 @@ export default function App() {
           session,
           runTarget,
           blockedReason: runBlocked,
-          traceNote: IS_LOCAL ? 'Not connected to the real debugger yet' : null,
+          traceNote: null,
           onRun: handleRun,
           onStep: () => handleTrace('step'),
           onDebug: () => handleTrace('debug'),
@@ -480,7 +587,7 @@ export default function App() {
         onDiffInline={(inline) => update({ diffInline: inline })}
         onReset={IS_LOCAL ? null : () => setConfirmReset(true)}
         onAISettings={IS_LOCAL ? () => setAISettingsOpen(true) : null}
-        desktop={desktop}
+        desktop={{ ...desktop, setMaterial: (m) => desktop.setMaterial(m, { busy: !!exec.session }) }}
         onOpenFolder={
           DESKTOP
             ? async () => {
@@ -547,8 +654,8 @@ export default function App() {
             onOpenFile={openFile}
             fontSize={prefs.fontSize}
             diffInline={prefs.diffInline}
-            breakpoints={ws.activePath === DEBUG_FILE ? debugBreakpoints : []}
-            glyphEnabled={ws.activePath === DEBUG_FILE}
+            breakpoints={IS_LOCAL ? ws.breakpoints[ws.activePath] || [] : ws.activePath === DEBUG_FILE ? debugBreakpoints : []}
+            glyphEnabled={IS_LOCAL ? /\.py$/.test(ws.activePath || '') : ws.activePath === DEBUG_FILE}
             onToggleBreakpoint={toggleBreakpoint}
             execLine={execLine}
             readOnlyMessage={
@@ -570,8 +677,17 @@ export default function App() {
             session={session}
             sessionHandlers={{
               onNext: exec.next,
+              onStepIn: exec.stepIn,
+              onStepOut: exec.stepOut,
               onContinue: () => exec.continueTrace(debugBreakpoints),
-              onRestart: () => traceSession && handleTrace(traceSession.mode),
+              onRestart: () => {
+                if (!traceSession) return;
+                if (traceSession.real && !traceSession.finished) {
+                  // Stop first; the run restarts once Python has ended.
+                  restartRef.current = traceSession.mode;
+                  exec.stop();
+                } else handleTrace(traceSession.mode);
+              },
               onStop: exec.stop,
             }}
             notice={exec.notice}
@@ -647,7 +763,10 @@ export default function App() {
             onSend={(text) => sendPrompt(text)}
             onCancel={assistant.cancel}
             onSuggestion={(text) => sendPrompt(text)}
-            onAction={(action) => action.type === 'reset-file' && resetFile(action.path)}
+            onAction={(action) =>
+              action.type === 'reset-file' ? resetFile(action.path) : action.type === 'open-ai-settings' && setAISettingsOpen(true)
+            }
+            aiModel={aiActive}
             onRetry={(r) => sendPrompt(r.prompt, { intent: r.intent, context: r.context })}
             composerRef={composerRef}
             onClose={closeAssistant}
@@ -702,7 +821,14 @@ export default function App() {
       )}
 
       {aiSettingsOpen && (
-        <AISettingsDialog backend={backend} onClose={() => setAISettingsOpen(false)} onSaved={(message) => notify(message)} />
+        <AISettingsDialog
+          backend={backend}
+          onClose={() => {
+            setAISettingsOpen(false);
+            refreshAI();
+          }}
+          onSaved={(message) => notify(message)}
+        />
       )}
 
       {newFileOpen && (

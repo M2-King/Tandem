@@ -7,7 +7,7 @@ import { RuntimeClient } from './client.js';
 
 // Turns streamed text into lines, per stream. A partial line is held until
 // its newline arrives (or the run ends).
-function lineCollector(onLine) {
+function lineCollector(onLine, onPartial) {
   const partial = { out: '', err: '' };
   return {
     push(stream, text) {
@@ -15,6 +15,14 @@ function lineCollector(onLine) {
       const parts = (partial[kind] + text.replace(/\r\n/g, '\n')).split('\n');
       partial[kind] = parts.pop();
       parts.forEach((line) => onLine({ text: line, kind }));
+      // An unfinished line (like an input() prompt) is shown as it is.
+      onPartial?.(partial.out, partial.err);
+    },
+    // What the person typed for input() continues the prompt's line, as in a terminal.
+    echo(text) {
+      onLine({ text: partial.out + text, kind: 'out', typed: text });
+      partial.out = '';
+      onPartial?.(partial.out, partial.err);
     },
     flush() {
       for (const kind of ['out', 'err']) {
@@ -42,12 +50,15 @@ export function createLocalBackend(config) {
     aiSettings: () => client.api('/api/ai/settings'),
     saveAISettings: (body) => client.api('/api/ai/settings', { method: 'PUT', body }),
     testAI: (provider) => client.api('/api/ai/test', { method: 'POST', body: { provider } }),
+    aiActive: () => client.api('/api/ai/active').then((r) => r.active),
+    assist: (body, signal) => client.api('/api/ai/assist', { method: 'POST', body, signal }),
 
-    // Starts a real run. Callbacks:
-    //   onStart({python, cwd}), onOutput(line), onFinish(result)
+    // Starts a real run. mode: 'run' | 'step' | 'debug'. Callbacks:
+    //   onStart({python, cwd}), onOutput(line), onPartial(text),
+    //   onPaused(pause), onResumed(), onFinish(result)
     // result: { status: 'success'|'error'|'stopped', exitCode, output, variables,
     //           figures, metrics, error, durationMs, python, lostConnection? }
-    startRun({ path, onStart, onOutput, onFinish }) {
+    startRun({ path, mode = 'run', breakpoints = [], onStart, onOutput, onPartial, onPaused, onResumed, onFinish }) {
       const id = uid('run');
       const output = [];
       const figures = [];
@@ -56,10 +67,13 @@ export function createLocalBackend(config) {
       let python = null;
       let done = false;
       const startedAt = Date.now();
-      const lines = lineCollector((line) => {
-        output.push(line);
-        onOutput(line);
-      });
+      const lines = lineCollector(
+        (line) => {
+          output.push(line);
+          onOutput(line);
+        },
+        (out) => onPartial?.(out)
+      );
 
       const finish = (result) => {
         if (done) return;
@@ -99,6 +113,21 @@ export function createLocalBackend(config) {
           case 'run.metrics':
             metrics = event.metrics || null;
             break;
+          case 'run.paused':
+            onPaused?.({
+              path: event.path,
+              line: event.line,
+              function: event.function,
+              reason: event.reason,
+              stack: event.stack || [],
+              locals: event.locals,
+              globals: event.globals || [],
+              count: event.count,
+            });
+            break;
+          case 'run.resumed':
+            onResumed?.();
+            break;
           case 'run.rejected':
             finish({ status: 'rejected', message: event.message, durationMs: 0 });
             break;
@@ -124,7 +153,7 @@ export function createLocalBackend(config) {
         }
       });
 
-      if (!client.send({ type: 'run.start', id, path })) {
+      if (!client.send({ type: 'run.start', id, path, mode, breakpoints })) {
         offEvents();
         offState();
         throw new Error('The Tandem runtime is disconnected. Start it with `tandem open` and try again.');
@@ -133,6 +162,21 @@ export function createLocalBackend(config) {
         id,
         stop() {
           client.send({ type: 'run.stop', id });
+        },
+        // A line typed for input(); shown in the output like a terminal echo.
+        input(text) {
+          if (done) return;
+          lines.echo(text);
+          client.send({ type: 'run.input', id, text });
+        },
+        endInput() {
+          client.send({ type: 'run.input-end', id });
+        },
+        command(cmd) {
+          client.send({ type: 'debug.command', id, cmd });
+        },
+        setBreakpoints(list) {
+          client.send({ type: 'debug.command', id, cmd: 'breakpoints', breakpoints: list });
         },
       };
     },

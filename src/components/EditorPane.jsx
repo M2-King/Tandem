@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, ChevronUp, ChevronDown, FileCode2, FileSpreadsheet, FileDiff, MessageSquarePlus, MessageSquareText, Wrench, Check, AlertTriangle, StepForward, FastForward, RotateCcw, Square, Bug, Footprints, Info, CircleCheck } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, FileCode2, FileSpreadsheet, FileDiff, MessageSquarePlus, MessageSquareText, Wrench, Check, AlertTriangle, StepForward, FastForward, RotateCcw, Square, Bug, Footprints, Info, CircleCheck, ArrowDownToLine, ArrowUpFromLine, Loader2 } from 'lucide-react';
 import CodeEditor from './CodeEditor.jsx';
 import DiffReview from './DiffReview.jsx';
 import { TRACE } from '../services/traceService.js';
@@ -150,7 +150,86 @@ function ReviewBar({ review, nav, onAccept, onReject, onClose, onRegenerate, onD
   );
 }
 
-function SessionBar({ session, onNext, onContinue, onRestart, onStop }) {
+// Step through / Debug of real code (Python's debugger in the runtime).
+function RealSessionBar({ session, onNext, onStepIn, onStepOut, onContinue, onRestart, onStop }) {
+  const isDebug = session.mode === 'debug';
+  const p = session.paused;
+  const paused = p && !session.running && !session.finished;
+  let message;
+  if (session.finished) {
+    message =
+      session.noBreakpointHit ? (
+        <>
+          <strong>No breakpoints were hit.</strong> Click beside a line number to add one, then restart.
+        </>
+      ) : (
+        <>
+          <strong>{session.status === 'stopped' ? 'Stopped.' : session.status === 'error' ? 'Ended with an error.' : 'Finished.'}</strong>
+          <span className="banner-sub">Results are in the Output and Runs tabs.</span>
+        </>
+      );
+  } else if (paused) {
+    message = (
+      <>
+        <strong>{p.reason === 'breakpoint' ? `Breakpoint · line ${p.line}` : `Next line: ${p.line}`}</strong>
+        <span className="banner-sub">
+          {p.function === '<module>' ? p.path : `in ${p.function}() · ${p.path}`}
+        </span>
+      </>
+    );
+  } else {
+    message = (
+      <>
+        <strong>Running…</strong>
+        <span className="banner-sub">{isDebug ? 'until a breakpoint' : 'to the next line'}</span>
+      </>
+    );
+  }
+  return (
+    <div className="editor-banner banner-session" role="region" aria-label={isDebug ? 'Debugger' : 'Step through'}>
+      {session.finished ? (
+        <CircleCheck size={16} aria-hidden="true" className="banner-icon-success" />
+      ) : !paused ? (
+        <Loader2 size={16} aria-hidden="true" className="banner-icon-accent spin" />
+      ) : isDebug ? (
+        <Bug size={16} aria-hidden="true" className="banner-icon-accent" />
+      ) : (
+        <Footprints size={16} aria-hidden="true" className="banner-icon-accent" />
+      )}
+      <span className="banner-text" aria-live="polite">
+        {message}
+      </span>
+      <div className="banner-actions">
+        {!session.finished && (
+          <>
+            <button type="button" className="btn btn-primary btn-sm" onClick={onNext} disabled={!paused} data-tooltip="Run this line (F10)">
+              <StepForward size={16} aria-hidden="true" /> Next
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onStepIn} disabled={!paused} data-tooltip="Go into the function this line calls (F11)">
+              <ArrowDownToLine size={16} aria-hidden="true" /> Into
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onStepOut} disabled={!paused || p?.function === '<module>'} data-tooltip="Finish this function (Shift+F11)">
+              <ArrowUpFromLine size={16} aria-hidden="true" /> Out
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onContinue} disabled={!paused} data-tooltip="Run to the next breakpoint (F5)">
+              <FastForward size={16} aria-hidden="true" /> Continue
+            </button>
+          </>
+        )}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onRestart}>
+          <RotateCcw size={16} aria-hidden="true" /> Restart
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onStop}>
+          {session.finished ? 'Close' : 'Stop'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SessionBar(props) {
+  const { session, onNext, onContinue, onRestart, onStop } = props;
+  if (session.real) return <RealSessionBar {...props} />;
   const step = TRACE.steps[session.index];
   const total = TRACE.steps.length;
   const isDebug = session.mode === 'debug';
@@ -300,7 +379,7 @@ export default function EditorPane(props) {
 
   const showDiff = review && !review.stale && review.proposal.path === activePath;
   const showReviewBar = review && review.proposal.path === activePath;
-  const showSession = session && session.mode !== 'run' && session.path === activePath;
+  const showSession = session && session.mode !== 'run' && (session.real || session.path === activePath);
   const showNotice = notice && notice.kind === 'trace' && notice.path === activePath && !showSession;
 
   const currentSelection = selection && selection.path === activePath && !showDiff ? selection : null;

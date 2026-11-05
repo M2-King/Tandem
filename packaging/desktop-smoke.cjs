@@ -133,7 +133,7 @@ async function seeThrough(app, win, label) {
     env: { ...process.env, TANDEM_OPEN_FOLDER: project, TANDEM_CONFIG_DIR: path.join(userData, 'config') },
     timeout: 120000,
   });
-  const win = await app.firstWindow();
+  let win = await app.firstWindow();
   await win.locator('.runtime-status.tone-up').waitFor({ timeout: 90000 });
   check(/^http:\/\/127\.0\.0\.1:\d+\/$/.test(win.url()), 'app window shows the bundled runtime (127.0.0.1 only)');
 
@@ -203,6 +203,28 @@ async function seeThrough(app, win, label) {
     console.log(`SEE-THROUGH acrylic=${JSON.stringify(glass.acrylic)} mica=${JSON.stringify(glass.mica)}`);
   }
 
+  if (IS_WIN && probe.material !== 'clear') {
+    // Switching to Clear and back happens live: a new window replaces the old
+    // one in the same place, with no restart.
+    let current = win;
+    for (const material of ['clear', 'acrylic']) {
+      const next = app.waitForEvent('window', { timeout: 30000 });
+      await current.evaluate((m) => window.tandemDesktop.setMaterial(m), material);
+      current = await next;
+      await current.locator('.runtime-status.tone-up').waitFor({ timeout: 60000 });
+      const shown = await current.evaluate(() => document.documentElement.dataset.material);
+      const buttons = await current.locator('.window-controls button').count();
+      const windows = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+      check(shown === material && windows === 1 && (material === 'clear') === (buttons === 3),
+        `switched to ${material} without restarting (one window${material === 'clear' ? ', app window buttons' : ''})`);
+      if (material === 'clear') {
+        const delta = await seeThrough(app, current, 'Clear');
+        console.log(`SEE-THROUGH clear=${JSON.stringify(delta)}`);
+      }
+    }
+    win = current;
+  }
+
   const href = await app.evaluate(async ({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
     await w.webContents.executeJavaScript("location.href = 'https://example.com/'; 1");
@@ -220,25 +242,6 @@ async function seeThrough(app, win, label) {
   }
   check(left === 0, 'closing the app stops the runtime');
 
-  if (IS_WIN) {
-    // Clear glass needs a transparent window, created at start.
-    const settings = path.join(userData, 'settings.json');
-    const saved = JSON.parse(fs.readFileSync(settings, 'utf8'));
-    fs.writeFileSync(settings, JSON.stringify({ ...saved, material: 'clear' }));
-    const app2 = await electron.launch({
-      executablePath: exe,
-      args: [`--user-data-dir=${userData}`],
-      env: { ...process.env, TANDEM_OPEN_FOLDER: project, TANDEM_CONFIG_DIR: path.join(userData, 'config') },
-      timeout: 120000,
-    });
-    const win2 = await app2.firstWindow();
-    await win2.locator('.runtime-status.tone-up').waitFor({ timeout: 90000 });
-    check((await win2.evaluate(() => document.documentElement.dataset.material)) === 'clear', 'Clear glass after restart');
-    check((await win2.locator('.window-controls button').count()) === 3, 'Clear glass: the app draws the window buttons');
-    const delta = await seeThrough(app2, win2, 'Clear');
-    console.log(`SEE-THROUGH clear=${JSON.stringify(delta)}`);
-    await app2.close();
-  }
   console.log('\nAll desktop checks passed.');
 })().catch((e) => {
   console.error('FAILED:', e);

@@ -8,8 +8,9 @@ import { DEBUG_FILE } from '../data/sampleProject.js';
 // traceNote: when Step through / Debug aren't available, the reason shown instead.
 export default function RunControl({ session, runTarget, onRun, onStep, onDebug, onStop, blockedReason, traceNote }) {
   if (session) {
-    const label =
-      session.mode === 'run'
+    const label = session.finished
+      ? `Finished ${session.path}`
+      : session.mode === 'run'
         ? `Running ${session.path}`
         : session.mode === 'step'
           ? `Stepping through ${session.path}`
@@ -23,8 +24,14 @@ export default function RunControl({ session, runTarget, onRun, onStep, onDebug,
           <span className="run-status-text">{label}</span>
         </span>
         <button type="button" className="btn btn-secondary btn-sm btn-stop" onClick={onStop}>
-          <Square size={12} fill="currentColor" aria-hidden="true" />
-          Stop
+          {session.finished ? (
+            'Close'
+          ) : (
+            <>
+              <Square size={12} fill="currentColor" aria-hidden="true" />
+              Stop
+            </>
+          )}
         </button>
       </div>
     );

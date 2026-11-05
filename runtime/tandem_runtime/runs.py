@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from .files import ProjectFiles
+from .files import FileError, ProjectFiles
 from .interpreters import child_env
 from .procs import ProcessTree, spawn_options, wrapper_env
 
@@ -62,6 +62,7 @@ class Run:
     started: float
     tree: ProcessTree
     events: "EventChannel"
+    mode: str = "run"
     stopping: bool = False
     stderr_tail: str = ""
     tasks: list = field(default_factory=list)
@@ -81,6 +82,7 @@ class EventChannel:
         self.done = asyncio.Event()
         self._claimed = False
         self._on_event = None
+        self.writer: asyncio.StreamWriter | None = None
 
     async def open(self, on_event) -> None:
         self._on_event = on_event
@@ -97,6 +99,7 @@ class EventChannel:
             if self._claimed or not hmac.compare_digest(first.strip(), self.key.encode()):
                 return
             self._claimed = True
+            self.writer = writer
             self.close_listener()
             while True:
                 line = await reader.readline()
@@ -113,6 +116,17 @@ class EventChannel:
             writer.close()
             if self._claimed:
                 self.done.set()
+
+    async def send(self, message: dict) -> bool:
+        """A command to the script (debug runs). False if it isn't connected."""
+        if self.writer is None or self.writer.is_closing():
+            return False
+        try:
+            self.writer.write((json.dumps(message) + "\n").encode("utf-8"))
+            await self.writer.drain()
+            return True
+        except (ConnectionError, OSError):
+            return False
 
     def close_listener(self) -> None:
         if self.server is not None:
@@ -137,7 +151,8 @@ class RunManager:
         self.interpreter = interpreter
         self.current: Run | None = None
 
-    async def start(self, run_id: str, path: str, send: Send) -> None:
+    async def start(self, run_id: str, path: str, send: Send, mode: str = "run",
+                    breakpoints: list | None = None) -> None:
         if self.current is not None:
             raise RunError(f"{self.current.path} is still running. Stop it before starting another run.")
         script = self.files.resolve(path)
@@ -146,12 +161,20 @@ class RunManager:
         python = self.interpreter()
         if python is None:
             raise RunError("No Python interpreter is selected for this project.")
+        if mode not in ("run", "step", "debug"):
+            raise RunError("Unknown run mode.")
+        points = []
+        for bp in breakpoints or []:
+            try:
+                points.append([str(self.files.resolve(str(bp["path"]))), int(bp["line"])])
+            except (FileError, KeyError, TypeError, ValueError):
+                continue
 
         run_box: dict = {}
 
         async def on_event(event: dict):
             kind = event.pop("type", "")
-            if kind in {"figure", "figure-error", "variables", "metrics"} and "run" in run_box:
+            if kind in {"figure", "figure-error", "variables", "metrics", "paused", "resumed"} and "run" in run_box:
                 await send({"type": f"run.{kind}", "id": run_box["run"].id, **event})
 
         channel = EventChannel()
@@ -163,13 +186,15 @@ class RunManager:
             "PYTHONPATH": os.pathsep.join(filter(None, [str(SUPPORT_DIR), os.environ.get("PYTHONPATH", "")])),
             "TANDEM_EVENT_ADDR": channel.address,
             "TANDEM_EVENT_KEY": channel.key,
+            "TANDEM_PROJECT_ROOT": str(self.files.root),
+            **({"TANDEM_DEBUG": mode, "TANDEM_BREAKPOINTS": json.dumps(points)} if mode != "run" else {}),
             **wrapper_env(),
         })
         try:
             proc = await asyncio.create_subprocess_exec(
                 str(python), "-u", str(WRAPPER), str(script),
                 cwd=str(self.files.root),
-                stdin=asyncio.subprocess.DEVNULL,
+                stdin=asyncio.subprocess.PIPE,  # input() reads what the person types in Tandem
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
@@ -180,10 +205,11 @@ class RunManager:
             raise RunError(f"Couldn't start {python}: {exc}") from exc
 
         run = Run(id=run_id, path=path, proc=proc, started=time.monotonic(), tree=ProcessTree(proc.pid),
-                  events=channel)
+                  events=channel, mode=mode)
         run_box["run"] = run
         self.current = run
-        await send({"type": "run.started", "id": run_id, "path": path, "python": str(python), "cwd": str(self.files.root)})
+        await send({"type": "run.started", "id": run_id, "path": path, "mode": mode, "python": str(python),
+                    "cwd": str(self.files.root)})
         run.tasks = [
             asyncio.create_task(self._pump(run, proc.stdout, "out", send)),
             asyncio.create_task(self._pump(run, proc.stderr, "err", send)),
@@ -232,6 +258,45 @@ class RunManager:
                 return
             except asyncio.TimeoutError:
                 continue
+
+    def _current(self, run_id: str) -> Run | None:
+        run = self.current
+        return run if run is not None and run.id == run_id and run.proc.returncode is None else None
+
+    async def send_input(self, run_id: str, text: str) -> bool:
+        """A line the person typed, for input() (or anything reading stdin)."""
+        run = self._current(run_id)
+        if run is None or run.proc.stdin is None or run.proc.stdin.is_closing():
+            return False
+        try:
+            run.proc.stdin.write((text + "\n").encode("utf-8"))
+            await run.proc.stdin.drain()
+            return True
+        except (ConnectionError, OSError):
+            return False
+
+    async def close_input(self, run_id: str) -> None:
+        """End of input (like Ctrl+D / Ctrl+Z in a terminal)."""
+        run = self._current(run_id)
+        if run is not None and run.proc.stdin is not None and not run.proc.stdin.is_closing():
+            run.proc.stdin.close()
+
+    async def debug_command(self, run_id: str, cmd: str, breakpoints: list | None = None) -> bool:
+        """next / step / out / continue for a paused Step-through or Debug run."""
+        run = self._current(run_id)
+        if run is None or run.mode == "run":
+            return False
+        if cmd == "breakpoints":
+            points = []
+            for bp in breakpoints or []:
+                try:
+                    points.append([str(self.files.resolve(str(bp["path"]))), int(bp["line"])])
+                except (FileError, KeyError, TypeError, ValueError):
+                    continue
+            return await run.events.send({"cmd": "breakpoints", "list": points})
+        if cmd not in ("next", "step", "out", "continue"):
+            return False
+        return await run.events.send({"cmd": cmd})
 
     async def shutdown(self) -> None:
         if self.current is not None:

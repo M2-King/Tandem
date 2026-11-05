@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { X, Play, Loader2, AlertCircle, RotateCcw, MessageSquarePlus, Wrench, Maximize2, ArrowRight, Info, GitCompare, Code2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, Play, Loader2, AlertCircle, RotateCcw, MessageSquarePlus, Wrench, Maximize2, ArrowRight, Info, GitCompare, Code2, ChevronRight } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import FigureView from './FigureView.jsx';
 import { MetricsList, ModelHeading } from './MetricsTable.jsx';
@@ -58,16 +58,59 @@ function RunMeta({ run, actions }) {
 }
 
 // A traceback is mostly context; only its last line (the error itself) is red.
-function OutputLines({ lines }) {
+function OutputLines({ lines, partial = '' }) {
   const lastErr = lines.map((l) => l.kind).lastIndexOf('err');
   return (
     <pre className="output-lines">
       {lines.map((l, i) => (
         <div key={i} className={l.kind === 'err' ? (i === lastErr ? 'line-err line-err-final' : 'line-err') : undefined}>
-          {l.text || ' '}
+          {l.typed != null ? (
+            <>
+              {l.text.slice(0, l.text.length - l.typed.length)}
+              <span className="line-typed">{l.typed}</span>
+            </>
+          ) : (
+            l.text || ' '
+          )}
         </div>
       ))}
+      {partial && <div className="line-partial">{partial}</div>}
     </pre>
+  );
+}
+
+// What the person types goes to the program's input() (its standard input).
+function InputBox({ prompt, onInput, onEndInput }) {
+  const [text, setText] = useState('');
+  const ref = useRef(null);
+  // A prompt without a newline usually means input() is waiting.
+  useEffect(() => {
+    if (prompt) ref.current?.focus({ preventScroll: true });
+  }, [prompt]);
+  return (
+    <form
+      className="run-input"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onInput(text);
+        setText('');
+      }}
+    >
+      <ChevronRight size={14} aria-hidden="true" className="run-input-icon" />
+      <input
+        ref={ref}
+        className="run-input-field mono"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={prompt ? 'Type your answer and press Enter' : 'Input for the program (press Enter to send)'}
+        aria-label="Input for the program"
+        spellCheck={false}
+        autoComplete="off"
+      />
+      <button type="button" className="btn btn-ghost btn-sm" onClick={onEndInput} data-tooltip="Send end of input (EOF), like Ctrl+D">
+        End input
+      </button>
+    </form>
   );
 }
 
@@ -94,6 +137,28 @@ function NoticeCallout({ notice, onResetFile, onDismiss }) {
 }
 
 function OutputView({ session, traceView, notice, run, runTarget, actions }) {
+  if (session?.real && !session.finished) {
+    const paused = session.paused && !session.running;
+    const title = session.mode === 'run' ? `Running ${session.path}` : session.path;
+    return (
+      <div className="results-scroll">
+        <div className="run-meta">
+          <span className="run-meta-title">{title}</span>
+          {paused ? (
+            <span className="run-meta-detail">
+              Paused at {session.paused.path}:{session.paused.line}
+            </span>
+          ) : (
+            <span className="run-state status-running">
+              <Loader2 size={16} className="spin" aria-hidden="true" /> Running
+            </span>
+          )}
+        </div>
+        <OutputLines lines={session.output} partial={session.partial} />
+        {!paused && <InputBox prompt={session.partial} onInput={actions.onInput} onEndInput={actions.onEndInput} />}
+      </div>
+    );
+  }
   if (session?.mode === 'run') {
     return (
       <div className="results-scroll">
@@ -112,12 +177,15 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
       <div className="results-scroll">
         <div className="run-meta">
           <span className="run-meta-title">{session.path}</span>
-          <span className="run-meta-detail">{traceView.finished ? 'Finished' : 'Paused'} · simulated trace</span>
+          <span className="run-meta-detail">
+            {traceView.finished ? 'Finished' : 'Paused'}
+            {traceView.real ? ' · full results in Runs' : ' · simulated trace'}
+          </span>
         </div>
         {traceView.output.length ? (
           <OutputLines lines={traceView.output.map((text) => ({ text }))} />
         ) : (
-          <p className="muted-text pad">No output yet. The print calls are at lines 19–20.</p>
+          <p className="muted-text pad">{traceView.real ? 'No output.' : 'No output yet. The print calls are at lines 19–20.'}</p>
         )}
       </div>
     );
@@ -202,6 +270,20 @@ function VariableTable({ variables, changed = [], stepKey }) {
 }
 
 function VariablesView({ traceView, run, actions }) {
+  // A finished real session: the run record has the final variables.
+  if (traceView?.real && traceView.finished && run) traceView = null;
+  if (traceView?.real && !traceView.line) {
+    return (
+      <div className="results-scroll">
+        <div className="run-meta">
+          <span className="run-meta-title">Running</span>
+          <span className="run-state status-running">
+            <Loader2 size={16} className="spin" aria-hidden="true" /> Variables appear when the program pauses
+          </span>
+        </div>
+      </div>
+    );
+  }
   if (traceView) {
     return (
       <div className="results-scroll">
@@ -209,7 +291,13 @@ function VariablesView({ traceView, run, actions }) {
           <span className="run-meta-title">
             {traceView.finished ? 'Variables at the end' : `Before line ${traceView.line} runs`}
           </span>
-          <span className="run-meta-detail">simulated trace of price_stats.py</span>
+          <span className="run-meta-detail">
+            {traceView.real
+              ? traceView.stack?.length
+                ? `Call stack: ${traceView.stack.map((f) => `${f.function === '<module>' ? f.path : `${f.function}()`}:${f.line}`).join(' ← ')}`
+                : traceView.path
+              : 'simulated trace of price_stats.py'}
+          </span>
         </div>
         {traceView.locals && (
           <div className="var-group">

@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, ChevronRight, MessageSquareText, Wrench, Lightbulb, FileCode2, Table2, History } from 'lucide-react';
+import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, Sparkles, ChevronRight, MessageSquareText, Wrench, Lightbulb, FileCode2, Table2, History } from 'lucide-react';
 import TandemMark from './TandemMark.jsx';
 import Markdown from './Markdown.jsx';
 import ProposalCard from './ProposalCard.jsx';
@@ -122,7 +122,8 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
       )}
       {message.action && (
         <button type="button" className="btn btn-secondary btn-sm msg-action" onClick={() => onAction(message.action)}>
-          <RotateCcw size={16} aria-hidden="true" /> {message.action.label}
+          {message.action.type === 'open-ai-settings' ? <Sparkles size={16} aria-hidden="true" /> : <RotateCcw size={16} aria-hidden="true" />}{' '}
+          {message.action.label}
         </button>
       )}
       {message.suggestions?.length > 0 && (
@@ -416,6 +417,7 @@ export default function AssistantPanel({
   onShowResults,
   onGoToCode,
   onConnectAI,
+  aiModel,
 }) {
   const listRef = useRef(null);
   const contentRef = useRef(null);
@@ -500,12 +502,15 @@ export default function AssistantPanel({
       <div className="panel-header">
         <span className="panel-title">Assistant</span>
         {IS_LOCAL ? (
-          <span
-            className="sim-tag"
-            data-tooltip="Scripted replies for the sample project; no AI model is connected yet. Its changes still go through your review, and runs use real Python."
-          >
-            Demo assistant
-          </span>
+          aiModel ? (
+            <span className="sim-tag ai-model-tag" data-tooltip={`${aiModel.label} · ${aiModel.model}. Every change it proposes needs your review.`}>
+              {aiModel.model}
+            </span>
+          ) : (
+            <span className="sim-tag" data-tooltip="Connect an AI model in AI settings to use the assistant.">
+              No AI connected
+            </span>
+          )
         ) : (
           <span className="sim-tag" data-tooltip="Responses are prepared for a few sample tasks. No AI service is connected.">
             Simulated
