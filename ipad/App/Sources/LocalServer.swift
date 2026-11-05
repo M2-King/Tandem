@@ -233,7 +233,8 @@ final class LocalServer {
             // CI: the page reports its self-test here (see ipad/selftest.js).
             let docs = store.documents.appendingPathComponent(".selftest.json")
             try r.body.write(to: docs)
-            print("TANDEM-SELFTEST \(String(data: r.body, encoding: .utf8) ?? "")")
+            let report = String(data: r.body, encoding: .utf8) ?? ""
+            print("TANDEM-SELFTEST " + report)
             return json(["ok": true])
         default:
             return error(404, "Not found")
@@ -265,7 +266,9 @@ final class LocalServer {
         if ["POST", "PUT", "PATCH"].contains(r.method) { out.httpBody = r.body }
         URLSession.shared.dataTask(with: out) { data, response, err in
             guard let http = response as? HTTPURLResponse else {
-                return reply(self.error(502, "Couldn't reach \(url.host ?? "the provider") (\(err?.localizedDescription ?? "no answer")).")
+                let host = url.host ?? "the provider"
+                let why = err?.localizedDescription ?? "no answer"
+                return reply(self.error(502, "Couldn't reach \(host) (\(why))."))
             }
             reply(Response(status: http.statusCode, body: data ?? Data(), contentType: http.value(forHTTPHeaderField: "Content-Type") ?? "application/json"))
         }.resume()
