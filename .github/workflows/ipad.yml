@@ -1,0 +1,149 @@
+name: iPad app
+
+# Tandem for iPad: tests the web app with full Pyodide in Chromium and WebKit,
+# builds the iPad app, runs it in the iPad simulator (self-test plus the same
+# end-to-end checks in WebKit against the app's own server), and builds an
+# unsigned Tandem-iPad.ipa to sign yourself. Running it by hand with a tag
+# like ipad-v0.1.0 publishes the .ipa as a release.
+
+on:
+  push:
+    branches: [ipad]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Publish a release with this tag (for example ipad-v0.1.0); leave empty to only build"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: iPad web app (Chromium + WebKit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the UI and fetch Pyodide
+        run: |
+          npm ci
+          npm run build
+          python ipad/fetch_pyodide.py build/pyodide
+      - name: Browsers
+        run: |
+          npm install --no-save playwright@1.64.1
+          npx playwright install --with-deps chromium webkit
+      - name: End-to-end (full Pyodide)
+        run: |
+          python ipad/devserver.py --projects "$RUNNER_TEMP/projects" --pyodide build/pyodide --port 8780 &
+          sleep 2
+          node ipad/tests/web.cjs http://127.0.0.1:8780/ chromium --full
+          node ipad/tests/web.cjs http://127.0.0.1:8780/ webkit --full
+
+  app:
+    name: Build and test the iPad app
+    needs: web
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tools
+        run: |
+          brew install xcodegen
+          xcodebuild -version
+      - name: Assemble web files and Xcode project
+        run: bash ipad/build.sh
+
+      - name: Build for the simulator
+        run: |
+          xcodebuild -project ipad/App/Tandem.xcodeproj -scheme Tandem -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim \
+            CODE_SIGNING_ALLOWED=NO build | tail -20
+
+      - name: Run in the iPad simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for r in sorted(d, reverse=True) for x in d[r] if 'iPad' in x['name']))")
+          echo "Simulator: $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" build/sim/Build/Products/Debug-iphonesimulator/Tandem.app
+          SIMCTL_CHILD_TANDEM_SELFTEST=1 xcrun simctl launch "$UDID" app.tandem.ipad
+          DATA=$(xcrun simctl get_app_container "$UDID" app.tandem.ipad data)
+          for i in $(seq 1 120); do [ -f "$DATA/Documents/.selftest.json" ] && break; sleep 3; done
+          xcrun simctl io "$UDID" screenshot ipad-simulator.png || true
+          echo "Self-test in the app's own web view:"
+          cat "$DATA/Documents/.selftest.json" || { echo "no self-test result"; exit 1; }
+          python3 -c "import json,sys; r=json.load(open('$DATA/Documents/.selftest.json')); print('\nok =', r.get('ok')); sys.exit(0 if r.get('ok') else 1)"
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: End-to-end in WebKit against the app in the simulator
+        run: |
+          xcrun simctl terminate "$UDID" app.tandem.ipad
+          xcrun simctl launch "$UDID" app.tandem.ipad
+          sleep 5
+          npm install --no-save playwright@1.64.1
+          npx playwright install webkit
+          node ipad/tests/web.cjs http://127.0.0.1:47831/ webkit --full
+          xcrun simctl io "$UDID" screenshot ipad-simulator-after.png || true
+
+      - name: Build the .ipa (unsigned)
+        run: |
+          xcodebuild -project ipad/App/Tandem.xcodeproj -scheme Tandem -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/device \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -20
+          mkdir -p Payload
+          cp -R build/device/Build/Products/Release-iphoneos/Tandem.app Payload/
+          zip -qry Tandem-iPad.ipa Payload
+          ls -la Tandem-iPad.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tandem-iPad
+          path: Tandem-iPad.ipa
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ipad-simulator-screenshots
+          path: ipad-simulator*.png
+          if-no-files-found: ignore
+
+  release:
+    name: Publish release
+    if: github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'ipad-v')
+    needs: app
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Tandem-iPad
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: Tandem for iPad ${{ inputs.release_tag }}
+          prerelease: true
+          files: Tandem-iPad.ipa
+          body: |
+            Tandem for iPad (iPadOS 16.4 or later). **Tandem-iPad.ipa is unsigned**: sign and install it yourself
+            with Sideloadly, AltStore or a similar tool. With a free Apple ID the app has to be re-signed every 7 days.
+
+            Python runs inside the app (Pyodide, Python 3.14) with numpy, pandas, matplotlib and scikit-learn, offline.
+            Other Pyodide packages download the first time you import them. Projects are in Files › On My iPad › Tandem.
+            AI keys are kept in the iPad Keychain.

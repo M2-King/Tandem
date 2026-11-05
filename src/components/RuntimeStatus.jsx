@@ -1,8 +1,10 @@
 import Menu from './Menu.jsx';
 import { DESKTOP } from '../runtime/desktop.js';
+import { IS_IPAD } from '../runtime/config.js';
 
 const envName = (python) => {
   if (!python?.ok) return null;
+  if (IS_IPAD) return 'on iPad';
   if (!python.is_venv) return 'system';
   const parts = python.prefix.split(/[\\/]/);
   return parts[parts.length - 1];
@@ -71,8 +73,9 @@ export function RuntimeStatus({ connection, status, error }) {
         )}
         {error && <p className="runtime-error">{error}</p>}
         <p className="runtime-note">
-          Code runs on this computer with your user’s permissions. This is a local runtime for your own projects, not
-          a sandbox for untrusted code.
+          {IS_IPAD
+            ? 'Python runs inside Tandem on this iPad (Pyodide: CPython compiled to WebAssembly), with numpy, pandas, matplotlib and scikit-learn. Each run starts fresh. Your projects are in the Files app under On My iPad › Tandem.'
+            : 'Code runs on this computer with your user’s permissions. This is a local runtime for your own projects, not a sandbox for untrusted code.'}
         </p>
       </div>
     </Menu>

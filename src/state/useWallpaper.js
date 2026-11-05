@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { loadJSON, saveJSON, STORAGE_KEYS } from '../lib/storage.js';
+import { IS_IPAD } from '../runtime/config.js';
 
 // The backdrop behind the glass panels. Tandem ships with a sunset ("dusk");
 // people can switch to a plain background or use their own image, which is
@@ -12,7 +13,9 @@ import { loadJSON, saveJSON, STORAGE_KEYS } from '../lib/storage.js';
 const MAX_EDGE = 2400; // keeps a stored photo to a few hundred KB
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
-const DEFAULT = { kind: 'dusk' };
+// On iPad the system wallpaper can't be shown behind an app: start plain, and
+// people can use their own photo (Use your own image…).
+const DEFAULT = { kind: IS_IPAD ? 'plain' : 'dusk' };
 
 const DUSK_URL = `${import.meta.env.BASE_URL}bg-dusk.svg`;
 const PLAIN_LUMINANCE = 0.05; // the plain backdrop is near-black

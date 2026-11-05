@@ -22,3 +22,5 @@ function readConfig() {
 export const RUNTIME_CONFIG = readConfig();
 export const IS_LOCAL = RUNTIME_CONFIG !== null;
 export const MODE = IS_LOCAL ? 'local' : 'demo';
+// Tandem for iPad: the iPad app serves the page; Python runs in the page (Pyodide).
+export const IS_IPAD = IS_LOCAL && RUNTIME_CONFIG.platform === 'ipad';

@@ -23,6 +23,7 @@ import Menu, { MenuItem } from './Menu.jsx';
 import RunControl from './RunControl.jsx';
 import WindowControls from './WindowControls.jsx';
 import { MATERIAL_LABELS } from '../state/useDesktop.js';
+import { IS_IPAD } from '../runtime/config.js';
 
 function SaveStatus({ state, onDisk }) {
   if (state === 'failed') {
@@ -163,7 +164,13 @@ export default function Toolbar({
             {(close) => (
               <>
                 {onOpenFolder && (
-                  <MenuItem close={close} icon={FolderOpen} label="Open folder…" description="Switch to another project" onSelect={onOpenFolder} />
+                  <MenuItem
+                    close={close}
+                    icon={FolderOpen}
+                    label={IS_IPAD ? 'Projects…' : 'Open folder…'}
+                    description="Switch to another project"
+                    onSelect={onOpenFolder}
+                  />
                 )}
                 {onAISettings && (
                   <>

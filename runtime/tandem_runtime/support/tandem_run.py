@@ -161,10 +161,36 @@ def _watch_parent():
     threading.Thread(target=watch, name="tandem-parent-watch", daemon=True).start()
 
 
+class _InjectedChannel:
+    """Pyodide (Tandem for iPad): the host provides the channel as a module
+    instead of a socket. Same interface as the socket files."""
+
+    def __init__(self, module):
+        self.module = module
+
+    def write(self, text):
+        self.module.emit(text)
+
+    def flush(self):
+        pass
+
+    def readline(self):
+        return self.module.read_command() or ""
+
+
 def _connect_events():
     """Open the side channel; the variables are removed so child processes
     of the script never see the key."""
-    global _EVENTS
+    global _EVENTS, _COMMANDS
+    injected = None
+    if sys.platform == "emscripten":  # Pyodide: the host registers the channel as a module
+        try:
+            import _tandem_channel as injected
+        except ImportError:
+            injected = None
+    if injected is not None:
+        _EVENTS = _COMMANDS = _InjectedChannel(injected)
+        return
     address = os.environ.pop("TANDEM_EVENT_ADDR", "")
     key = os.environ.pop("TANDEM_EVENT_KEY", "")
     if not address or not key:
@@ -178,7 +204,6 @@ def _connect_events():
         _EVENTS = sock.makefile("w", encoding="utf-8", newline="\n")
         _EVENTS.write(key + "\n")
         _EVENTS.flush()
-        global _COMMANDS
         _COMMANDS = sock.makefile("r", encoding="utf-8", newline="\n")
     except (OSError, ValueError):
         _EVENTS = None

@@ -7,7 +7,7 @@ import { RuntimeClient } from './client.js';
 
 // Turns streamed text into lines, per stream. A partial line is held until
 // its newline arrives (or the run ends).
-function lineCollector(onLine, onPartial) {
+export function lineCollector(onLine, onPartial) {
   const partial = { out: '', err: '' };
   return {
     push(stream, text) {
@@ -33,8 +33,8 @@ function lineCollector(onLine, onPartial) {
   };
 }
 
-export function createLocalBackend(config) {
-  const client = new RuntimeClient(config);
+export function createLocalBackend(config, { socket = true } = {}) {
+  const client = new RuntimeClient({ ...config, socket });
 
   return {
     kind: 'local',

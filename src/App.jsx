@@ -18,11 +18,13 @@ import { applyGlass } from './lib/glass.js';
 import { useWorkspace } from './state/useWorkspace.js';
 import { useDiskWorkspace } from './state/useDiskWorkspace.js';
 import { useRuntimeStatus } from './state/useRuntimeStatus.js';
-import { IS_LOCAL, RUNTIME_CONFIG } from './runtime/config.js';
+import { IS_IPAD, IS_LOCAL, RUNTIME_CONFIG } from './runtime/config.js';
 import { createLocalBackend } from './runtime/localBackend.js';
+import { createIpadBackend } from './runtime/ipadBackend.js';
 import { RuntimeStatus, DemoBadge } from './components/RuntimeStatus.jsx';
 import NewFileDialog from './components/NewFileDialog.jsx';
 import AISettingsDialog from './components/AISettingsDialog.jsx';
+import ProjectsDialog from './components/ProjectsDialog.jsx';
 import { createRealAssistant } from './services/realAI.js';
 import { useAssistant } from './state/useAssistant.js';
 import { useExecution } from './state/useExecution.js';
@@ -38,7 +40,7 @@ import { shortHash } from './lib/text.js';
 const DATA_FILE = 'data/housing.csv';
 
 // Real mode talks to the local runtime; Demo mode never does. Decided once.
-const backend = IS_LOCAL ? createLocalBackend(RUNTIME_CONFIG) : null;
+const backend = IS_IPAD ? createIpadBackend(RUNTIME_CONFIG) : IS_LOCAL ? createLocalBackend(RUNTIME_CONFIG) : null;
 
 // Rows and columns of the sample CSV, read from the file as it is now.
 // The block of code that draws figure `index` in a script: each figure ends
@@ -99,6 +101,7 @@ export default function App() {
         : null;
   const [newFileOpen, setNewFileOpen] = useState(false);
   const [aiSettingsOpen, setAISettingsOpen] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(false);
 
   // Refs give async callbacks (AI requests, toasts) the latest state.
   const filesRef = useRef(ws.files);
@@ -589,7 +592,12 @@ export default function App() {
         onAISettings={IS_LOCAL ? () => setAISettingsOpen(true) : null}
         desktop={{ ...desktop, setMaterial: (m) => desktop.setMaterial(m, { busy: !!exec.session }) }}
         onOpenFolder={
-          DESKTOP
+          IS_IPAD
+            ? async () => {
+                await ws.flush?.();
+                setProjectsOpen(true);
+              }
+            : DESKTOP
             ? async () => {
                 await ws.flush?.(); // save edits before switching projects
                 await DESKTOP.openFolder();
@@ -819,6 +827,8 @@ export default function App() {
           onAskModify={askToModifyChart}
         />
       )}
+
+      {projectsOpen && <ProjectsDialog backend={backend} onClose={() => setProjectsOpen(false)} />}
 
       {aiSettingsOpen && (
         <AISettingsDialog

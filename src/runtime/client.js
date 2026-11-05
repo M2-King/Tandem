@@ -3,14 +3,15 @@
 // follow its state ('connecting' | 'connected' | 'disconnected').
 
 export class RuntimeClient {
-  constructor({ token }) {
+  constructor({ token, socket = true }) {
     this.token = token;
     this.listeners = new Set();
     this.stateListeners = new Set();
     this.state = 'connecting';
     this.socket = null;
     this.retry = 0;
-    this.connect();
+    // On iPad there is no runtime process to connect to: Python runs in the page.
+    if (socket) this.connect();
   }
 
   async api(path, { method = 'GET', body, signal } = {}) {

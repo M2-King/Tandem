@@ -3490,3 +3490,43 @@ html[data-shell='desktop'][data-material='vibrancy'] .app::before {
   box-shadow: none;
   outline: none;
 }
+
+/* iPad projects */
+.project-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.project-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+}
+.project-row:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.project-row.is-current {
+  background: var(--bg-selected);
+}
+.project-row .sim-tag {
+  margin-left: auto;
+}
+.project-new {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.project-new .field-input {
+  flex: 1;
+  min-width: 0;
+}

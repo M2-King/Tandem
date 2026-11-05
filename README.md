@@ -41,6 +41,20 @@ Build it yourself (on Windows): `npm ci && npm run build`; `pip install ./runtim
 runtime from `runtime/.venv`. The `Windows app` GitHub workflow builds and tests all of this on Windows
 and publishes releases.
 
+### iPad (branch `ipad`)
+
+Tandem for iPad is a separate build on the `ipad` branch; the Windows app is unaffected. Python runs
+inside the app (Pyodide: CPython 3.14 compiled to WebAssembly) with numpy, pandas, matplotlib and
+scikit-learn included, offline; other Pyodide packages download the first time they're imported. Run,
+typed input, Stop, tracebacks, charts, Step through, Debug and the AI assistant work as on Windows.
+Projects are folders in Files › On My iPad › Tandem; AI keys are in the iPad Keychain. iPadOS can't show
+the home-screen wallpaper behind an app, so the background is plain or a photo you choose.
+
+The `iPad app` workflow builds an unsigned `Tandem-iPad.ipa`; sign it with Sideloadly, AltStore or similar.
+Structure: `src/runtime/ipadBackend.js` and `src/runtime/ipad/` (Python worker, AI), `ipad/App/` (Swift app:
+web view and the local server), `ipad/devserver.py` (the same server in Python, for tests),
+`ipad/tests/web.cjs` (end-to-end checks).
+
 ### AI settings
 
 In Real mode, **AI settings** (in the assistant header or the ⋯ menu) connects a provider: Anthropic,
