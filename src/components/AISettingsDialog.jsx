@@ -241,9 +241,9 @@ export default function AISettingsDialog({ backend, onClose, onSaved }) {
             )}
 
             <p className="field-hint ai-note">
-              Stored in <span className="mono">{settings.stored_in}</span>. The assistant uses this provider once AI is
-              connected to it (next phase); until then it stays the labelled demo. Every change it proposes still needs
-              your review.
+              Key stored in <span className="mono">{settings.stored_in}</span>. Once saved, the assistant sends your
+              requests to this provider for real (no demo answers). Every change it proposes still needs your review
+              before it is applied.
             </p>
 
             <div className="dialog-actions">
