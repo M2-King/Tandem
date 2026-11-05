@@ -297,7 +297,10 @@ import tandem_kernel
 async function kernelExecute({ cell, code }) {
   kernel.cell = cell;
   try {
-    await pyodide.loadPackagesFromImports(code, { messageCallback: () => {}, errorCallback: () => {} });
+    // IPython imports are served by tandem_kernel (rich display in the
+    // notebook); Pyodide's own IPython would only print plain text here.
+    const forPackages = code.replace(/^[ \t]*(from[ \t]+IPython\b|import[ \t]+IPython\b).*$/gm, '');
+    await pyodide.loadPackagesFromImports(forPackages, { messageCallback: () => {}, errorCallback: () => {} });
   } catch {
     // A package Pyodide doesn't have: the import error shows in the cell.
   }

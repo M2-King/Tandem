@@ -252,7 +252,9 @@ function fakeAnthropic() {
   check(true, 'notebook: Interrupt stops an endless loop');
   if (FULL) {
     await runCell(5);
-    await cellOut(5).locator('table').waitFor({ timeout: 180000 });
+    await cellOut(5).locator('table').waitFor({ timeout: 180000 }).catch(async () => {
+      throw new Error(`no table; cell output: ${(await cellOut(5).innerText().catch(() => '(none)')).slice(0, 1500)}`);
+    });
     await cellOut(5).locator('img').waitFor({ timeout: 30000 });
     check(true, 'notebook: pandas table and matplotlib chart below the cell');
   }

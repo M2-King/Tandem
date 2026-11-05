@@ -18,7 +18,6 @@ import io
 import json
 import linecache
 import sys
-import types
 import warnings
 
 import _tandem_kernel_host as host
@@ -105,13 +104,37 @@ class SVG(_Rich):
 
 
 # `from IPython.display import display, HTML, Markdown` works as in Jupyter.
-_ipython = types.ModuleType("IPython")
-_ipython_display = types.ModuleType("IPython.display")
-for _name, _value in {"display": display, "clear_output": clear_output, "HTML": HTML, "Markdown": Markdown, "SVG": SVG}.items():
-    setattr(_ipython_display, _name, _value)
-_ipython.display = _ipython_display
-sys.modules.setdefault("IPython", _ipython)
-sys.modules.setdefault("IPython.display", _ipython_display)
+# Provided only when code imports IPython and no real IPython is installed
+# (a finder at the end of the import path), so libraries that look for
+# IPython (matplotlib, pandas, …) don't find a half one. get_ipython()
+# returns None: "not running inside IPython".
+_STUB = {
+    "IPython": {"get_ipython": lambda: None, "version_info": (0, 0, 0), "__version__": "0.0.0"},
+    "IPython.display": {"display": display, "clear_output": clear_output, "HTML": HTML, "Markdown": Markdown, "SVG": SVG},
+}
+
+
+class _StubLoader:
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        module.__dict__.update(_STUB[module.__name__])
+        if module.__name__ == "IPython":
+            module.__path__ = []
+
+
+class _StubFinder:
+    @staticmethod
+    def find_spec(name, path=None, target=None):
+        if name not in _STUB:
+            return None
+        import importlib.machinery
+
+        return importlib.machinery.ModuleSpec(name, _StubLoader(), is_package=name == "IPython")
+
+
+sys.meta_path.append(_StubFinder)
 builtins.display = display
 
 
