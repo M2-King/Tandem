@@ -13,6 +13,8 @@ final class ProjectStore {
     static let skipDirs: Set<String> = [".git", ".hg", ".svn", ".venv", "venv", "env", "__pycache__", "node_modules", ".tandem",
                                         ".ipynb_checkpoints", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".idea", ".vscode"]
     static let maxTextBytes = 2 * 1024 * 1024
+    static let maxNotebookBytes = 25 * 1024 * 1024 // notebooks carry their outputs (images)
+    static func limit(_ rel: String) -> Int { rel.lowercased().hasSuffix(".ipynb") ? maxNotebookBytes : maxTextBytes }
     static let maxFiles = 2000
     static let starter = "name = input(\"What is your name? \")\nprint(f\"Hello, {name}!\")\n"
 
@@ -103,7 +105,7 @@ final class ProjectStore {
     func read(_ rel: String) throws -> [String: Any] {
         let url = try resolve(rel)
         guard let data = fm.contents(atPath: url.path) else { throw APIError(status: 400, message: "\(rel) doesn't exist.") }
-        if data.count > Self.maxTextBytes { return ["path": rel, "text": NSNull(), "reason": "too-large", "size": data.count] }
+        if data.count > Self.limit(rel) { return ["path": rel, "text": NSNull(), "reason": "too-large", "size": data.count] }
         if data.prefix(8192).contains(0) { return ["path": rel, "text": NSNull(), "reason": "binary", "size": data.count] }
         guard let text = String(data: data, encoding: .utf8) else { return ["path": rel, "text": NSNull(), "reason": "not-utf8", "size": data.count] }
         return ["path": rel, "text": text, "hash": Self.hash(text), "size": data.count]
@@ -120,7 +122,7 @@ final class ProjectStore {
             throw APIError(status: 400, message: "\(rel) changed on disk since it was opened.")
         }
         let data = Data(text.utf8)
-        if data.count > Self.maxTextBytes { throw APIError(status: 400, message: "\(rel) is larger than 2 MB.") }
+        if data.count > Self.limit(rel) { throw APIError(status: 400, message: "\(rel) is larger than \(Self.limit(rel) / (1024 * 1024)) MB.") }
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: url, options: .atomic)
         return ["path": rel, "hash": Self.hash(text), "size": data.count]

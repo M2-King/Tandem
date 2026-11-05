@@ -79,6 +79,20 @@ function fakeAnthropic() {
   await put('writes.py', "open('out.txt', 'w').write('from python')\nprint('wrote')\n");
   await put('loop.py', 'i = 0\nwhile True:\n    i += 1\n');
   await put('pkgs.py', "import numpy\nimport stats\nfrom tabulate import tabulate\nprint(tabulate([['KL', 120]], headers=['city', 'price']))\n");
+  const nbCells = [
+    'x = 10',
+    'print(x * 2.0)',
+    "name = input('Name? ')\nprint('hi', name)",
+    "from IPython.display import HTML\nHTML('<b>bold</b> text')",
+    'i = 0\nwhile True:\n    i += 1',
+    "import numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\ndf = pd.DataFrame({'x': np.arange(3), 'y': [2, 4, 6]})\nplt.plot(df.x, df.y)\nplt.show()\ndf",
+  ];
+  await put('nb.ipynb', JSON.stringify({
+    cells: nbCells.map((source, i) => ({ id: `cell${i}`, cell_type: 'code', metadata: {}, source, execution_count: null, outputs: [] })),
+    metadata: { kernelspec: { name: 'python3', display_name: 'Python 3', language: 'python' } },
+    nbformat: 4,
+    nbformat_minor: 5,
+  }));
   await put('readcsv.py', "import csv\nrows = list(csv.reader(open('data.csv')))\nprint('rows', len(rows), rows[1])\n");
   if (FULL) await put('chart.py', 'import numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\ndata = pd.DataFrame({"x": np.arange(1, 6), "y": [2, 4, 6, 8, 10]})\nprint(data)\nplt.plot(data["x"], data["y"])\nplt.title("Runtime Test")\nplt.show()\n');
   await page.reload();
@@ -200,6 +214,52 @@ function fakeAnthropic() {
     await page.waitForTimeout(250);
   }
   check(csvOut.includes("rows 3 ['KL', '120']"), `Python reads the added CSV (output: ${JSON.stringify(csvOut)})`);
+
+  // Notebooks: one Python per notebook, so state carries over between cells.
+  await page.getByRole('treeitem', { name: 'nb.ipynb' }).click();
+  await page.locator('.notebook .nb-cell').first().waitFor({ timeout: 20000 });
+  const cellOut = (n) => page.locator('.nb-cell').nth(n).locator('.nb-outputs');
+  const runCell = (n) => page.getByRole('button', { name: `Run cell ${n + 1}`, exact: true }).click();
+  await runCell(0);
+  await runCell(1);
+  await cellOut(1).getByText('20.0').waitFor({ timeout: 120000 });
+  check(true, 'notebook: x = 10, then print(x * 2.0) → 20.0');
+  await page.getByRole('button', { name: 'Restart', exact: true }).click();
+  await page.locator('.nb-kernel.is-idle').waitFor({ timeout: 120000 });
+  await runCell(1);
+  await cellOut(1).getByText(/NameError/).waitFor({ timeout: 60000 });
+  check(true, 'notebook: after Restart, x is gone (NameError)');
+  await runCell(0);
+  await runCell(1);
+  await cellOut(1).getByText('20.0').waitFor({ timeout: 60000 });
+  check(true, 'notebook: run cell 1 again → 20.0');
+  await runCell(2);
+  await page.locator('.nb-input input').waitFor({ timeout: 60000 });
+  await page.locator('.nb-input input').fill('Ada');
+  await page.keyboard.press('Enter');
+  await cellOut(2).getByText('hi Ada').waitFor({ timeout: 60000 });
+  check((await cellOut(2).innerText()).includes('Name? Ada'), 'notebook: input() asks in the notebook');
+  await runCell(3);
+  await cellOut(3).locator('.nb-html b').waitFor({ timeout: 60000 });
+  check(true, 'notebook: rich HTML output (IPython.display)');
+  await runCell(4);
+  await page.locator('.nb-cell').nth(4).locator('.nb-count', { hasText: '[*]' }).waitFor({ timeout: 30000 }).catch(async () => {
+    throw new Error(`loop cell didn't start: kernel "${await page.locator('.nb-kernel').innerText()}", counts ${JSON.stringify(await page.locator('.nb-count').allInnerTexts())}`);
+  });
+  await page.waitForTimeout(1000);
+  await page.getByRole('button', { name: 'Interrupt' }).click();
+  await cellOut(4).getByText(/KeyboardInterrupt/).waitFor({ timeout: 20000 });
+  check(true, 'notebook: Interrupt stops an endless loop');
+  if (FULL) {
+    await runCell(5);
+    await cellOut(5).locator('table').waitFor({ timeout: 180000 });
+    await cellOut(5).locator('img').waitFor({ timeout: 30000 });
+    check(true, 'notebook: pandas table and matplotlib chart below the cell');
+  }
+  await page.waitForTimeout(1500);
+  const savedNb = JSON.parse((await api('/api/file?path=nb.ipynb')).text);
+  check(savedNb.nbformat === 4 && savedNb.cells[1].outputs.some((o) => String(o.text).includes('20.0')), 'notebook: saved as .ipynb with its outputs');
+  await page.getByRole('treeitem', { name: 'stats.py' }).click();
 
   // Packages: what the code imports, what Pyodide provides, and pure-Python
   // packages from PyPI kept with the project.

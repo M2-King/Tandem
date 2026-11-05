@@ -84,6 +84,7 @@ async function saveChanges(snapshot) {
   for (const [path, bytes] of changed.slice(0, 200)) {
     if (bytes.length > 20 * 1024 * 1024) continue;
     await api(`/api/raw?path=${encodeURIComponent(path)}`, { method: 'PUT', body: bytes });
+    snapshot.set(path, bytes);
   }
   return changed.map(([path]) => path);
 }
@@ -233,12 +234,92 @@ _code
   post({ type: 'exit', code, saved });
 }
 
+// ---------------------------------------------------------------- notebooks
+// Kernel mode: this worker stays alive for one notebook and runs its cells in
+// one namespace (tandem_kernel.py), so variables carry over between cells.
+let kernel = null; // { snapshot, cell, run }
+
+function kernelStream(name) {
+  const decoder = new TextDecoder();
+  return {
+    write(buffer) {
+      const text = decoder.decode(buffer, { stream: true });
+      if (text && kernel?.cell) post({ type: 'kernel-output', cell: kernel.cell, output: { output_type: 'stream', name, text } });
+      return buffer.length;
+    },
+  };
+}
+
+const INLINE_BACKEND = `# matplotlib backend for Tandem notebooks: figures appear below the cell.
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.backend_bases import FigureManagerBase as FigureManager
+
+
+def show(*args, **kwargs):
+    import tandem_kernel
+    tandem_kernel.show_figures()
+`;
+
+async function kernelStart() {
+  const snapshot = await mountProject();
+  await loadProjectPackages();
+  pyodide.FS.writeFile('/tandem/_tandem_inline.py', INLINE_BACKEND);
+  pyodide.registerJsModule('_tandem_kernel_host', {
+    output(json) {
+      if (kernel?.cell) post({ type: 'kernel-output', cell: kernel.cell, output: JSON.parse(json) });
+    },
+    count(n) {
+      if (kernel?.cell) post({ type: 'kernel-count', cell: kernel.cell, count: n });
+    },
+    clear(wait) {
+      if (kernel?.cell) post({ type: 'kernel-clear', cell: kernel.cell, wait });
+    },
+    read_input(prompt) {
+      post({ type: 'kernel-input', cell: kernel?.cell, prompt });
+      return readSlot(mailbox, SLOT_STDIN);
+    },
+  });
+  pyodide.setStdout(kernelStream('stdout'));
+  pyodide.setStderr(kernelStream('stderr'));
+  pyodide.runPython(`
+import os, sys
+os.environ["MPLBACKEND"] = "module://_tandem_inline"
+os.environ["TANDEM_PROJECT_ROOT"] = "/project"
+sys.path.append("/tandem")
+os.chdir("/project")
+sys.path.insert(0, "/project")
+import tandem_kernel
+`);
+  kernel = { snapshot, cell: null, run: pyodide.pyimport('tandem_kernel').run_cell };
+  post({ type: 'kernel-ready' });
+}
+
+async function kernelExecute({ cell, code }) {
+  kernel.cell = cell;
+  try {
+    await pyodide.loadPackagesFromImports(code, { messageCallback: () => {}, errorCallback: () => {} });
+  } catch {
+    // A package Pyodide doesn't have: the import error shows in the cell.
+  }
+  let status = 'error';
+  try {
+    status = kernel.run(code);
+  } catch (e) {
+    post({ type: 'kernel-output', cell, output: { output_type: 'error', ename: 'Error', evalue: String(e?.message || e), traceback: [String(e?.message || e)] } });
+  }
+  await saveChanges(kernel.snapshot).catch(() => {});
+  kernel.cell = null;
+  post({ type: 'kernel-done', cell, status });
+}
+
 self.onmessage = async (e) => {
   const message = e.data;
   try {
     if (message.type === 'init') await init(message);
     else if (message.type === 'run') await run(message);
     else if (message.type === 'install') await install(message);
+    else if (message.type === 'kernel-start') await kernelStart();
+    else if (message.type === 'kernel-execute') await kernelExecute(message);
   } catch (error) {
     post({ type: 'failed', message: String(error?.message || error) });
   }

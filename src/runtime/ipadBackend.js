@@ -13,6 +13,7 @@ import { IMPORT_TO_PACKAGE, PACKAGE_SPEC, PACKAGES_FILE, mergePackages, normName
 import { uid } from '../lib/id.js';
 import tandemRun from '../../runtime/tandem_runtime/support/tandem_run.py?raw';
 import tandemMpl from '../../runtime/tandem_runtime/support/tandem_mpl.py?raw';
+import tandemKernel from './ipad/tandem_kernel.py?raw';
 
 const INDEX_URL = '/pyodide/';
 const STOP_GRACE_MS = 1500;
@@ -35,7 +36,7 @@ export function createIpadBackend(config) {
       };
       worker.onerror = (e) => reject(new Error(e.message || 'Python couldn’t start.'));
     });
-    worker.postMessage({ type: 'init', indexURL: INDEX_URL, token: config.token, mailbox, support: { 'tandem_run.py': tandemRun, 'tandem_mpl.py': tandemMpl } });
+    worker.postMessage({ type: 'init', indexURL: INDEX_URL, token: config.token, mailbox, support: { 'tandem_run.py': tandemRun, 'tandem_mpl.py': tandemMpl, 'tandem_kernel.py': tandemKernel } });
     return ready;
   }
   let warm = spawn();
@@ -110,6 +111,110 @@ export function createIpadBackend(config) {
       return {
         ...status,
         python: { ok: true, version: info.version, path: `Pyodide ${info.pyodide}`, is_venv: false, source: 'built into Tandem (Pyodide)', prefix: 'ipad' },
+      };
+    },
+
+    // ---- Notebooks: a kernel is one long-lived Python worker per notebook ----
+    // Same handlers as the desktop's startKernel. Cells run one at a time, in
+    // order; after an error the cells queued behind it are skipped (as in Jupyter).
+    startKernel(path, h) {
+      let slot = null;
+      let ready = false;
+      let closed = false;
+      let current = null; // cell running now
+      let waitingForInput = false;
+      let generation = 0;
+      const queue = [];
+
+      const abortAll = () => {
+        if (current) h.onDone?.(current, 'aborted', null);
+        for (const job of queue.splice(0)) h.onDone?.(job.cell, 'aborted', null);
+        current = null;
+        waitingForInput = false;
+      };
+      const pump = () => {
+        if (!ready || current || !queue.length) return;
+        const job = queue.shift();
+        current = job.cell;
+        h.onStatus?.('busy', { cell: job.cell });
+        slot.worker.postMessage({ type: 'kernel-execute', cell: job.cell, code: job.code });
+      };
+      const boot = async (restarted = false) => {
+        const mine = ++generation;
+        ready = false;
+        h.onStatus?.(restarted ? 'restarting' : 'starting', {});
+        try {
+          slot = await take();
+        } catch (e) {
+          if (mine === generation) h.onRejected?.(`Python couldn’t start: ${e.message}`);
+          return;
+        }
+        if (closed || mine !== generation) return slot.worker.terminate();
+        slot.worker.onerror = () => {
+          if (mine !== generation) return;
+          abortAll();
+          h.onStatus?.('dead', {});
+        };
+        slot.worker.onmessage = (e) => {
+          if (mine !== generation) return;
+          const m = e.data;
+          if (m.type === 'kernel-ready') {
+            ready = true;
+            h.onStatus?.('idle', { python: `Python ${python?.version ?? ''} (Pyodide ${python?.pyodide ?? ''})`, restarted });
+            pump();
+          } else if (m.type === 'kernel-count') h.onCount?.(m.cell, m.count);
+          else if (m.type === 'kernel-output') h.onOutput?.(m.cell, m.output);
+          else if (m.type === 'kernel-clear') h.onClear?.(m.cell, m.wait);
+          else if (m.type === 'kernel-input') {
+            waitingForInput = true;
+            h.onInput?.(m.cell, m.prompt, false);
+          } else if (m.type === 'kernel-done') {
+            current = null;
+            waitingForInput = false;
+            h.onDone?.(m.cell, m.status, null);
+            if (m.status === 'error') for (const job of queue.splice(0)) h.onDone?.(job.cell, 'aborted', null);
+            h.onStatus?.(queue.length ? 'busy' : 'idle', {});
+            pump();
+          } else if (m.type === 'failed') {
+            abortAll();
+            if (!ready) h.onRejected?.(`The notebook’s Python couldn’t start: ${m.message}`);
+            else h.onStatus?.('dead', {});
+          }
+        };
+        slot.worker.postMessage({ type: 'kernel-start' });
+      };
+      boot();
+
+      return {
+        execute: (cell, code) => {
+          queue.push({ cell, code });
+          pump();
+        },
+        input: (text) => {
+          if (!waitingForInput) return;
+          waitingForInput = false;
+          writeSlot(slot.mailbox, SLOT_STDIN, text);
+        },
+        interrupt: () => {
+          if (!slot || !current) return;
+          for (const job of queue.splice(0)) h.onDone?.(job.cell, 'aborted', null);
+          if (waitingForInput) {
+            waitingForInput = false;
+            writeSlot(slot.mailbox, SLOT_STDIN, '\u0000interrupt');
+          } else Atomics.store(new Int32Array(slot.mailbox.interrupt), 0, 2);
+        },
+        restart: () => {
+          abortAll();
+          slot?.worker.terminate();
+          slot = null;
+          boot(true);
+        },
+        shutdown: () => {
+          closed = true;
+          generation++;
+          abortAll();
+          slot?.worker.terminate();
+        },
       };
     },
 
