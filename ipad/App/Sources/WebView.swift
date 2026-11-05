@@ -11,13 +11,17 @@ import WebKit
 struct WebView: UIViewRepresentable {
     let url: URL
     let origin: String
+    var onSeeThrough: (Bool) -> Void = { _ in }
 
-    func makeCoordinator() -> Coordinator { Coordinator(origin: origin) }
+    func makeCoordinator() -> Coordinator { Coordinator(origin: origin, onSeeThrough: onSeeThrough) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
+        // The page asks for the see-through window with
+        // webkit.messageHandlers.tandem.postMessage({ seeThrough: true }).
+        config.userContentController.add(context.coordinator, name: "tandem")
         let view = TandemWebView(frame: .zero, configuration: config)
         view.isOpaque = false
         view.backgroundColor = .clear
@@ -39,9 +43,22 @@ struct WebView: UIViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var origin: String
-        init(origin: String) { self.origin = origin }
+        let onSeeThrough: (Bool) -> Void
+        init(origin: String, onSeeThrough: @escaping (Bool) -> Void) {
+            self.origin = origin
+            self.onSeeThrough = onSeeThrough
+        }
+
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard let body = message.body as? [String: Any], let on = body["seeThrough"] as? Bool,
+                  let webView = message.webView else { return }
+            let supported = SeeThrough.apply(on, below: webView)
+            onSeeThrough(on && supported)
+            let detail = "{on:\(on && supported),supported:\(supported)}"
+            webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('tandem-see-through',{detail:\(detail)}))", completionHandler: nil)
+        }
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {

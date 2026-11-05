@@ -3557,3 +3557,12 @@ html[data-shell='ipad'] .app::before {
 html[data-shell='ipad'][data-windowed='true'] .toolbar {
   padding-left: 84px;
 }
+/* Experimental see-through window: iPadOS draws the real Home Screen behind
+   the app, so the page draws no backdrop of its own. */
+html[data-see-through='true'],
+html[data-see-through='true'] body {
+  background: transparent;
+}
+html[data-see-through='true'] body::before {
+  display: none;
+}

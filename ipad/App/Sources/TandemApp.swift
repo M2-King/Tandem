@@ -12,11 +12,14 @@ struct TandemApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                Color(red: 0.067, green: 0.078, blue: 0.102).ignoresSafeArea()
+                // Hidden while the window is see-through (experimental; see SeeThrough.swift).
+                if !host.seeThrough {
+                    Color(red: 0.067, green: 0.078, blue: 0.102).ignoresSafeArea()
+                }
                 if let url = host.url {
                     // Edge to edge: the page keeps its controls clear of the status
                     // bar and window controls itself (CSS safe-area insets).
-                    WebView(url: url, origin: host.origin)
+                    WebView(url: url, origin: host.origin, onSeeThrough: { on in host.seeThrough = on })
                         .ignoresSafeArea()
                 } else if let error = host.error {
                     VStack(spacing: 12) {
@@ -39,6 +42,7 @@ struct TandemApp: App {
 final class AppHost: ObservableObject {
     @Published var url: URL?
     @Published var error: String?
+    @Published var seeThrough = false
     private var server: LocalServer?
     var origin: String { url.map { "\($0.scheme!)://\($0.host!):\($0.port!)" } ?? "" }
 

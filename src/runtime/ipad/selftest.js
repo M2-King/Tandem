@@ -71,6 +71,19 @@ export async function runSelftest(backend, token) {
     report.ok = false;
     report.error = String(e?.message || e);
   }
+  // Experimental see-through window: ask the app, note its answer, and leave
+  // it on so CI can compare a screenshot with the Home Screen.
+  const bridge = window.webkit?.messageHandlers?.tandem;
+  if (bridge) {
+    report.seeThrough = await new Promise((resolve) => {
+      const done = (e) => resolve(e.detail || null);
+      window.addEventListener('tandem-see-through', done, { once: true });
+      setTimeout(() => resolve('no answer'), 3000);
+      document.documentElement.dataset.seeThrough = 'true';
+      bridge.postMessage({ seeThrough: true });
+    });
+    await new Promise((r) => setTimeout(r, 1500));
+  }
   await fetch('/api/selftest', { method: 'POST', headers: { 'x-tandem-token': token, 'content-type': 'application/json' }, body: JSON.stringify(report) });
   return report;
 }

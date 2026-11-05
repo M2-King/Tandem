@@ -83,6 +83,8 @@ jobs:
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" build/sim/Build/Products/Debug-iphonesimulator/Tandem.app
+          sleep 5
+          xcrun simctl io "$UDID" screenshot ipad-simulator-home.png || true
           SIMCTL_CHILD_TANDEM_SELFTEST=1 xcrun simctl launch "$UDID" app.tandem.ipad
           DATA=$(xcrun simctl get_app_container "$UDID" app.tandem.ipad data)
           for i in $(seq 1 120); do [ -f "$DATA/Documents/.selftest.json" ] && break; sleep 3; done
@@ -90,6 +92,10 @@ jobs:
           echo "Self-test in the app's own web view:"
           cat "$DATA/Documents/.selftest.json" || { echo "no self-test result"; exit 1; }
           python3 -c "import json,sys; r=json.load(open('$DATA/Documents/.selftest.json')); print('\nok =', r.get('ok')); sys.exit(0 if r.get('ok') else 1)"
+          # Experimental see-through window: does the Home Screen show through the app?
+          # Correlation of the two screenshots' structure: near 0 = opaque, high = see-through.
+          pip3 install --quiet pillow numpy || true
+          python3 ipad/tests/see_through.py ipad-simulator-home.png ipad-simulator.png || true
           echo "UDID=$UDID" >> "$GITHUB_ENV"
 
       - name: End-to-end in WebKit against the app in the simulator
