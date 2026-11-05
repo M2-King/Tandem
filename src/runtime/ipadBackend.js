@@ -9,6 +9,7 @@ import { createMailbox, writeSlot, SLOT_STDIN, SLOT_COMMAND } from './ipad/mailb
 import { parseTraceback } from './ipad/traceback.js';
 import { createIpadAI } from './ipad/ai.js';
 import { runSelftest } from './ipad/selftest.js';
+import { IMPORT_TO_PACKAGE, PACKAGE_SPEC, PACKAGES_FILE, mergePackages, normName, scanImports } from './ipad/packages.js';
 import { uid } from '../lib/id.js';
 import tandemRun from '../../runtime/tandem_runtime/support/tandem_run.py?raw';
 import tandemMpl from '../../runtime/tandem_runtime/support/tandem_mpl.py?raw';
@@ -19,7 +20,7 @@ const STOP_GRACE_MS = 1500;
 export function createIpadBackend(config) {
   const base = createLocalBackend(config, { socket: false });
   const { client } = base;
-  let python = null; // { version, pyodide } once the first worker is ready
+  let python = null; // { version, pyodide, stdlib } once the first worker is ready
 
   // One warm worker is always loading, so a run starts without waiting for Python.
   function spawn() {
@@ -28,7 +29,7 @@ export function createIpadBackend(config) {
     const ready = new Promise((resolve, reject) => {
       worker.onmessage = (e) => {
         if (e.data.type === 'ready') {
-          python = { version: e.data.python, pyodide: e.data.pyodide };
+          python = { version: e.data.python, pyodide: e.data.pyodide, stdlib: new Set(e.data.stdlib || []) };
           resolve({ worker, mailbox });
         } else if (e.data.type === 'failed') reject(new Error(e.data.message));
       };
@@ -50,6 +51,47 @@ export function createIpadBackend(config) {
 
   const ai = createIpadAI({ api: (path, init) => fetch(path, { ...init, headers: { 'x-tandem-token': config.token } }), token: config.token, settings: base.aiSettings });
 
+  // Pyodide's package list (what it can provide, and which imports each has).
+  let lockPromise = null;
+  const pyodideLock = () => {
+    lockPromise ??= fetch(`${INDEX_URL}pyodide-lock.json`)
+      .then((r) => r.json())
+      .catch(() => ({ packages: {} }));
+    return lockPromise;
+  };
+  const readPackages = async () => {
+    const r = await fetch(`/api/raw?path=${encodeURIComponent(PACKAGES_FILE)}`, { headers: { 'x-tandem-token': config.token }, cache: 'no-store' });
+    if (!r.ok) return null;
+    try {
+      return JSON.parse(await r.text());
+    } catch {
+      return null;
+    }
+  };
+  const requestedPackages = async (job) => {
+    let list = job.packages || [];
+    if (job.requirements) {
+      const file = await base.readFile('requirements.txt');
+      list = (file.text || '')
+        .split('\n')
+        .map((l) => l.split('#')[0].trim())
+        .filter(Boolean);
+    }
+    list = list.map((p) => p.trim()).filter(Boolean);
+    if (!list.length) throw new Error('Choose at least one package.');
+    const bad = list.find((p) => !PACKAGE_SPEC.test(p));
+    if (bad) throw new Error(`“${bad}” isn't a package name Tandem can install (for example: tabulate or rich>=13).`);
+    return list;
+  };
+  const explainInstall = (text) => {
+    if (/Can't find a pure Python 3 wheel|No pure Python wheel|Can't find a pure/i.test(text)) {
+      return 'That package needs compiled code that Pyodide doesn’t provide, so it can’t run on iPad.';
+    }
+    if (/Can't fetch metadata|not found|No matching distribution|404/i.test(text)) return 'PyPI has no package with that name (or no version that works here).';
+    if (/Failed to fetch|NetworkError|Load failed|network connection/i.test(text)) return 'Tandem couldn’t reach PyPI. Installing needs the internet once.';
+    return 'The install failed. The log above shows why.';
+  };
+
   const backend = {
     ...base,
     kind: 'ipad',
@@ -68,6 +110,138 @@ export function createIpadBackend(config) {
       return {
         ...status,
         python: { ok: true, version: info.version, path: `Pyodide ${info.pyodide}`, is_venv: false, source: 'built into Tandem (Pyodide)', prefix: 'ipad' },
+      };
+    },
+
+    // ---- Environment and packages (iPad: one built-in Python) ----
+    async envs() {
+      const status = await backend.status();
+      const p = status.python;
+      return {
+        platform: 'ipad',
+        current: p.ok ? { version: p.version, path: `Built into Tandem (Pyodide ${python?.pyodide ?? ''})`, is_venv: false, prefix: 'ipad', source: p.source } : null,
+        selected: null,
+        project: [],
+        interpreters: [],
+      };
+    },
+    selectEnv: async () => {
+      throw new Error('On iPad there is one built-in Python.');
+    },
+
+    async packages() {
+      await warm.catch(() => {});
+      const [lock, saved, list] = await Promise.all([pyodideLock(), readPackages(), base.listFiles()]);
+      // Import name → Pyodide package, for everything Pyodide provides.
+      const provided = new Map();
+      for (const [name, pkg] of Object.entries(lock.packages || {})) for (const imp of pkg.imports || []) provided.set(imp, pkg.name || name);
+      const own = new Map();
+      for (const p of saved?.pypi || []) for (const imp of p.imports?.length ? p.imports : [p.name.replace(/-/g, '_')]) own.set(imp, p);
+      const local = new Set();
+      for (const { path } of list) {
+        const parts = path.split('/');
+        if (parts.length > 1) local.add(parts[0]);
+        if (path.endsWith('.py')) local.add(parts[parts.length - 1].slice(0, -3));
+      }
+      const wanted = new Map();
+      await Promise.all(
+        list
+          .filter((f) => f.path.endsWith('.py'))
+          .slice(0, 300)
+          .map(async ({ path }) => {
+            const file = await base.readFile(path).catch(() => null);
+            if (!file?.text) return;
+            for (const { module, line } of scanImports(file.text)) {
+              if (!wanted.has(module)) wanted.set(module, []);
+              wanted.get(module).push({ path, line });
+            }
+          })
+      );
+      const stdlib = python?.stdlib || new Set();
+      const used = [];
+      const missing = [];
+      for (const [module, where] of [...wanted].sort()) {
+        if (stdlib.has(module) || local.has(module) || own.has(module) || module === 'js' || module === 'pyodide') continue;
+        if (provided.has(module)) {
+          used.push(provided.get(module));
+          continue;
+        }
+        missing.push({ module, package: IMPORT_TO_PACKAGE[module] || module, where: where.slice(0, 5) });
+      }
+      const packages = [
+        ...(saved?.pypi || []).map((p) => ({ name: p.name, version: p.version, note: 'from PyPI, kept in this project' })),
+        ...[...new Set(used)].sort().map((name) => ({ name, version: lock.packages?.[normName(name)]?.version || lock.packages?.[name]?.version || '', note: 'included with Pyodide' })),
+      ];
+      const hasRequirements = list.some((f) => f.path === 'requirements.txt');
+      return {
+        python: { path: 'Pyodide', source: 'built in' },
+        can_install: true,
+        reason: null,
+        requirements: hasRequirements,
+        packages,
+        missing,
+        hint: 'Pure-Python packages from PyPI work on iPad; packages with compiled code only when Pyodide provides them (numpy, pandas, scikit-learn, …, which load by themselves). Installing needs the internet once: the files are then kept in this project and work offline.',
+      };
+    },
+
+    async previewJob(job) {
+      if (job.kind !== 'install') throw new Error('On iPad there is one built-in Python: there are no environments to create.');
+      const packages = await requestedPackages(job);
+      return {
+        kind: 'install',
+        command: ['micropip.install', ...packages],
+        display: `micropip.install([${packages.map((p) => JSON.stringify(p)).join(', ')}])`,
+        note: 'Downloads from PyPI (pypi.org) or Pyodide, and keeps the files in this project (.tandem/packages) so they work offline.',
+      };
+    },
+
+    startJob(job, { onStart, onOutput, onFinish: reportFinish }) {
+      let cancelled = false;
+      let reported = false;
+      const onFinish = (result) => {
+        if (reported) return;
+        reported = true;
+        reportFinish?.(result);
+      };
+      let worker = null;
+      (async () => {
+        try {
+          const packages = await requestedPackages(job);
+          const slot = await spawn();
+          worker = slot.worker;
+          if (cancelled) return worker.terminate();
+          onStart?.({ command: ['micropip.install', ...packages] });
+          const result = await new Promise((resolve, reject) => {
+            worker.onmessage = (e) => {
+              const m = e.data;
+              if (m.type === 'output') onOutput?.(m.text);
+              else if (m.type === 'installed') resolve(m);
+              else if (m.type === 'failed') reject(new Error(m.message));
+            };
+            worker.postMessage({ type: 'install', packages });
+          });
+          const next = mergePackages(await readPackages(), result);
+          await client.api(`/api/raw?path=${encodeURIComponent(PACKAGES_FILE)}`, {
+            method: 'PUT',
+            body: new TextEncoder().encode(JSON.stringify(next, null, 2)),
+          });
+          onOutput?.(`Kept with the project: ${result.pypi.map((p) => `${p.name} ${p.version}`).join(', ') || 'nothing new from PyPI'}${result.pyodide.length ? `; from Pyodide: ${result.pyodide.join(', ')}` : ''}.\n`);
+          onFinish?.({ status: 'success' });
+        } catch (e) {
+          if (cancelled) return onFinish?.({ status: 'cancelled' });
+          const text = String(e.message || e);
+          onOutput?.(`${text}\n`);
+          onFinish?.({ status: 'error', message: explainInstall(text) });
+        } finally {
+          worker?.terminate();
+        }
+      })();
+      return {
+        cancel: () => {
+          cancelled = true;
+          worker?.terminate();
+          onFinish?.({ status: 'cancelled' });
+        },
       };
     },
 

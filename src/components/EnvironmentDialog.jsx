@@ -476,7 +476,7 @@ export default function EnvironmentDialog({ backend, initialTab = 'env', focusMo
         {pending && (
           <Approval
             preview={pending.preview}
-            target={pending.job.kind === 'install' ? envTarget : null}
+            target={pending.job.kind === 'install' && !ipad ? envTarget : null}
             verb={pending.verb}
             onCancel={() => setPending(null)}
             onConfirm={confirm}

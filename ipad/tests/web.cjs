@@ -78,6 +78,7 @@ function fakeAnthropic() {
   await put('stats.py', 'def average(xs):\n    total = sum(xs)\n    return total / len(xs)\n\nprices = [120, 95, 140]\nmean = average(prices)\nprint(f"Mean: {mean}")\n');
   await put('writes.py', "open('out.txt', 'w').write('from python')\nprint('wrote')\n");
   await put('loop.py', 'i = 0\nwhile True:\n    i += 1\n');
+  await put('pkgs.py', "import numpy\nimport stats\nfrom tabulate import tabulate\nprint(tabulate([['KL', 120]], headers=['city', 'price']))\n");
   await put('readcsv.py', "import csv\nrows = list(csv.reader(open('data.csv')))\nprint('rows', len(rows), rows[1])\n");
   if (FULL) await put('chart.py', 'import numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\ndata = pd.DataFrame({"x": np.arange(1, 6), "y": [2, 4, 6, 8, 10]})\nprint(data)\nplt.plot(data["x"], data["y"])\nplt.title("Runtime Test")\nplt.show()\n');
   await page.reload();
@@ -199,6 +200,38 @@ function fakeAnthropic() {
     await page.waitForTimeout(250);
   }
   check(csvOut.includes("rows 3 ['KL', '120']"), `Python reads the added CSV (output: ${JSON.stringify(csvOut)})`);
+
+  // Packages: what the code imports, what Pyodide provides, and pure-Python
+  // packages from PyPI kept with the project.
+  await page.locator('.runtime-status').click();
+  await page.getByRole('button', { name: 'Packages…' }).click();
+  await page.getByText('Imported by your code, but not installed').waitFor({ timeout: 60000 });
+  const missingText = await page.locator('.env-missing').allInnerTexts();
+  check(missingText.length === 1 && missingText[0].includes('tabulate'), `Packages: tabulate is missing; numpy (Pyodide) and stats (the project's own) aren't (${JSON.stringify(missingText)})`);
+  check((await page.locator('.env-packages').innerText()).includes('numpy'), 'Packages: numpy is listed as included with Pyodide');
+  if (FULL) {
+    await page.locator('.env-missing input').first().check();
+    await page.getByRole('button', { name: 'Install selected…' }).click();
+    check((await page.locator('.env-command').innerText()) === 'micropip.install(["tabulate"])', 'Packages: the exact install is shown before it runs');
+    await page.getByRole('button', { name: 'Install', exact: true }).click();
+    await page.locator('.env-job-head').getByText(/Installed tabulate\.|didn’t|couldn’t|failed|PyPI|compiled/).waitFor({ timeout: 240000 });
+    const jobText = await page.locator('.env-job-head').innerText();
+    check(jobText.includes('Installed tabulate.'), `Packages: tabulate installed from PyPI (${jobText} / ${(await page.locator('.env-log').innerText().catch(() => '')).slice(-600)})`);
+    const kept = JSON.parse((await api('/api/file?path=.tandem/packages.json')).text);
+    check(kept.pypi.some((p) => p.name === 'tabulate' && p.file.endsWith('.whl')), 'Packages: the wheel is kept with the project');
+    await page.locator('.dialog-env [aria-label=Close]').click();
+    await page.getByRole('treeitem', { name: 'pkgs.py' }).click();
+    await run.click();
+    await run.waitFor({ timeout: 60000 });
+    let pkgOut = '';
+    for (let i = 0; i < 40 && !pkgOut.includes('KL'); i++) {
+      pkgOut = await output();
+      await page.waitForTimeout(250);
+    }
+    check(pkgOut.includes('city') && pkgOut.includes('KL'), `Python uses the installed package in a fresh run (output: ${JSON.stringify(pkgOut)})`);
+  } else {
+    await page.locator('.dialog-env [aria-label=Close]').click();
+  }
 
   // AI: the app adds the key; the page never sees it.
   await api('/api/ai/settings', 'PUT', { provider: 'anthropic', base_url: 'http://127.0.0.1:18092', api_key: KEY, model: 'claude-opus-5-5', activate: true });

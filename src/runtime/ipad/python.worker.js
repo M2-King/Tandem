@@ -40,7 +40,8 @@ async function init(message) {
   pyodide.FS.mkdirTree('/tandem');
   for (const [name, text] of Object.entries(support)) pyodide.FS.writeFile(`/tandem/${name}`, text);
   const python = pyodide.runPython('import sys, platform; platform.python_version()');
-  post({ type: 'ready', python, pyodide: pyodide.version });
+  const stdlib = JSON.parse(pyodide.runPython('import json; json.dumps(sorted(set(sys.stdlib_module_names) | set(sys.builtin_module_names)))'));
+  post({ type: 'ready', python, pyodide: pyodide.version, stdlib });
 }
 
 // The project's files, copied into the worker's file system at /project.
@@ -87,8 +88,81 @@ async function saveChanges(snapshot) {
   return changed.map(([path]) => path);
 }
 
+// The project's own packages (Packages… → Install): pure-Python wheels from
+// PyPI kept in the project (.tandem/packages), plus the Pyodide packages they
+// need. Loaded before every run, offline.
+const PACKAGES_FILE = '.tandem/packages.json';
+
+async function loadProjectPackages() {
+  const response = await api(`/api/raw?path=${encodeURIComponent(PACKAGES_FILE)}`);
+  if (!response.ok) return;
+  let list;
+  try {
+    list = JSON.parse(await response.text());
+  } catch {
+    return;
+  }
+  if (list.pyodide?.length) {
+    await pyodide.loadPackage(list.pyodide, { messageCallback: () => {}, errorCallback: () => {} }).catch(() => {});
+  }
+  const site = pyodide.runPython('import sysconfig; sysconfig.get_paths()["purelib"]');
+  for (const pkg of list.pypi || []) {
+    try {
+      const wheel = await api(`/api/raw?path=${encodeURIComponent(`.tandem/packages/${pkg.file}`)}`);
+      if (!wheel.ok) throw new Error(`the saved file ${pkg.file} is missing`);
+      pyodide.unpackArchive(await wheel.arrayBuffer(), 'wheel', { extractDir: site });
+    } catch (e) {
+      post({ type: 'output', stream: 'err', text: `Tandem couldn't load the package ${pkg.name}: ${e.message}\n` });
+    }
+  }
+  pyodide.runPython('import importlib; importlib.invalidate_caches()');
+}
+
+// Packages… → Install: micropip resolves the packages on PyPI (pure-Python
+// wheels) and Pyodide (compiled ones). The PyPI wheels are saved in the project.
+async function install({ packages }) {
+  pyodide.setStdout(streamWriter('out'));
+  pyodide.setStderr(streamWriter('err'));
+  const say = (text) => post({ type: 'output', stream: 'out', text: `${text}\n` });
+  await pyodide.loadPackage('micropip', { messageCallback: say, errorCallback: say });
+  pyodide.globals.set('_tandem_packages', pyodide.toPy(packages));
+  const result = JSON.parse(
+    await pyodide.runPythonAsync(`
+import json, micropip
+from importlib.metadata import packages_distributions
+await micropip.install(_tandem_packages, verbose=True)
+lock = json.loads(micropip.freeze())["packages"]
+imports = {}
+for top, dists in packages_distributions().items():
+    for d in dists:
+        imports.setdefault(d.lower().replace("_", "-"), []).append(top)
+json.dumps({"lock": lock, "imports": imports})
+`)
+  );
+  const norm = (n) => n.toLowerCase().replace(/[-_.]+/g, '-');
+  const entries = Object.values(result.lock);
+  const fromPypi = entries.filter((e) => /^https?:/.test(e.file_name));
+  const pypiNames = new Set(fromPypi.map((e) => norm(e.name)));
+  const needs = new Set();
+  for (const e of fromPypi) for (const d of e.depends || []) if (!pypiNames.has(norm(d))) needs.add(norm(d));
+  // Asked for by name and provided by Pyodide (numpy, …): remembered too.
+  for (const p of packages) needs.add(norm(p.split(/[<>=!~[\s;]/)[0]));
+  const pyodideDeps = entries.filter((e) => !/^https?:/.test(e.file_name) && needs.has(norm(e.name))).map((e) => e.name);
+  const saved = [];
+  for (const e of fromPypi) {
+    const file = decodeURIComponent(e.file_name.split('/').pop().split('#')[0].split('?')[0]);
+    say(`Saving ${file} in the project…`);
+    const bytes = await (await fetch(e.file_name)).arrayBuffer();
+    const put = await api(`/api/raw?path=${encodeURIComponent(`.tandem/packages/${file}`)}`, { method: 'PUT', body: bytes });
+    if (!put.ok) throw new Error(`Couldn't save ${file} in the project.`);
+    saved.push({ name: e.name, version: e.version, file, imports: result.imports[norm(e.name)] || [] });
+  }
+  post({ type: 'installed', pypi: saved, pyodide: pyodideDeps });
+}
+
 async function run({ path, mode, breakpoints }) {
   const snapshot = await mountProject();
+  await loadProjectPackages();
   // Packages the script imports (numpy, pandas, matplotlib, ...) load from the app.
   const source = new TextDecoder().decode(pyodide.FS.readFile(`/project/${path}`));
   try {
@@ -155,6 +229,7 @@ self.onmessage = async (e) => {
   try {
     if (message.type === 'init') await init(message);
     else if (message.type === 'run') await run(message);
+    else if (message.type === 'install') await install(message);
   } catch (error) {
     post({ type: 'failed', message: String(error?.message || error) });
   }
