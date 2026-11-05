@@ -41,7 +41,7 @@ final class AISettingsStore {
             var hint: Any = NSNull()
             if let key { hint = key.count >= 12 ? "…" + String(key.suffix(4)) : "saved" }
             providers[name] = ["label": meta.label, "needs_key": meta.needsKey, "base_url": cfg.baseURL, "model": cfg.model,
-                               "default_base_url": meta.baseURL, "has_key": key != nil, "key_hint": hint]
+                               "default_base_url": meta.baseURL, "has_key": key != nil, "key_hint": hint] as [String: Any]
         }
         return ["active": config["active"] ?? NSNull(), "providers": providers, "stored_in": "iPad Keychain"]
     }
@@ -58,7 +58,7 @@ final class AISettingsStore {
         }
         if let base = body["base_url"] as? String {
             let b = base.trimmingCharacters(in: .whitespaces)
-            entry["base_url"] = b.isEmpty ? "" : try Self.checkURL(b)
+            entry["base_url"] = try b.isEmpty ? "" : Self.checkURL(b)
         }
         all[name] = entry
         cfg["providers"] = all

@@ -163,7 +163,7 @@ final class LocalServer {
         connection.send(content: data, completion: .contentProcessed { _ in connection.cancel() })
     }
 
-    private func json(_ object: Any, status: Int = 200) -> Response {
+    private func json(_ object: [String: Any], status: Int = 200) -> Response {
         let body = (try? JSONSerialization.data(withJSONObject: object)) ?? Data("{}".utf8)
         return Response(status: status, body: body, contentType: "application/json", headers: ["Cache-Control": "no-store"])
     }
