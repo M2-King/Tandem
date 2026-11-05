@@ -70,9 +70,11 @@ jobs:
 
       - name: Build for the simulator
         run: |
+          set -o pipefail
           xcodebuild -project ipad/App/Tandem.xcodeproj -scheme Tandem -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim \
-            CODE_SIGNING_ALLOWED=NO build | tail -20
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee sim-build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          test -f build/sim/Build/Products/Debug-iphonesimulator/Tandem.app/Tandem || { tail -60 sim-build.log; exit 1; }
 
       - name: Run in the iPad simulator
         run: |
@@ -104,7 +106,8 @@ jobs:
         run: |
           xcodebuild -project ipad/App/Tandem.xcodeproj -scheme Tandem -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/device \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -20
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee device-build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          test -f build/device/Build/Products/Release-iphoneos/Tandem.app/Tandem || { tail -60 device-build.log; exit 1; }
           mkdir -p Payload
           cp -R build/device/Build/Products/Release-iphoneos/Tandem.app Payload/
           zip -qry Tandem-iPad.ipa Payload
