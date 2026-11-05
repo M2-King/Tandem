@@ -92,6 +92,8 @@ function fakeAnthropic() {
   await page.locator('.run-input-field').fill('21');
   await page.keyboard.press('Enter');
   await run.waitFor({ timeout: 60000 });
+  // The last lines can land just after the Run button comes back.
+  await page.locator('.output-lines').first().getByText('42.0').waitFor({ timeout: 10000 }).catch(() => {});
   check((await output()).includes('Your number: 21') && (await output()).includes('42.0'), 'input(): typed 21, printed 42.0');
 
   await run.click();
