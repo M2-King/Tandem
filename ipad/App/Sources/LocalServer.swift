@@ -219,6 +219,8 @@ final class LocalServer {
         case ("POST", "/api/file"):
             let b = bodyJSON(r)
             return json(try store.write(b["path"] as? String ?? "", text: b["text"] as? String ?? "", baseHash: nil, create: true))
+        case ("POST", "/api/upload"):
+            return json(try store.add(r.query["path"] ?? "", data: r.body))
         case ("GET", "/api/raw"):
             return Response(status: 200, body: try store.readRaw(r.query["path"] ?? ""), contentType: "application/octet-stream", headers: ["Cache-Control": "no-store"])
         case ("PUT", "/api/raw"):

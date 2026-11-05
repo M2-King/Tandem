@@ -78,6 +78,7 @@ function fakeAnthropic() {
   await put('stats.py', 'def average(xs):\n    total = sum(xs)\n    return total / len(xs)\n\nprices = [120, 95, 140]\nmean = average(prices)\nprint(f"Mean: {mean}")\n');
   await put('writes.py', "open('out.txt', 'w').write('from python')\nprint('wrote')\n");
   await put('loop.py', 'i = 0\nwhile True:\n    i += 1\n');
+  await put('readcsv.py', "import csv\nrows = list(csv.reader(open('data.csv')))\nprint('rows', len(rows), rows[1])\n");
   if (FULL) await put('chart.py', 'import numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\ndata = pd.DataFrame({"x": np.arange(1, 6), "y": [2, 4, 6, 8, 10]})\nprint(data)\nplt.plot(data["x"], data["y"])\nplt.title("Runtime Test")\nplt.show()\n');
   await page.reload();
   await page.locator('.runtime-status.tone-up').waitFor({ timeout: 120000 });
@@ -174,6 +175,30 @@ function fakeAnthropic() {
   check(JSON.stringify(await wallVars()) === JSON.stringify(['1180px 885px', '-150px -152.5px']), 'wallpaper photo kept by the app, lined up with the screen');
   await place({ sw: 1180, sh: 820, x: 0, y: 0, w: 1180, h: 820 });
   check((await wallVars())[1] === '0px -32.5px' && (await page.evaluate(() => document.documentElement.dataset.windowed)) === 'false', 'wallpaper follows the window (full screen)');
+
+  // Add files…: files from elsewhere (any kind) are copied into the project.
+  const picker = page.locator('.sidebar-inner input[type=file]');
+  const csv = 'city,price\nKL,120\nPenang,95\n';
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  await picker.setInputFiles([
+    { name: 'data.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) },
+    { name: 'logo.png', mimeType: 'image/png', buffer: png },
+  ]);
+  await page.getByRole('treeitem', { name: 'logo.png' }).waitFor({ timeout: 20000 });
+  check((await api('/api/file?path=data.csv')).text === csv, 'Add files…: a CSV is copied into the project, byte for byte');
+  check((await api('/api/files')).files.some((f) => f.path === 'logo.png'), 'Add files…: an image is added too');
+  await picker.setInputFiles([{ name: 'data.csv', mimeType: 'text/csv', buffer: Buffer.from('other') }]);
+  await page.getByRole('treeitem', { name: 'data (2).csv' }).waitFor({ timeout: 20000 });
+  check((await api('/api/file?path=data.csv')).text === csv, 'Add files…: a taken name becomes data (2).csv, nothing is overwritten');
+  await page.getByRole('treeitem', { name: 'readcsv.py' }).click();
+  await run.click();
+  await run.waitFor({ timeout: 60000 });
+  let csvOut = '';
+  for (let i = 0; i < 40 && !csvOut.includes('rows 3'); i++) {
+    csvOut = await output();
+    await page.waitForTimeout(250);
+  }
+  check(csvOut.includes("rows 3 ['KL', '120']"), `Python reads the added CSV (output: ${JSON.stringify(csvOut)})`);
 
   // AI: the app adds the key; the page never sees it.
   await api('/api/ai/settings', 'PUT', { provider: 'anthropic', base_url: 'http://127.0.0.1:18092', api_key: KEY, model: 'claude-opus-5-5', activate: true });

@@ -137,4 +137,14 @@ final class ProjectStore {
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: url, options: .atomic)
     }
+
+    /// A file brought in from elsewhere (Add files…, drag and drop). Never overwrites.
+    func add(_ rel: String, data: Data) throws -> [String: Any] {
+        let url = try resolve(rel)
+        if fm.fileExists(atPath: url.path) { throw APIError(status: 400, message: "\(rel) already exists.") }
+        if data.count > 25 * 1024 * 1024 { throw APIError(status: 400, message: "\(rel) is larger than 25 MB.") }
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
+        return ["path": rel, "size": data.count]
+    }
 }

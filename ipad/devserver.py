@@ -10,6 +10,7 @@ the iPad build can be tested without an iPad.
 * /pyodide/...           Pyodide and its packages
 * /api/status            project name
 * /api/files, /api/file  project files (text), same as the desktop runtime
+* /api/upload            add a file from elsewhere (bytes; never overwrites)
 * /api/raw               project files as bytes (Python's view of the project)
 * /api/projects          list / create / open projects
 * /api/wallpaper         the person's wallpaper photo (kept by the app)
@@ -165,6 +166,8 @@ def make_handler(state: State):
                     return self.json(files.write(data["path"], data["text"], base_hash=data.get("base_hash")))
                 if method == "POST":
                     return self.json(files.write(data["path"], data.get("text", ""), create=True))
+            if path == "/api/upload" and method == "POST":
+                return self.json(files.add(query.get("path", ""), self.body()))
             if path == "/api/raw":
                 target = files.resolve(query.get("path", ""))
                 if method == "GET":
