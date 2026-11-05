@@ -71,11 +71,9 @@ export function RuntimeStatus({ connection, status, error, onOpenEnv }) {
         )}
         {connection === 'connected' && onOpenEnv && (
           <div className="runtime-actions">
-            {!IS_IPAD && (
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => onOpenEnv('env')}>
-                Environment…
-              </button>
-            )}
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onOpenEnv('env')}>
+              Environment…
+            </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => onOpenEnv('packages')}>
               Packages…
             </button>
