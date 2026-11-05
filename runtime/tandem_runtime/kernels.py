@@ -250,7 +250,10 @@ class KernelHub:
         await self._abort_pending(k)
         k.restarting = True
         try:
-            await k.km.restart_kernel(now=True)
+            # Graceful (now=False): on Windows a venv's python.exe is a launcher
+            # with the real Python as its child; killing only the launcher
+            # would leave the old kernel running.
+            await k.km.restart_kernel(now=False)
             # The shell relay reads every reply, so readiness is its signal:
             # ask for kernel_info until the new kernel answers.
             k.ready.clear()
@@ -276,7 +279,10 @@ class KernelHub:
         with contextlib.suppress(Exception):
             k.kc.stop_channels()
         with contextlib.suppress(Exception):
-            await k.km.shutdown_kernel(now=True)
+            # Ask the kernel to exit (it does even while busy), then force it
+            # after a few seconds. See restart() for why not now=True.
+            k.km.shutdown_wait_time = 3.0
+            await k.km.shutdown_kernel(now=False)
         shutil.rmtree(k.folder, ignore_errors=True)
 
     async def shutdown_all(self, ids: set[str] | None = None) -> None:

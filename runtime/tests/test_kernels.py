@@ -171,3 +171,20 @@ def test_commands_for_someone_elses_kernel_are_ignored(client, project, python):
         outputs, _ = sa.run("own", "print('mine')")
         assert text_of(outputs) == "mine\n"
         assert not any(e["type"] == "kernel.output" and e["cell"] == "x" for e in sa.events)
+
+
+def test_restart_leaves_no_old_kernel_behind(session):
+    """On Windows a venv's python.exe is a launcher with the real Python as its
+    child: the old kernel itself must be gone after a restart."""
+    from conftest import pid_alive
+
+    outputs, _ = session.run("pid", "import os\nprint(os.getpid())")
+    old = int(text_of(outputs))
+    session.send("kernel.restart")
+    session.until(lambda e: e["type"] == "kernel.status" and e.get("restarted"))
+    outputs, _ = session.run("pid2", "import os\nprint(os.getpid())")
+    assert int(text_of(outputs)) != old
+    deadline = time.monotonic() + 15
+    while pid_alive(old) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    assert not pid_alive(old), "the old kernel should be gone after a restart"
