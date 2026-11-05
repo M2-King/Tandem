@@ -11,6 +11,7 @@ const playwright = require('playwright');
 const http = require('node:http');
 
 const [base, engine = 'chromium'] = process.argv.slice(2);
+let currentPage = null; // for the failure report
 const FULL = process.argv.includes('--full');
 const KEY = 'sk-ant-test-0123456789abcdef';
 
@@ -50,6 +51,7 @@ function fakeAnthropic() {
   const fake = await fakeAnthropic();
   const browser = await playwright[engine].launch();
   const page = await browser.newPage({ viewport: { width: 1180, height: 820 } });
+  currentPage = page;
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   const bodies = [];
@@ -167,7 +169,11 @@ function fakeAnthropic() {
   await browser.close();
   fake.server.close();
   console.log('\nAll iPad checks passed.');
-})().catch((e) => {
+})().catch(async (e) => {
   console.error('FAILED:', e.message.split('\n').slice(0, 3).join(' / '));
+  if (currentPage) {
+    await currentPage.getByRole('tab', { name: 'Output' }).click({ timeout: 3000 }).catch(() => {});
+    console.error('--- results panel ---\n' + (await currentPage.locator('.results').innerText({ timeout: 3000 }).catch(() => '(none)')).slice(0, 3000));
+  }
   process.exit(1);
 });
