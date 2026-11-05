@@ -64,9 +64,22 @@ Status of the Python and Jupyter runtime work. Each item is marked:
 | Model changes outside the project are refused | done | test |
 | Window glass switches without restarting | done | live switching checked on Windows CI |
 
+## Phase 2: Environment manager — done
+
+| Item | Status | How it was verified |
+| --- | --- | --- |
+| Finds the Python installations on the computer and the project's environments | done | tests; browser (3.11, 3.12, 3.13 found here) |
+| Creates an environment with a chosen Python (3.11 and 3.12), selects it; runs report that version | done | tests create both and run `sys.version`; browser creates `.venv` from 3.11 |
+| Switch between environments, or back to automatic | done | tests |
+| Package list (`pip list`) of the selected environment | done | tests; browser |
+| Imports the environment can't satisfy, with the package to install (sklearn → scikit-learn, …); the project's own modules and the standard library are left out | done | tests; browser |
+| Installs only after the exact command is shown and confirmed; live log; cancel; readable failures | done | tests install from PyPI; browser: ModuleNotFoundError → Install six… → approve → run works |
+| Never installs into a system Python; no pip options can be passed | done | tests |
+| Environment folders never appear as project files | done | test |
+| iPad: one built-in Python (Pyodide). Packages lists what the code imports; Pyodide's own packages load by themselves; pure-Python packages from PyPI install with micropip after confirmation and are kept in the project for offline runs | done | web tests (detection locally; the PyPI install in CI with the full Pyodide bundle) |
+
 ## Pending
 
-- Phase 2: environment manager (discover interpreters, create 3.11/3.12 venvs, switch, package list, approved installs, missing-import detection).
 - Phase 3: Jupyter notebooks (real kernels, run/interrupt/restart, nbformat round-trip).
 - Phase 5: machine-learning sample project with real scikit-learn metrics.
 - Phase 7: end-to-end verification and screenshots in Real mode.
