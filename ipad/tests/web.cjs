@@ -15,11 +15,9 @@ let currentPage = null; // for the failure report
 const FULL = process.argv.includes('--full');
 const KEY = 'sk-ant-test-0123456789abcdef';
 
+// A failed check ends the test and shows the results panel (see the catch below).
 function check(ok, message) {
-  if (!ok) {
-    console.error(`FAILED: ${message}`);
-    process.exit(1);
-  }
+  if (!ok) throw new Error(message);
   console.log(`ok   ${message}`);
 }
 
