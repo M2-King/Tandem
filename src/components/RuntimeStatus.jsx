@@ -12,7 +12,7 @@ const envName = (python) => {
 
 // Local runtime status in the toolbar: is it connected, and which Python runs
 // the code. The popover says plainly what the runtime is (and is not).
-export function RuntimeStatus({ connection, status, error }) {
+export function RuntimeStatus({ connection, status, error, onOpenEnv }) {
   const python = status?.python;
   const label =
     connection === 'connected'
@@ -70,6 +70,18 @@ export function RuntimeStatus({ connection, status, error }) {
               <dd className="mono">{status?.project?.root}</dd>
             </div>
           </dl>
+        )}
+        {connection === 'connected' && onOpenEnv && (
+          <div className="runtime-actions">
+            {!IS_IPAD && (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => onOpenEnv('env')}>
+                Environment…
+              </button>
+            )}
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onOpenEnv('packages')}>
+              Packages…
+            </button>
+          </div>
         )}
         {error && <p className="runtime-error">{error}</p>}
         <p className="runtime-note">

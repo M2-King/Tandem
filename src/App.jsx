@@ -24,6 +24,7 @@ import { createLocalBackend } from './runtime/localBackend.js';
 import { createIpadBackend } from './runtime/ipadBackend.js';
 import { RuntimeStatus, DemoBadge } from './components/RuntimeStatus.jsx';
 import NewFileDialog from './components/NewFileDialog.jsx';
+import EnvironmentDialog from './components/EnvironmentDialog.jsx';
 import AISettingsDialog from './components/AISettingsDialog.jsx';
 import ProjectsDialog from './components/ProjectsDialog.jsx';
 import { createRealAssistant } from './services/realAI.js';
@@ -102,6 +103,7 @@ export default function App() {
         ? 'No Python interpreter found for this project'
         : null;
   const [newFileOpen, setNewFileOpen] = useState(false);
+  const [envDialog, setEnvDialog] = useState(null); // { tab, focusModule }
   // Add files…: copy files from elsewhere (any kind) into the project.
   const addFiles = ws.addFiles;
   const handleAddFiles = useCallback(
@@ -517,6 +519,7 @@ export default function App() {
     onEndInput: exec.endInput,
     onRun: handleRun,
     onAskFix: askToFixRun,
+    onInstallModule: IS_LOCAL ? (module) => setEnvDialog({ tab: 'packages', focusModule: module }) : null,
     onGoToLine: (path, line) => {
       ws.openFile(path);
       setReviewingId(null);
@@ -580,7 +583,7 @@ export default function App() {
     <div className="app">
       <Toolbar
         projectName={projectName}
-        modeBadge={IS_LOCAL ? <RuntimeStatus {...runtime} /> : <DemoBadge />}
+        modeBadge={IS_LOCAL ? <RuntimeStatus {...runtime} onOpenEnv={(tab) => setEnvDialog({ tab })} /> : <DemoBadge />}
         savesToDisk={IS_LOCAL}
         saveState={saveState}
         run={{
@@ -857,6 +860,16 @@ export default function App() {
         />
       )}
 
+      {envDialog && backend && (
+        <EnvironmentDialog
+          backend={backend}
+          initialTab={envDialog.tab}
+          focusModule={envDialog.focusModule}
+          runActive={!!exec.session && !exec.session.finished}
+          onClose={() => setEnvDialog(null)}
+          onChanged={runtime.refresh}
+        />
+      )}
       {newFileOpen && (
         <NewFileDialog
           existing={ws.fileOrder}

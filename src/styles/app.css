@@ -3585,3 +3585,191 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   pointer-events: none;
   z-index: 2;
 }
+
+/* ---------- environment manager ---------- */
+.runtime-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.dialog-env {
+  width: 600px;
+  max-height: min(86vh, 760px);
+}
+.env-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.env-current {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  color: var(--text-secondary);
+}
+.env-current-label {
+  color: var(--text-muted);
+}
+.env-current-path {
+  flex-basis: 100%;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.env-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.env-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 2px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.env-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.env-row:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.env-row.is-current {
+  background: var(--bg-selected);
+  box-shadow: inset 2px 0 0 var(--accent, #7c9cf0);
+}
+.env-row:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.env-row-name {
+  font-weight: 500;
+}
+.env-row-meta {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.env-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 150px) max-content;
+  align-items: end;
+  gap: 8px;
+}
+.env-create .field {
+  margin: 0;
+  min-width: 0;
+}
+.env-create .field-input {
+  width: 100%;
+}
+.env-approval {
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--group-fill);
+  box-shadow: var(--group-edge);
+}
+.env-approval-title {
+  margin: 0 0 8px;
+  font-weight: 500;
+}
+.env-command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+.env-job-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+.env-job .tone-ok {
+  color: var(--success);
+}
+.env-job .tone-error {
+  color: var(--error);
+}
+.env-log {
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.28);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+.env-missing {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 5px 4px;
+}
+.env-missing .push-right {
+  margin-left: auto;
+}
+.env-section > .btn {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+.env-all-good {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--success);
+}
+.env-install-row {
+  display: flex;
+  gap: 8px;
+}
+.env-install-row .field-input {
+  flex: 1;
+  min-width: 0;
+}
+.env-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+.env-packages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+.env-packages li {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
+}
+@media (max-width: 600px) {
+  .env-create {
+    grid-template-columns: 1fr;
+  }
+}

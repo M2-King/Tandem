@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Play, Loader2, AlertCircle, RotateCcw, MessageSquarePlus, Wrench, Maximize2, ArrowRight, Info, GitCompare, Code2, ChevronRight } from 'lucide-react';
+import { X, Play, Loader2, AlertCircle, RotateCcw, MessageSquarePlus, Wrench, Maximize2, ArrowRight, Info, GitCompare, Code2, ChevronRight, Package } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import FigureView from './FigureView.jsx';
 import { MetricsList, ModelHeading } from './MetricsTable.jsx';
@@ -207,18 +207,31 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
                   {run.error.path ? ` in ${run.error.path}, line ${run.error.line}` : ''}
                 </p>
                 <p>{run.error.explanation}</p>
-                {run.error.path && (
+                {(run.error.path || (missingModule(run.error) && actions.onInstallModule)) && (
                   <div className="callout-actions">
-                    <button type="button" className="btn btn-primary btn-sm" onClick={() => actions.onAskFix(run)}>
-                      <Wrench size={16} aria-hidden="true" /> Ask AI to fix
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => actions.onGoToLine(run.error.path, run.error.line)}
-                    >
-                      Go to line {run.error.line}
-                    </button>
+                    {missingModule(run.error) && actions.onInstallModule && (
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => actions.onInstallModule(missingModule(run.error))}>
+                        <Package size={16} aria-hidden="true" /> Install {missingModule(run.error)}…
+                      </button>
+                    )}
+                    {run.error.path && (
+                      <>
+                        <button
+                          type="button"
+                          className={`btn ${missingModule(run.error) && actions.onInstallModule ? 'btn-secondary' : 'btn-primary'} btn-sm`}
+                          onClick={() => actions.onAskFix(run)}
+                        >
+                          <Wrench size={16} aria-hidden="true" /> Ask AI to fix
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => actions.onGoToLine(run.error.path, run.error.line)}
+                        >
+                          Go to line {run.error.line}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -495,6 +508,14 @@ function RunsView({ runs, selectedRunId, onSelect, onCompare }) {
       </table>
     </div>
   );
+}
+
+
+// The module a ModuleNotFoundError is about (top level), if that's the error.
+function missingModule(error) {
+  if (error?.type !== 'ModuleNotFoundError') return null;
+  const match = /No module named '([^']+)'/.exec(error.message || '');
+  return match ? match[1].split('.')[0] : null;
 }
 
 export default function ResultsPanel({ tab, onTab, session, traceView, notice, runs, run, runTarget, newCharts, actions, onClose }) {

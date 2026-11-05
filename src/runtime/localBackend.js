@@ -48,6 +48,39 @@ export function createLocalBackend(config, { socket = true } = {}) {
     // A file brought in from elsewhere, as bytes. Never overwrites.
     uploadFile: (path, data) => client.api(`/api/upload?path=${encodeURIComponent(path)}`, { method: 'POST', body: data }),
 
+    // Environments and packages. Reading is free; creating an environment or
+    // installing packages is a job, started only after the person has seen
+    // the exact command (previewJob) and confirmed it.
+    envs: (refresh = false) => client.api(`/api/envs${refresh ? '?refresh=1' : ''}`),
+    selectEnv: (python) => client.api('/api/envs/select', { method: 'PUT', body: { python } }),
+    packages: () => client.api('/api/packages'),
+    previewJob: (job) => client.api('/api/jobs/preview', { method: 'POST', body: job }),
+    // job: { kind: 'create-env', base, name } | { kind: 'install', packages } | { kind: 'install', requirements: true }
+    // onOutput(text), onFinish({ status, exitCode, message, ... }). Returns { cancel }.
+    startJob(job, { onStart, onOutput, onFinish }) {
+      const id = `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      let done = false;
+      const finish = (result) => {
+        if (done) return;
+        done = true;
+        off();
+        offState();
+        onFinish?.(result);
+      };
+      const off = client.on((event) => {
+        if (event.id !== id) return;
+        if (event.type === 'job.started') onStart?.(event);
+        else if (event.type === 'job.output') onOutput?.(event.text);
+        else if (event.type === 'job.finished') finish(event);
+        else if (event.type === 'job.rejected') finish({ status: 'error', message: event.message });
+      });
+      const offState = client.onState((state) => {
+        if (state === 'disconnected') finish({ status: 'error', message: 'The connection to the runtime was lost.' });
+      });
+      if (!client.send({ type: 'job.start', id, ...job })) finish({ status: 'error', message: 'The runtime isn’t connected.' });
+      return { cancel: () => client.send({ type: 'job.cancel', id }) };
+    },
+
     // AI provider settings. Keys go to the runtime and never come back.
     aiSettings: () => client.api('/api/ai/settings'),
     saveAISettings: (body) => client.api('/api/ai/settings', { method: 'PUT', body }),
