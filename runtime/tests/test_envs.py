@@ -104,10 +104,15 @@ def test_packages_and_missing_imports(client, project, python):
         "import definitely_not_installed_pkg\nfrom . import nothing\n")
     data = client.get("/api/packages").json()
     names = {p["name"].lower() for p in data["packages"]}
-    assert {"numpy", "scikit-learn", "pip"} <= names
+    assert {"numpy", "pip"} <= names
     assert data["can_install"] is True
     missing = {m["module"]: m for m in data["missing"]}
-    assert set(missing) == {"definitely_not_installed_pkg"}
+    # os/json (standard library), helper (the project's own) and numpy are there;
+    # scikit-learn may or may not be installed in the test environment.
+    expected = {"definitely_not_installed_pkg"} | ({"sklearn"} if "scikit-learn" not in names else set())
+    assert set(missing) == expected
+    if "sklearn" in missing:
+        assert missing["sklearn"]["package"] == "scikit-learn"
     assert missing["definitely_not_installed_pkg"]["where"] == [{"path": "main.py", "line": 5}]
 
 
