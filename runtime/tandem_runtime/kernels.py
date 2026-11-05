@@ -50,6 +50,32 @@ def has_ipykernel(python: Path) -> bool:
         return False
 
 
+def direct_python(python: Path) -> tuple[Path, dict]:
+    """The interpreter to start for a kernel, and extra environment.
+
+    On Windows a virtual environment's python.exe is a small launcher that
+    starts the real Python as a child process. Stopping the kernel would then
+    end only the launcher and leave the kernel running. So the real Python is
+    started directly, with __PYVENV_LAUNCHER__ set as the launcher sets it:
+    Python then runs in the environment exactly as through the launcher.
+    """
+    if sys.platform != "win32":
+        return python, {}
+    cfg = python.parent.parent / "pyvenv.cfg"
+    if not cfg.is_file():
+        return python, {}
+    values = {}
+    for line in cfg.read_text(encoding="utf-8", errors="replace").splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            values[key.strip().lower()] = value.strip()
+    candidates = [values.get("executable"), values.get("home") and str(Path(values["home"]) / "python.exe")]
+    for base in filter(None, candidates):
+        if Path(base).is_file() and Path(base).name.lower() == "python.exe":
+            return Path(base), {"__PYVENV_LAUNCHER__": str(python)}
+    return python, {}
+
+
 @dataclass
 class Kernel:
     id: str
@@ -66,6 +92,7 @@ class Kernel:
     closing: bool = False
     restarting: bool = False
     ready: asyncio.Event = field(default_factory=asyncio.Event)
+    heard: asyncio.Event = field(default_factory=asyncio.Event)  # an iopub message arrived
 
 
 class KernelHub:
@@ -90,6 +117,7 @@ class KernelHub:
                 "This environment doesn't have ipykernel, the Jupyter kernel for Python. Install it (Packages…), "
                 "then run the cell again.", code="missing-ipykernel")
         await send({"type": "kernel.status", "id": kernel_id, "state": "starting", "python": str(python)})
+        direct, launcher_env = direct_python(python)
         folder = tempfile.mkdtemp(prefix="tandem-kernel-")  # 0700: the connection file holds the signing key
         # POSIX: Unix sockets inside the private folder. Windows: TCP on 127.0.0.1;
         # every message is signed with the key in the connection file.
@@ -99,9 +127,9 @@ class KernelHub:
             km = AsyncKernelManager(connection_file=os.path.join(folder, "kernel.json"), ip=os.path.join(folder, "k"),
                                     transport="ipc")
         km._kernel_spec = KernelSpec(
-            argv=[str(python), "-m", "ipykernel_launcher", "-f", "{connection_file}"],
+            argv=[str(direct), "-m", "ipykernel_launcher", "-f", "{connection_file}"],
             display_name="Python 3 (ipykernel)", language="python", env={})
-        env = child_env(python, {"PYTHONIOENCODING": "utf-8", "PYDEVD_DISABLE_FILE_VALIDATION": "1"})
+        env = child_env(python, {"PYTHONIOENCODING": "utf-8", "PYDEVD_DISABLE_FILE_VALIDATION": "1", **launcher_env})
         env.pop("MPLBACKEND", None)  # ipykernel shows matplotlib figures inline by itself
         try:
             await km.start_kernel(env=env, cwd=str(self.root))
@@ -131,6 +159,7 @@ class KernelHub:
                     return
                 await asyncio.sleep(0.05)
                 continue
+            k.heard.set()
             kind, content = msg["msg_type"], msg["content"]
             cell = k.pending.get(msg.get("parent_header", {}).get("msg_id"))
             if kind == "status":
@@ -181,6 +210,16 @@ class KernelHub:
             if parent in k.pending:
                 k.replies[parent] = msg["content"]
                 await self._maybe_done(k, parent)
+                if parent in k.pending:
+                    asyncio.create_task(self._done_soon(k, parent))
+
+    async def _done_soon(self, k: Kernel, msg_id: str) -> None:
+        # Safety net: if the kernel's "idle" for this cell never arrives (the
+        # output connection was still reconnecting), the cell is done anyway.
+        await asyncio.sleep(1.0)
+        if msg_id in k.pending and msg_id in k.replies:
+            k.idle.add(msg_id)
+            await self._maybe_done(k, msg_id)
 
     async def _maybe_done(self, k: Kernel, msg_id: str) -> None:
         # Reply (shell) and output (iopub) come on different channels, in any
@@ -250,20 +289,20 @@ class KernelHub:
         await self._abort_pending(k)
         k.restarting = True
         try:
-            # Graceful (now=False): on Windows a venv's python.exe is a launcher
-            # with the real Python as its child; killing only the launcher
-            # would leave the old kernel running.
-            await k.km.restart_kernel(now=False)
+            await k.km.restart_kernel(now=True)
             # The shell relay reads every reply, so readiness is its signal:
             # ask for kernel_info until the new kernel answers.
+            # Ready = the new kernel answers on the shell channel *and* its
+            # output (iopub) reaches us again, so no output is lost.
             k.ready.clear()
+            k.heard.clear()
             deadline = asyncio.get_running_loop().time() + 90
-            while not k.ready.is_set():
+            while not (k.ready.is_set() and k.heard.is_set()):
                 if asyncio.get_running_loop().time() > deadline:
                     raise KernelError("The kernel didn't come back after the restart.")
                 k.kc.kernel_info()
                 with contextlib.suppress(asyncio.TimeoutError):
-                    await asyncio.wait_for(k.ready.wait(), 1.0)
+                    await asyncio.wait_for(asyncio.gather(k.ready.wait(), k.heard.wait()), 1.0)
         finally:
             k.restarting = False
         await k.send({"type": "kernel.status", "id": k.id, "state": "idle", "restarted": True})
@@ -279,10 +318,7 @@ class KernelHub:
         with contextlib.suppress(Exception):
             k.kc.stop_channels()
         with contextlib.suppress(Exception):
-            # Ask the kernel to exit (it does even while busy), then force it
-            # after a few seconds. See restart() for why not now=True.
-            k.km.shutdown_wait_time = 3.0
-            await k.km.shutdown_kernel(now=False)
+            await k.km.shutdown_kernel(now=True)
         shutil.rmtree(k.folder, ignore_errors=True)
 
     async def shutdown_all(self, ids: set[str] | None = None) -> None:

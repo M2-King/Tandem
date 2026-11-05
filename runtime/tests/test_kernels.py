@@ -188,3 +188,10 @@ def test_restart_leaves_no_old_kernel_behind(session):
     while pid_alive(old) and time.monotonic() < deadline:
         time.sleep(0.2)
     assert not pid_alive(old), "the old kernel should be gone after a restart"
+
+
+def test_kernel_runs_in_the_environment(session, python):
+    """The kernel's Python is the selected environment (on Windows it is started
+    without the venv launcher, and must still be inside the environment)."""
+    outputs, _ = session.run("env", "import sys\nprint(sys.prefix)")
+    assert Path(text_of(outputs).strip()).resolve() == python.parent.parent.resolve()
