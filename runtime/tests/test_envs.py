@@ -60,8 +60,7 @@ def test_discovers_python_installations(bases):
 
 def test_create_select_and_run_in_two_environments(client, project, bases):
     (project / "v.py").write_text("import sys\nprint(sys.version.split()[0], sys.prefix)\n")
-    v311 = next(i["path"] for i in envs.interpreters() if i["version"].startswith("3.11"))
-    v312 = next(i["path"] for i in envs.interpreters() if i["version"].startswith("3.12"))
+    v311, v312 = bases["3.11"], bases["3.12"]
 
     done = first(run_job(client, {"kind": "create-env", "base": v311, "name": ".venv"}), "job.finished")
     assert done["status"] == "success", done
