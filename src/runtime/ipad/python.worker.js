@@ -135,7 +135,7 @@ if _tandem_args["mode"] != "run":
     import json
     os.environ["TANDEM_DEBUG"] = _tandem_args["mode"]
     os.environ["TANDEM_BREAKPOINTS"] = json.dumps([["/project/" + p, l] for p, l in _tandem_args["breakpoints"]])
-sys.path.insert(0, "/tandem")
+sys.path.append("/tandem")  # after the script's own folder, which the wrapper puts first
 os.chdir("/project")
 sys.argv = ["tandem_run.py", "/project/" + _tandem_args["path"]]
 import tandem_run
