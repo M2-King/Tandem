@@ -11,6 +11,7 @@ SKIP_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "__pycache__", "node
              ".ipynb_checkpoints", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".idea", ".vscode"}
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 MAX_FILES = 2000
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
 class FileError(Exception):
@@ -93,3 +94,16 @@ class ProjectFiles:
         tmp.write_bytes(text.encode("utf-8"))  # exact bytes: no newline translation on Windows
         os.replace(tmp, path)
         return {"path": rel, "hash": content_hash(text), "size": path.stat().st_size}
+
+    def add(self, rel: str, data: bytes) -> dict:
+        """Add a file brought in from elsewhere (any kind: code, data, images). Never overwrites."""
+        path = self.resolve(rel)
+        if path.exists():
+            raise FileError(f"{rel} already exists.")
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise FileError(f"{rel} is larger than 25 MB.")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{path.name}.tandem-tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+        return {"path": rel, "size": len(data)}

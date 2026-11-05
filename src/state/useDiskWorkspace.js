@@ -2,6 +2,27 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadJSON, saveJSON } from '../lib/storage.js';
 
 const SAVE_DELAY = 400;
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+// A name that is safe as a project file: no folders, no leading dot (hidden
+// files aren't listed), no characters file systems refuse.
+export function safeFileName(name) {
+  const base = String(name || '').split(/[\\/]/).pop();
+  const cleaned = base.replace(/[\u0000-\u001f<>:"|?*]/g, '_').replace(/^[.\s]+/, '').trim();
+  return cleaned.slice(0, 120) || 'file';
+}
+
+// data.csv → data (2).csv, data (3).csv, … when the name is taken.
+export function uniqueFileName(name, taken) {
+  if (!taken.has(name)) return name;
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  for (let n = 2; ; n++) {
+    const candidate = `${stem} (${n})${ext}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
 
 // The project on disk, through the local runtime. Same shape as
 // useWorkspace (files, openTabs, activePath, breakpoints, …) so the editor,
@@ -22,6 +43,8 @@ export function useDiskWorkspace(onSave, backend, { notify } = {}) {
   const pending = useRef(new Map()); // path -> timer
   const latest = useRef({});
   latest.current = files;
+  const orderRef = useRef([]);
+  orderRef.current = fileOrder;
   const uiKey = project ? `tandem.local.ui.v1:${project.root}` : null;
 
   const load = useCallback(async () => {
@@ -116,6 +139,52 @@ export function useDiskWorkspace(onSave, backend, { notify } = {}) {
     [backend]
   );
 
+  // Files brought in from elsewhere (Add files…, drag and drop): any kind,
+  // copied into the project folder. A taken name gets " (2)"; nothing is
+  // overwritten. The first readable one opens.
+  const addFiles = useCallback(
+    async (list) => {
+      const taken = new Set(orderRef.current);
+      const added = [];
+      const failed = [];
+      for (const file of list) {
+        if (file.size > MAX_UPLOAD_BYTES) {
+          failed.push(`${file.name} is larger than 25 MB`);
+          continue;
+        }
+        const path = uniqueFileName(safeFileName(file.name), taken);
+        try {
+          await backend.uploadFile(path, await file.arrayBuffer());
+          taken.add(path);
+          added.push(path);
+        } catch (e) {
+          failed.push(`${file.name}: ${e.message}`);
+        }
+      }
+      const loaded = {};
+      const skipped = {};
+      await Promise.all(
+        added.map(async (path) => {
+          const file = await backend.readFile(path).catch(() => ({ text: null, reason: 'unreadable' }));
+          if (file.text == null) skipped[path] = file.reason;
+          else {
+            loaded[path] = file.text;
+            hashes.current[path] = file.hash;
+          }
+        })
+      );
+      setFiles((f) => ({ ...f, ...loaded }));
+      setUnreadable((u) => ({ ...u, ...skipped }));
+      setFileOrder((order) => [...new Set([...order, ...added])].sort());
+      const first = added.find((p) => p in loaded);
+      if (first) {
+        setUi((u) => ({ ...u, openTabs: u.openTabs.includes(first) ? u.openTabs : [...u.openTabs, first], activePath: first }));
+      }
+      return { added, failed };
+    },
+    [backend]
+  );
+
   const openFile = useCallback(
     (path) =>
       setUi((u) => ({
@@ -172,6 +241,7 @@ export function useDiskWorkspace(onSave, backend, { notify } = {}) {
     setFile,
     toggleBreakpoint,
     createFile,
+    addFiles,
     flush,
     resetFile: () => {},
     reset: () => {},

@@ -15,6 +15,7 @@ import {
   Columns2,
   Sparkles,
   FolderOpen,
+  Upload,
 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import TandemMark from './TandemMark.jsx';
@@ -102,6 +103,7 @@ export default function Toolbar({
   onAISettings,
   desktop,
   onOpenFolder,
+  onAddFiles,
   glass,
   onGlass,
   frost,
@@ -111,6 +113,7 @@ export default function Toolbar({
   onWallpaperFile,
 }) {
   const fileInput = useRef(null);
+  const addInput = useRef(null);
   const custom = wallpaper.custom;
   return (
     <header className="toolbar">
@@ -170,6 +173,15 @@ export default function Toolbar({
                     label={IS_IPAD ? 'Projects…' : 'Open folder…'}
                     description="Switch to another project"
                     onSelect={onOpenFolder}
+                  />
+                )}
+                {onAddFiles && (
+                  <MenuItem
+                    close={close}
+                    icon={Upload}
+                    label="Add files…"
+                    description={IS_IPAD ? 'From Files, iCloud Drive or Downloads' : 'Copy files into this project'}
+                    onSelect={() => addInput.current?.click()}
                   />
                 )}
                 {onAISettings && (
@@ -339,6 +351,20 @@ export default function Toolbar({
           </Menu>
         </div>
         {desktop?.active && desktop.info?.material === 'clear' && <WindowControls maximized={desktop.maximized} />}
+        {onAddFiles && (
+          <input
+            ref={addInput}
+            type="file"
+            multiple
+            hidden
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(e) => {
+              onAddFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+        )}
         <input
           ref={fileInput}
           type="file"

@@ -45,6 +45,8 @@ export function createLocalBackend(config, { socket = true } = {}) {
     readFile: (path) => client.api(`/api/file?path=${encodeURIComponent(path)}`),
     writeFile: (path, text, baseHash) => client.api('/api/file', { method: 'PUT', body: { path, text, base_hash: baseHash } }),
     createFile: (path, text = '') => client.api('/api/file', { method: 'POST', body: { path, text } }),
+    // A file brought in from elsewhere, as bytes. Never overwrites.
+    uploadFile: (path, data) => client.api(`/api/upload?path=${encodeURIComponent(path)}`, { method: 'POST', body: data }),
 
     // AI provider settings. Keys go to the runtime and never come back.
     aiSettings: () => client.api('/api/ai/settings'),

@@ -118,3 +118,28 @@ def test_runtime_exits_with_the_desktop_app(tmp_path):
     finally:
         app.kill()
         runtime.kill()
+
+
+def test_upload_adds_any_file_and_never_overwrites(client: TestClient, project):
+    png = b"\x89PNG\r\n\x1a\n\x00\x00binary"
+    r = client.post("/api/upload", params={"path": "img/logo.png"}, content=png)
+    assert r.status_code == 200 and r.json()["size"] == len(png)
+    assert (project / "img" / "logo.png").read_bytes() == png
+    assert client.get("/api/file", params={"path": "img/logo.png"}).json()["reason"] == "binary"
+
+    csv = b"x,y\r\n1,2\r\n"
+    assert client.post("/api/upload", params={"path": "data.csv"}, content=csv).status_code == 200
+    assert (project / "data.csv").read_bytes() == csv  # exact bytes
+    again = client.post("/api/upload", params={"path": "data.csv"}, content=b"other")
+    assert again.status_code == 400 and "already exists" in again.json()["detail"]
+    assert (project / "data.csv").read_bytes() == csv
+
+
+@pytest.mark.parametrize("path", ["../escape.txt", "/etc/x", "a/../../b"])
+def test_upload_outside_the_project_is_refused(client: TestClient, path):
+    assert client.post("/api/upload", params={"path": path}, content=b"x").status_code == 400
+
+
+def test_upload_requires_token(client: TestClient):
+    r = client.post("/api/upload", params={"path": "t.txt"}, content=b"x", headers={"x-tandem-token": "wrong"})
+    assert r.status_code == 403
