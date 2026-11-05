@@ -115,6 +115,37 @@ def main():
 
             events, stopped_at = run(ws, "c", "loop.py", stop_on_output=True)
             check(events[-1]["status"] == "stopped" and time.monotonic() - stopped_at < 8, "Stop ended an endless loop")
+
+            # Notebooks: a real Jupyter kernel started by the bundled runtime.
+            def until(predicate, timeout=120):
+                seen = []
+                deadline = time.monotonic() + timeout
+                while time.monotonic() < deadline:
+                    event = json.loads(ws.recv(timeout=timeout))
+                    seen.append(event)
+                    if predicate(event):
+                        return event, seen
+                raise AssertionError(f"timed out: {seen[-5:]}")
+
+            ws.send(json.dumps({"type": "kernel.start", "id": "k", "path": "nb.ipynb"}))
+            started, seen = until(lambda e: e["type"] == "kernel.rejected" or (e["type"] == "kernel.status" and e["state"] == "idle"))
+            if started["type"] != "kernel.status":
+                print(json.dumps(seen)[:3000])
+            check(started["type"] == "kernel.status", "notebook kernel started (ipykernel in the project's Python)")
+            ws.send(json.dumps({"type": "kernel.execute", "id": "k", "cell": "c1", "code": "x = 6 * 7"}))
+            until(lambda e: e["type"] == "kernel.done" and e["cell"] == "c1")
+            ws.send(json.dumps({"type": "kernel.execute", "id": "k", "cell": "c2", "code": "print(x)"}))
+            _, seen = until(lambda e: e["type"] == "kernel.done" and e["cell"] == "c2")
+            text = "".join(e["output"].get("text", "") for e in seen if e["type"] == "kernel.output")
+            check(text == "42\n", f"cells share state in the kernel ({text!r})")
+            ws.send(json.dumps({"type": "kernel.restart", "id": "k"}))
+            until(lambda e: e["type"] == "kernel.status" and e.get("restarted"))
+            ws.send(json.dumps({"type": "kernel.execute", "id": "k", "cell": "c2", "code": "print(x)"}))
+            done, seen = until(lambda e: e["type"] == "kernel.done" and e["cell"] == "c2")
+            errors = [e["output"]["ename"] for e in seen if e["type"] == "kernel.output" and e["output"]["output_type"] == "error"]
+            check(done["status"] == "error" and errors == ["NameError"], "Restart clears the kernel's state")
+            ws.send(json.dumps({"type": "kernel.shutdown", "id": "k"}))
+            until(lambda e: e["type"] == "kernel.status" and e["state"] == "shutdown")
         key = "sk-smoke-0123456789abcdef"
         saved = get(url + "api/ai/settings", token, "PUT",
                     {"provider": "anthropic", "api_key": key, "base_url": "http://127.0.0.1:9"})

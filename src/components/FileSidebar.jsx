@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
-import { FileCode2, FileSpreadsheet, FileText, Folder, FolderOpen, ChevronRight, ChevronsDownUp, Layers, Plus, Upload } from 'lucide-react';
+import { FileCode2, FileSpreadsheet, FileText, Folder, FolderOpen, ChevronRight, ChevronsDownUp, Layers, Plus, Upload, NotebookText } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 
-const iconFor = (path) => (path.endsWith('.csv') ? FileSpreadsheet : /\.(py|ipynb|js|json|toml|cfg)$/.test(path) ? FileCode2 : FileText);
+const iconFor = (path) => (path.endsWith('.ipynb') ? NotebookText : path.endsWith('.csv') ? FileSpreadsheet : /\.(py|ipynb|js|json|toml|cfg)$/.test(path) ? FileCode2 : FileText);
 
 // Builds a one-level tree: top-level files, then folders with their files.
 function buildTree(paths) {

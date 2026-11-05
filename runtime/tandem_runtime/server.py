@@ -21,6 +21,7 @@ from .files import MAX_UPLOAD_BYTES, FileError, ProjectFiles
 from . import envs
 from .interpreters import describe, resolve_interpreter
 from .jobs import JobError, JobManager
+from .kernels import KernelError, KernelHub
 from .runs import RunError, RunManager
 from .security import TOKEN_HEADER, AccessPolicy
 
@@ -108,12 +109,14 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
 
     runs = RunManager(files, interpreter)
     jobs = JobManager()
+    kernels = KernelHub(files.root, interpreter)
 
     @contextlib.asynccontextmanager
     async def lifespan(_app):
         yield
         await runs.shutdown()
         await jobs.shutdown()
+        await kernels.shutdown_all()
 
     app = FastAPI(title="Tandem runtime", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
@@ -304,11 +307,31 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
         except (envs.EnvError, JobError) as exc:
             await send({"type": "job.rejected", "id": job_id, "message": str(exc)})
 
+    async def kernel_command(kind: str, message: dict, send) -> None:
+        kernel_id = str(message.get("id"))
+        try:
+            if kind == "kernel.execute":
+                kernels.execute(kernel_id, str(message.get("cell", "")), str(message.get("code", ""))[:2_000_000])
+            elif kind == "kernel.input":
+                kernels.send_input(kernel_id, str(message.get("text", ""))[:100_000])
+            elif kind == "kernel.interrupt":
+                await kernels.interrupt(kernel_id)
+            elif kind == "kernel.restart":
+                await kernels.restart(kernel_id)
+            elif kind == "kernel.shutdown":
+                await kernels.shutdown(kernel_id)
+                await send({"type": "kernel.status", "id": kernel_id, "state": "shutdown"})
+        except KernelError as exc:
+            await send({"type": "kernel.error", "id": kernel_id, "message": str(exc)})
+        except Exception as exc:  # a kernel that died mid-command
+            await send({"type": "kernel.error", "id": kernel_id, "message": f"The kernel didn't respond: {exc}"})
+
     @app.websocket("/ws")
     async def ws(socket: WebSocket):
         await socket.accept()
         lock = asyncio.Lock()
         mine: set[str] = set()
+        my_kernels: set[str] = set()
 
         async def send(event: dict):
             async with lock:
@@ -338,6 +361,18 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
                     bps = message.get("breakpoints")
                     await runs.debug_command(str(message.get("id")), str(message.get("cmd", "")),
                                              bps if isinstance(bps, list) else None)
+                elif kind == "kernel.start":
+                    kernel_id = str(message.get("id"))
+                    try:
+                        path = str(message.get("path", ""))
+                        files.resolve(path)
+                        await kernels.start(kernel_id, path, send)
+                        my_kernels.add(kernel_id)
+                    except (KernelError, FileError) as exc:
+                        await send({"type": "kernel.rejected", "id": kernel_id, "message": str(exc),
+                                    "code": getattr(exc, "code", None)})
+                elif kind.startswith("kernel.") and str(message.get("id")) in my_kernels:
+                    await kernel_command(kind, message, send)
                 elif kind == "job.start":
                     await start_job(message, send)
                 elif kind == "job.cancel":
@@ -350,6 +385,8 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
             # A run belongs to the window that started it: don't leave it orphaned.
             if runs.current is not None and runs.current.id in mine:
                 await runs.stop(runs.current.id)
+            # So do its notebooks' kernels.
+            await kernels.shutdown_all(my_kernels)
 
     # ---------------- UI ----------------
 
