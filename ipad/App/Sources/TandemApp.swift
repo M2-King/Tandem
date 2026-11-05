@@ -14,8 +14,10 @@ struct TandemApp: App {
             ZStack {
                 Color(red: 0.067, green: 0.078, blue: 0.102).ignoresSafeArea()
                 if let url = host.url {
+                    // Edge to edge: the page keeps its controls clear of the status
+                    // bar and window controls itself (CSS safe-area insets).
                     WebView(url: url, origin: host.origin)
-                        .ignoresSafeArea(.container, edges: .bottom)
+                        .ignoresSafeArea()
                 } else if let error = host.error {
                     VStack(spacing: 12) {
                         Text("Tandem couldn't start").font(.headline)

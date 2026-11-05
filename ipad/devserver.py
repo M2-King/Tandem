@@ -12,6 +12,7 @@ the iPad build can be tested without an iPad.
 * /api/files, /api/file  project files (text), same as the desktop runtime
 * /api/raw               project files as bytes (Python's view of the project)
 * /api/projects          list / create / open projects
+* /api/wallpaper         the person's wallpaper photo (kept by the app)
 * /api/ai/settings       provider settings; keys are kept here, never returned
 * /api/ai/proxy/<p>/...  requests to the AI provider, with the key added here
 
@@ -58,6 +59,7 @@ class State:
         self.ui = ui
         self.token = token
         self.port = port
+        self.config = config
         self.ai = AISettings(config)
         self.projects.mkdir(parents=True, exist_ok=True)
         existing = sorted(p.name for p in projects.iterdir() if p.is_dir() and not p.name.startswith("."))
@@ -192,6 +194,22 @@ def make_handler(state: State):
                         return self.error(404, f"There is no project called {name}.")
                     state.current = name
                     return self.json({"current": name})
+            if path == "/api/wallpaper":
+                stored = state.config / "wallpaper.json"
+                if method == "GET":
+                    if not stored.is_file():
+                        return self.json({})
+                    return self.send(200, stored.read_bytes(), "application/json", {"Cache-Control": "no-store"})
+                if method == "PUT":
+                    body = self.body()
+                    if len(body) > 24 * 1024 * 1024:
+                        return self.error(400, "That image is too large.")
+                    image = json.loads(body or b"{}").get("image")
+                    if not isinstance(image, str) or not image.startswith("data:image/"):
+                        return self.error(400, "That isn't an image.")
+                    stored.parent.mkdir(parents=True, exist_ok=True)
+                    stored.write_bytes(body)
+                    return self.json({"ok": True})
             if path == "/api/selftest" and method == "POST":
                 body = self.body()
                 (state.projects / ".selftest.json").write_bytes(body)

@@ -24,6 +24,12 @@ final class LocalServer {
     private let webRoot: URL
     private let cacheRoot: URL
 
+    static var wallpaperFile: URL {
+        let dir = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
+            ?? FileManager.default.temporaryDirectory
+        return dir.appendingPathComponent("wallpaper.json")
+    }
+
     var isRunning: Bool {
         if case .ready = listener?.state { return true }
         return false
@@ -229,6 +235,17 @@ final class LocalServer {
             return json(ai.publicSettings())
         case ("PUT", "/api/ai/settings"):
             return json(try ai.update(bodyJSON(r)))
+        case ("GET", "/api/wallpaper"):
+            // The person's wallpaper photo, kept in the app (not in the page's storage).
+            guard let data = try? Data(contentsOf: Self.wallpaperFile) else { return json([:]) }
+            return Response(status: 200, body: data, contentType: "application/json", headers: ["Cache-Control": "no-store"])
+        case ("PUT", "/api/wallpaper"):
+            if r.body.count > 24 * 1024 * 1024 { throw APIError(status: 400, message: "That image is too large.") }
+            guard let image = bodyJSON(r)["image"] as? String, image.hasPrefix("data:image/") else {
+                throw APIError(status: 400, message: "That isn't an image.")
+            }
+            try r.body.write(to: Self.wallpaperFile, options: [.atomic])
+            return json(["ok": true])
         case ("POST", "/api/selftest"):
             // CI: the page reports its self-test here (see ipad/selftest.js).
             let docs = store.documents.appendingPathComponent(".selftest.json")

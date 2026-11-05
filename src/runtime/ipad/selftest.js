@@ -55,13 +55,18 @@ export async function runSelftest(backend, token) {
     await backend.createFile('selftest_debug.py', DEBUG).catch(() => backend.writeFile('selftest_debug.py', DEBUG));
     report.run = await runOnce(backend, 'selftest.py', 'run', { input: 'tandem' });
     report.debug = await runOnce(backend, 'selftest_debug.py', 'step');
+    // The app reports where its window is on the screen (wallpaper alignment).
+    for (let i = 0; i < 20 && !window.__tandemScreen; i++) await new Promise((r) => setTimeout(r, 250));
+    report.screen = window.__tandemScreen || null;
     report.ok =
       report.isolated &&
       report.run.status === 'success' &&
       report.run.output.includes('hello tandem 6') &&
       report.run.figures.includes('Selftest') &&
       report.debug.status === 'success' &&
-      report.debug.pauses.includes('f:2');
+      report.debug.pauses.includes('f:2') &&
+      report.screen?.sw > 0 &&
+      report.screen?.w > 0;
   } catch (e) {
     report.ok = false;
     report.error = String(e?.message || e);

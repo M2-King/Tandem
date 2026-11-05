@@ -36,6 +36,13 @@ body::before {
   background-size: cover;
   background-position: center;
 }
+/* iPad: the photo drawn the way iPadOS draws the wallpaper, lined up with the
+   screen (see useWallpaper.js), so it continues the real wallpaper outside. */
+body[data-wallpaper='custom'][data-wallpaper-fit='screen']::before {
+  background-size: var(--wallpaper-size);
+  background-position: var(--wallpaper-position);
+  background-repeat: no-repeat;
+}
 body[data-wallpaper='plain']::before {
   background-image:
     radial-gradient(90% 70% at 70% 10%, rgba(128, 155, 220, 0.12), transparent 60%),
@@ -3529,4 +3536,24 @@ html[data-shell='desktop'][data-material='vibrancy'] .app::before {
 .project-new .field-input {
   flex: 1;
   min-width: 0;
+}
+
+/* ---------- iPad app ----------
+   The page is the whole window: the glass reaches every edge, and with the
+   person's wallpaper photo lined up behind it the window reads as clear glass
+   over the Home Screen. Controls stay clear of the status bar and keyboard. */
+html[data-shell='ipad'] .app {
+  --shell-margin: 0px;
+  height: var(--app-height, 100dvh);
+  min-width: 0;
+  border-radius: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+html[data-shell='ipad'] .app::before {
+  border-radius: 0;
+  box-shadow: none;
+}
+/* Room for the window buttons iPadOS puts in the top-left corner of a window. */
+html[data-shell='ipad'][data-windowed='true'] .toolbar {
+  padding-left: 84px;
 }

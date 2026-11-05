@@ -3,7 +3,9 @@
 //
 //   level      Opacity, 0 (clearest) to 100 (most solid). Presets are named
 //              points on this scale, so the slider and presets agree.
-//   frost      How strongly the window glass diffuses what is behind it.
+//   frost      How strongly the window glass diffuses what is behind it. The
+//              light end is no blur at all: clear glass, like the desktop
+//              app's Clear window.
 //   luminance  Average brightness of the current wallpaper, 0 to 1. The
 //              wallpaper itself is never filtered; instead, over a bright
 //              image the window glass passes less light and gets denser, so
@@ -23,6 +25,8 @@ export const DEFAULT_FROST = 50;
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
 const round = (n, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
+// 0 → none, the middle → the standard amount, 100 → heavy.
+const ramp = (f, mid, max) => (f <= 0.5 ? lerp(0, mid, f / 0.5) : lerp(mid, max, (f - 0.5) / 0.5));
 const mix = (a, b, t) => `rgb(${a.map((v, i) => Math.round(lerp(v, b[i], t))).join(', ')})`;
 
 export function glassVariables(level, frost = DEFAULT_FROST, luminance = 0.3) {
@@ -34,13 +38,13 @@ export function glassVariables(level, frost = DEFAULT_FROST, luminance = 0.3) {
   const extra = bright * (1 - t);
   return {
     '--window-opacity': round(Math.min(0.94, lerp(0.12, 0.76, t) + 0.44 * extra)),
-    '--window-blur': `${round(lerp(8, 36, f), 1)}px`,
+    '--window-blur': `${round(ramp(f, 22, 36), 1)}px`,
     // Light passing through the window glass, not a filter on the wallpaper.
     '--glass-transmission': round(lerp(0.88, 0.42, bright)),
     // Document panes: a little denser than the tool panes and lightly frosted,
     // so code reads first without turning into a black box.
     '--content-opacity': round(Math.min(0.9, lerp(0.14, 0.66, t) + 0.22 * extra)),
-    '--content-blur': `${round(lerp(4, 18, f), 1)}px`,
+    '--content-blur': `${round(ramp(f, 11, 18), 1)}px`,
     '--pane-density': round(Math.min(0.6, lerp(0.08, 0.4, t) + 0.2 * extra)),
     '--glass-opacity-float': round(Math.min(0.97, lerp(0.84, 0.96, t) + 0.1 * extra)),
     // The faintest text steps up toward the secondary grey over bright images.

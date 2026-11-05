@@ -253,7 +253,9 @@ export default function Toolbar({
                   <p className="menu-footnote">
                     {desktop?.active
                       ? 'The glass sits over your own desktop and adapts to your wallpaper’s brightness. Your wallpaper is never changed.'
-                      : 'Glass adapts to your wallpaper’s brightness. The wallpaper itself is never changed.'}
+                      : IS_IPAD
+                        ? 'iPadOS doesn’t let apps see the Home Screen behind them, so choose the photo you use as your wallpaper: Tandem lines it up with your screen, and Clear glass then looks through to it.'
+                        : 'Glass adapts to your wallpaper’s brightness. The wallpaper itself is never changed.'}
                   </p>
                 </div>
                 {desktop?.active ? (
@@ -298,16 +300,24 @@ export default function Toolbar({
                     icon={swatch('', {
                       backgroundImage: `url("${custom.image}")`,
                     })}
-                    label="Your image"
-                    description={custom.name}
+                    label={IS_IPAD ? 'Your wallpaper' : 'Your image'}
+                    description={IS_IPAD ? 'Lined up with your screen' : custom.name}
                     onSelect={() => onWallpaper('custom')}
                   />
                 )}
                 <MenuItem
                   close={close}
                   icon={ImagePlus}
-                  label={custom ? 'Choose another image…' : 'Use your own image…'}
-                  description="Saved in this browser only"
+                  label={
+                    IS_IPAD
+                      ? custom
+                        ? 'Choose another wallpaper photo…'
+                        : 'Use your wallpaper photo…'
+                      : custom
+                        ? 'Choose another image…'
+                        : 'Use your own image…'
+                  }
+                  description={IS_IPAD ? 'The photo you set as your iPad wallpaper' : 'Saved in this browser only'}
                   onSelect={() => fileInput.current?.click()}
                 />
                 </>

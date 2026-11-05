@@ -150,6 +150,25 @@ function fakeAnthropic() {
     check(true, 'matplotlib: real chart shown');
   }
 
+  // Wallpaper: the person's photo is kept by the app and drawn lined up with
+  // the screen, following the window (the app reports where it is).
+  await page.evaluate(async (token) => {
+    const c = document.createElement('canvas');
+    c.width = 200;
+    c.height = 150;
+    c.getContext('2d').fillRect(0, 0, 200, 150);
+    const image = c.toDataURL('image/jpeg');
+    await fetch('/api/wallpaper', { method: 'PUT', headers: { 'x-tandem-token': token, 'content-type': 'application/json' }, body: JSON.stringify({ image, name: 'wall.jpg', luminance2: 0.1, width: 200, height: 150 }) });
+  }, token);
+  await page.reload();
+  const place = (g) => page.evaluate((g) => { window.__tandemScreen = g; window.dispatchEvent(new Event('tandem-screen')); }, g);
+  await place({ sw: 1180, sh: 820, x: 150, y: 120, w: 900, h: 600 });
+  await page.waitForFunction(() => document.body.dataset.wallpaperFit === 'screen', null, { timeout: 20000 });
+  const wallVars = () => page.evaluate(() => [document.body.style.getPropertyValue('--wallpaper-size'), document.body.style.getPropertyValue('--wallpaper-position')]);
+  check(JSON.stringify(await wallVars()) === JSON.stringify(['1180px 885px', '-150px -152.5px']), 'wallpaper photo kept by the app, lined up with the screen');
+  await place({ sw: 1180, sh: 820, x: 0, y: 0, w: 1180, h: 820 });
+  check((await wallVars())[1] === '0px -32.5px' && (await page.evaluate(() => document.documentElement.dataset.windowed)) === 'false', 'wallpaper follows the window (full screen)');
+
   // AI: the app adds the key; the page never sees it.
   await api('/api/ai/settings', 'PUT', { provider: 'anthropic', base_url: 'http://127.0.0.1:18092', api_key: KEY, model: 'claude-opus-5-5', activate: true });
   await page.reload();

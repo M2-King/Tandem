@@ -19,6 +19,7 @@ import { useWorkspace } from './state/useWorkspace.js';
 import { useDiskWorkspace } from './state/useDiskWorkspace.js';
 import { useRuntimeStatus } from './state/useRuntimeStatus.js';
 import { IS_IPAD, IS_LOCAL, RUNTIME_CONFIG } from './runtime/config.js';
+import { setupIpadShell } from './runtime/ipadShell.js';
 import { createLocalBackend } from './runtime/localBackend.js';
 import { createIpadBackend } from './runtime/ipadBackend.js';
 import { RuntimeStatus, DemoBadge } from './components/RuntimeStatus.jsx';
@@ -40,6 +41,7 @@ import { shortHash } from './lib/text.js';
 const DATA_FILE = 'data/housing.csv';
 
 // Real mode talks to the local runtime; Demo mode never does. Decided once.
+setupIpadShell();
 const backend = IS_IPAD ? createIpadBackend(RUNTIME_CONFIG) : IS_LOCAL ? createLocalBackend(RUNTIME_CONFIG) : null;
 
 // Rows and columns of the sample CSV, read from the file as it is now.
@@ -82,7 +84,7 @@ export default function App() {
 
   const { prefs, update, setSidebarWidth, setAssistantWidth, setResultsHeight, changeFontSize, reset: resetPrefs } =
     usePrefs();
-  const wall = useWallpaper(notify);
+  const wall = useWallpaper(notify, IS_IPAD ? backend : null);
   const desktop = useDesktop(notify);
   // In the desktop app the glass sits over the person's own wallpaper; its brightness comes from the system.
   const backdropLuminance = desktop.active ? (desktop.luminance ?? 0.3) : wall.luminance;

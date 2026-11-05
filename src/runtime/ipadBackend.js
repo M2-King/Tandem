@@ -72,6 +72,9 @@ export function createIpadBackend(config) {
     },
 
     listProjects: () => client.api('/api/projects'),
+    // The person's wallpaper photo, kept by the app so it survives reinstalls of the page.
+    loadWallpaper: () => client.api('/api/wallpaper'),
+    saveWallpaper: (custom) => client.api('/api/wallpaper', { method: 'PUT', body: custom }),
     openProject: (name, create = false) => client.api('/api/projects', { method: 'POST', body: { name, create } }),
 
     aiActive: () => ai.active(),
