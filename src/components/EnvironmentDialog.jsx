@@ -109,6 +109,8 @@ export default function EnvironmentDialog({ backend, initialTab = 'env', focusMo
       if (focusModule) {
         const m = next.missing.find((x) => x.module === focusModule || x.package === focusModule);
         setSelected(new Set(m ? [m.package] : []));
+        // Not imported by the code (e.g. ipykernel for notebooks): put it in the install field.
+        if (!m && !next.packages.some((p) => p.name.toLowerCase() === focusModule.toLowerCase())) setNewPkg(focusModule);
       }
     } catch (e) {
       setError(e.message);

@@ -12,6 +12,7 @@ SKIP_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "__pycache__", "node
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 MAX_FILES = 2000
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_NOTEBOOK_BYTES = 25 * 1024 * 1024  # notebooks carry their outputs (images)
 
 
 class FileError(Exception):
@@ -65,7 +66,7 @@ class ProjectFiles:
         if not path.is_file():
             raise FileError(f"{rel} doesn't exist.")
         size = path.stat().st_size
-        if size > MAX_TEXT_BYTES:
+        if size > (MAX_NOTEBOOK_BYTES if path.suffix == ".ipynb" else MAX_TEXT_BYTES):
             return {"path": rel, "text": None, "reason": "too-large", "size": size}
         data = path.read_bytes()
         if b"\x00" in data[:8192]:
@@ -89,8 +90,9 @@ class ProjectFiles:
             current = self.read(rel)
             if current.get("hash") and current["hash"] != base_hash:
                 raise FileError(f"{rel} changed on disk since it was opened.")
-        if len(text.encode("utf-8")) > MAX_TEXT_BYTES:
-            raise FileError(f"{rel} is larger than 2 MB.")
+        limit = MAX_NOTEBOOK_BYTES if path.suffix == ".ipynb" else MAX_TEXT_BYTES
+        if len(text.encode("utf-8")) > limit:
+            raise FileError(f"{rel} is larger than {limit // (1024 * 1024)} MB.")
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{path.name}.tandem-tmp")
         tmp.write_bytes(text.encode("utf-8"))  # exact bytes: no newline translation on Windows

@@ -42,7 +42,7 @@ jobs:
           & "${{ steps.py311.outputs.python-path }}" -m venv runtime/.test-envs/py311
           & "${{ steps.py312.outputs.python-path }}" -m venv runtime/.test-envs/py312
           foreach ($v in "py311", "py312") {
-            & "runtime/.test-envs/$v/Scripts/python.exe" -m pip install --quiet numpy pandas matplotlib
+            & "runtime/.test-envs/$v/Scripts/python.exe" -m pip install --quiet numpy pandas matplotlib ipykernel
           }
 
       - name: Install the runtime
@@ -80,7 +80,7 @@ jobs:
         shell: pwsh
         run: |
           python -m venv smoke-project-env
-          smoke-project-env/Scripts/python.exe -m pip install --quiet numpy pandas matplotlib
+          smoke-project-env/Scripts/python.exe -m pip install --quiet numpy pandas matplotlib ipykernel
           python packaging/windows/smoke.py out/tandem-runtime/tandem-runtime.exe (Resolve-Path smoke-project-env/Scripts/python.exe).Path
 
       - name: Build the installer

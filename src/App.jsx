@@ -25,6 +25,8 @@ import { createIpadBackend } from './runtime/ipadBackend.js';
 import { RuntimeStatus, DemoBadge } from './components/RuntimeStatus.jsx';
 import NewFileDialog from './components/NewFileDialog.jsx';
 import EnvironmentDialog from './components/EnvironmentDialog.jsx';
+import { isNotebook, newNotebookText } from './lib/notebook.js';
+import { closeNotebookSession, notebookSession } from './state/notebookSession.js';
 import AISettingsDialog from './components/AISettingsDialog.jsx';
 import ProjectsDialog from './components/ProjectsDialog.jsx';
 import { createRealAssistant } from './services/realAI.js';
@@ -365,9 +367,23 @@ export default function App() {
   /* ---------- execution ---------- */
 
   const runTarget = runTargetFor(ws.activePath);
+  // The open notebook (a session per notebook tab keeps its kernel and outputs).
+  const activeNotebook =
+    IS_LOCAL && isNotebook(ws.activePath) && ws.files[ws.activePath] !== undefined
+      ? notebookSession(ws.activePath, {
+          text: ws.files[ws.activePath],
+          backend,
+          save: ((path) => (text) => ws.setFile(path, text))(ws.activePath),
+        })
+      : null;
+  const closeTab = (path) => {
+    if (isNotebook(path)) closeNotebookSession(path);
+    ws.closeTab(path);
+  };
   const debugBreakpoints = ws.breakpoints[DEBUG_FILE] || [];
 
   const handleRun = () => {
+    if (activeNotebook) return activeNotebook.runAll(); // Run on a notebook: run all its cells
     if (exec.session || runBlocked) return;
     exec.run(runTarget, ws.files, ws.flush);
     setResultsOpen(true);
@@ -676,7 +692,9 @@ export default function App() {
             activePath={ws.activePath}
             files={ws.files}
             onSelectTab={ws.openFile}
-            onCloseTab={ws.closeTab}
+            onCloseTab={closeTab}
+            notebook={activeNotebook}
+            onInstallPackage={(name) => setEnvDialog({ tab: 'packages', focusModule: name })}
             onChange={ws.setFile}
             onOpenFile={openFile}
             fontSize={prefs.fontSize}
@@ -875,7 +893,7 @@ export default function App() {
           existing={ws.fileOrder}
           onClose={() => setNewFileOpen(false)}
           onCreate={async (path) => {
-            await ws.createFile(path, '');
+            await ws.createFile(path, isNotebook(path) ? newNotebookText() : '');
             setNewFileOpen(false);
             notify(`Created ${path}`);
           }}

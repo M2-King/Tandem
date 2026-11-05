@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, ChevronUp, ChevronDown, FileCode2, FileSpreadsheet, FileDiff, MessageSquarePlus, MessageSquareText, Wrench, Check, AlertTriangle, StepForward, FastForward, RotateCcw, Square, Bug, Footprints, Info, CircleCheck, ArrowDownToLine, ArrowUpFromLine, Loader2 } from 'lucide-react';
 import CodeEditor from './CodeEditor.jsx';
+import NotebookView from './NotebookView.jsx';
 import DiffReview from './DiffReview.jsx';
 import { TRACE } from '../services/traceService.js';
 import { SAMPLE_FILES } from '../data/sampleProject.js';
@@ -11,6 +12,13 @@ const fileName = (path) => path.split('/').pop();
 // "Python · 64 lines" / "CSV · 40 rows", from the file as it is now.
 function fileMeta(path, text = '') {
   const lines = text.split('\n').length;
+  if (path.endsWith('.ipynb')) {
+    try {
+      return `Notebook · ${JSON.parse(text).cells.length} cells`;
+    } catch {
+      return 'Notebook';
+    }
+  }
   if (path.endsWith('.csv')) return `CSV · ${Math.max(0, text.trim().split('\n').length - 1)} rows`;
   return `${path.endsWith('.py') ? 'Python' : 'Text'} · ${lines} lines`;
 }
@@ -370,6 +378,8 @@ export default function EditorPane(props) {
     onAskAI,
     onExplain,
     onFix,
+    notebook,
+    onInstallPackage,
   } = props;
   const [selection, setSelection] = useState(null);
   const [diffNav, setDiffNav] = useState(null);
@@ -440,6 +450,8 @@ export default function EditorPane(props) {
             <p className="empty-title">{fileName(activePath)} can’t be opened here</p>
             <p className="empty-text">Only text files up to 2 MB open in the editor. The file on disk is unchanged.</p>
           </div>
+        ) : notebook && !showDiff ? (
+          <NotebookView key={activePath} session={notebook} path={activePath} fontSize={fontSize} onInstallPackage={onInstallPackage} />
         ) : showDiff ? (
           <DiffReview proposal={review.proposal} inline={diffInline} fontSize={fontSize} onChanges={setDiffNav} />
         ) : (

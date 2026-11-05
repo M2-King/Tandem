@@ -81,6 +81,41 @@ export function createLocalBackend(config, { socket = true } = {}) {
       return { cancel: () => client.send({ type: 'job.cancel', id }) };
     },
 
+    // A Jupyter kernel for a notebook (ipykernel in the project's environment).
+    // h: onStatus(state, info), onCount(cell, n), onOutput(cell, output),
+    //    onClear(cell, wait), onInput(cell, prompt, password), onDone(cell, status, n),
+    //    onRejected(message, code), onError(message)
+    startKernel(path, h) {
+      const id = uid('kernel');
+      const off = client.on((e) => {
+        if (e.id !== id) return;
+        if (e.type === 'kernel.status') h.onStatus?.(e.state, e);
+        else if (e.type === 'kernel.count') h.onCount?.(e.cell, e.count);
+        else if (e.type === 'kernel.output') h.onOutput?.(e.cell, e.output);
+        else if (e.type === 'kernel.clear') h.onClear?.(e.cell, e.wait);
+        else if (e.type === 'kernel.input') h.onInput?.(e.cell, e.prompt, e.password);
+        else if (e.type === 'kernel.done') h.onDone?.(e.cell, e.status, e.count);
+        else if (e.type === 'kernel.rejected') h.onRejected?.(e.message, e.code);
+        else if (e.type === 'kernel.error') h.onError?.(e.message);
+      });
+      const offState = client.onState((state) => {
+        if (state === 'disconnected') h.onStatus?.('dead', { lost: true });
+      });
+      if (!client.send({ type: 'kernel.start', id, path })) h.onRejected?.('The runtime isn’t connected.');
+      const send = (type, fields = {}) => client.send({ type, id, ...fields });
+      return {
+        execute: (cell, code) => send('kernel.execute', { cell, code }),
+        input: (text) => send('kernel.input', { text }),
+        interrupt: () => send('kernel.interrupt'),
+        restart: () => send('kernel.restart'),
+        shutdown: () => {
+          send('kernel.shutdown');
+          off();
+          offState();
+        },
+      };
+    },
+
     // AI provider settings. Keys go to the runtime and never come back.
     aiSettings: () => client.api('/api/ai/settings'),
     saveAISettings: (body) => client.api('/api/ai/settings', { method: 'PUT', body }),

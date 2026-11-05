@@ -78,9 +78,22 @@ Status of the Python and Jupyter runtime work. Each item is marked:
 | Environment folders never appear as project files | done | test |
 | iPad: one built-in Python (Pyodide). Packages lists what the code imports; Pyodide's own packages load by themselves; pure-Python packages from PyPI install with micropip after confirmation and are kept in the project for offline runs | done | web tests (detection locally; the PyPI install in CI with the full Pyodide bundle) |
 
+## Phase 3: Jupyter notebooks — done
+
+| Item | Status | How it was verified |
+| --- | --- | --- |
+| `.ipynb` opens as a notebook: code and Markdown cells, add / delete / move / change type | done | browser |
+| Real kernel per notebook: ipykernel in the project's selected environment (jupyter_client), 127.0.0.1 only (Unix sockets in a private folder on macOS/Linux) | done | tests (3.11, 3.12); bundled runtime smoke test |
+| Run cell (Shift+Enter, Ctrl/Cmd+Enter, Alt+Enter), Run all, Interrupt, Restart, Restart & run all, execution counts | done | tests and browser |
+| Your two-cell test prints 20.0; after Restart cell 2 raises NameError until cell 1 runs again | done | tests, browser, bundled runtime |
+| Outputs: text (streams, \r progress), errors with traceback, pandas tables (sanitized HTML), matplotlib charts (PNG/SVG), Markdown; input() asks in the notebook | done | tests and browser |
+| ipykernel missing: says so, Install ipykernel… opens Packages with it filled in | done | test and browser |
+| Saved as standard nbformat 4.5 with outputs; validates with nbformat | done | browser-made notebook validated with nbformat |
+| Kernels end with their window or tab; can't be driven from another window | done | tests |
+| iPad: one long-lived Pyodide per notebook (state carries over), IPython-style display, inline charts, input(), Interrupt, Restart | done | web tests (Chromium; WebKit and the simulator in CI) |
+
 ## Pending
 
-- Phase 3: Jupyter notebooks (real kernels, run/interrupt/restart, nbformat round-trip).
 - Phase 5: machine-learning sample project with real scikit-learn metrics.
 - Phase 7: end-to-end verification and screenshots in Real mode.
 - Run history in Real mode is kept in memory only (lost on reload).
