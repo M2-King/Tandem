@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from . import __version__
 from .ai_chat import AssistError, active_provider, assist
 from .ai_settings import AISettings, SettingsError, test_connection
-from .files import FileError, ProjectFiles
+from .files import MAX_UPLOAD_BYTES, FileError, ProjectFiles
 from .interpreters import describe, resolve_interpreter
 from .runs import RunError, RunManager
 from .security import TOKEN_HEADER, AccessPolicy
@@ -149,6 +149,17 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
     def create_file(body: CreateBody):
         try:
             return files.write(body.path, body.text, create=True)
+        except FileError as exc:
+            file_error(exc)
+
+    @app.post("/api/upload")
+    async def upload_file(path: str, request: Request):
+        # Files added from elsewhere (Add files…, drag and drop), as raw bytes.
+        if int(request.headers.get("content-length") or 0) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=400, detail=f"{path} is larger than 25 MB.")
+        data = await request.body()
+        try:
+            return files.add(path, data)
         except FileError as exc:
             file_error(exc)
 

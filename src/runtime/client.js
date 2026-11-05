@@ -13,13 +13,18 @@ export class RuntimeClient {
     this.connect();
   }
 
+  // body: an object (sent as JSON) or raw bytes (ArrayBuffer, typed array or Blob).
   async api(path, { method = 'GET', body, signal } = {}) {
+    const raw = body instanceof ArrayBuffer || ArrayBuffer.isView(body) || (typeof Blob !== 'undefined' && body instanceof Blob);
     let response;
     try {
       response = await fetch(path, {
         method,
-        headers: { 'x-tandem-token': this.token, ...(body ? { 'content-type': 'application/json' } : {}) },
-        body: body ? JSON.stringify(body) : undefined,
+        headers: {
+          'x-tandem-token': this.token,
+          ...(body ? { 'content-type': raw ? 'application/octet-stream' : 'application/json' } : {}),
+        },
+        body: body ? (raw ? body : JSON.stringify(body)) : undefined,
         cache: 'no-store',
         signal,
       });

@@ -3490,3 +3490,31 @@ html[data-shell='desktop'][data-material='vibrancy'] .app::before {
   box-shadow: none;
   outline: none;
 }
+
+/* Add files by dragging them onto the file list. */
+.sidebar-inner {
+  position: relative;
+}
+.sidebar-inner.is-drop-target::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 1.5px dashed rgba(128, 155, 220, 0.7);
+  border-radius: var(--radius-md, 10px);
+  background: rgba(128, 155, 220, 0.08);
+  pointer-events: none;
+}
+.drop-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(20, 24, 32, 0.92);
+  color: var(--text-primary);
+  font-size: var(--fs-sm, 12px);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}

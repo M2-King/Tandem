@@ -98,6 +98,18 @@ export default function App() {
         ? 'No Python interpreter found for this project'
         : null;
   const [newFileOpen, setNewFileOpen] = useState(false);
+  // Add files…: copy files from elsewhere (any kind) into the project.
+  const addFiles = ws.addFiles;
+  const handleAddFiles = useCallback(
+    async (list) => {
+      const chosen = Array.from(list || []);
+      if (!chosen.length || !addFiles) return;
+      const { added, failed } = await addFiles(chosen);
+      if (added.length) notify(added.length === 1 ? `Added ${added[0]} to the project.` : `Added ${added.length} files: ${added.join(', ')}.`);
+      if (failed.length) notify(`Couldn't add ${failed.join('; ')}.`);
+    },
+    [addFiles, notify]
+  );
   const [aiSettingsOpen, setAISettingsOpen] = useState(false);
 
   // Refs give async callbacks (AI requests, toasts) the latest state.
@@ -587,6 +599,7 @@ export default function App() {
         onDiffInline={(inline) => update({ diffInline: inline })}
         onReset={IS_LOCAL ? null : () => setConfirmReset(true)}
         onAISettings={IS_LOCAL ? () => setAISettingsOpen(true) : null}
+        onAddFiles={IS_LOCAL ? handleAddFiles : null}
         desktop={{ ...desktop, setMaterial: (m) => desktop.setMaterial(m, { busy: !!exec.session }) }}
         onOpenFolder={
           DESKTOP
@@ -632,6 +645,7 @@ export default function App() {
             projectName={projectName}
             runCount={exec.runs.length}
             onNewFile={IS_LOCAL ? () => setNewFileOpen(true) : null}
+            onAddFiles={IS_LOCAL ? handleAddFiles : null}
           />
         </aside>
         {!compact && sidebarVisible && (

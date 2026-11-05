@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { FileCode2, FileSpreadsheet, FileText, Folder, FolderOpen, ChevronRight, ChevronsDownUp, Layers, Plus } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { FileCode2, FileSpreadsheet, FileText, Folder, FolderOpen, ChevronRight, ChevronsDownUp, Layers, Plus, Upload } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 
 const iconFor = (path) => (path.endsWith('.csv') ? FileSpreadsheet : /\.(py|ipynb|js|json|toml|cfg)$/.test(path) ? FileCode2 : FileText);
@@ -87,14 +87,38 @@ function handleTreeKeys(e, setCollapsed) {
   e.preventDefault();
 }
 
-export default function FileSidebar({ paths, activePath, onOpen, projectName, runCount, onNewFile }) {
+// Files dragged in from outside (Finder, Explorer, the iPad Files app).
+const carriesFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+
+export default function FileSidebar({ paths, activePath, onOpen, projectName, runCount, onNewFile, onAddFiles }) {
   const [collapsed, setCollapsed] = useState({});
+  const [dropping, setDropping] = useState(false);
+  const picker = useRef(null);
+  const dropProps = onAddFiles
+    ? {
+        onDragOver: (e) => {
+          if (!carriesFiles(e)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+          setDropping(true);
+        },
+        onDragLeave: (e) => {
+          if (!e.currentTarget.contains(e.relatedTarget)) setDropping(false);
+        },
+        onDrop: (e) => {
+          if (!carriesFiles(e)) return;
+          e.preventDefault();
+          setDropping(false);
+          onAddFiles(e.dataTransfer.files);
+        },
+      }
+    : {};
   const tree = buildTree(paths);
   const folders = tree.filter((n) => n.type === 'folder');
   const anyOpen = folders.some((f) => !collapsed[f.name]);
 
   return (
-    <nav className="sidebar-inner" aria-label="Project files">
+    <nav className={`sidebar-inner ${dropping ? 'is-drop-target' : ''}`} aria-label="Project files" {...dropProps}>
       <div className="panel-header">
         <span className="panel-title">Files</span>
         {folders.length > 0 && (
@@ -105,15 +129,38 @@ export default function FileSidebar({ paths, activePath, onOpen, projectName, ru
             onClick={() => setCollapsed(Object.fromEntries(folders.map((f) => [f.name, anyOpen])))}
           />
         )}
+        {onAddFiles && (
+          <>
+            <IconButton
+              icon={Upload}
+              label="Add files…"
+              className={`icon-btn-sm ${folders.length > 0 ? '' : 'push-right'}`}
+              onClick={() => picker.current?.click()}
+            />
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              hidden
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(e) => {
+                onAddFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </>
+        )}
         {onNewFile && (
           <IconButton
             icon={Plus}
             label="New file"
-            className={`icon-btn-sm ${folders.length > 0 ? '' : 'push-right'}`}
+            className={`icon-btn-sm ${folders.length > 0 || onAddFiles ? '' : 'push-right'}`}
             onClick={onNewFile}
           />
         )}
       </div>
+      {dropping && <div className="drop-hint" aria-hidden="true">Drop to add to {projectName}</div>}
       <ul className="file-tree" role="tree" aria-label="Files" onKeyDown={(e) => handleTreeKeys(e, setCollapsed)}>
         {tree.map((node) =>
           node.type === 'file' ? (
