@@ -1,7 +1,6 @@
 import { useRef } from 'react';
 import {
   ImagePlus,
-  Layers,
   PanelLeft,
   PanelBottom,
   PanelRight,
@@ -250,14 +249,12 @@ export default function Toolbar({
                     </div>
                   </div>
                   <GlassSlider label="Opacity" from="Clear" to="Solid" value={glass} onChange={onGlass} />
-                  {!desktop?.active && wallpaper.kind !== 'see-through' && (
-                    <GlassSlider label="Frost" from="Light" to="Heavy" value={frost} onChange={onFrost} />
-                  )}
+                  {!desktop?.active && <GlassSlider label="Frost" from="Light" to="Heavy" value={frost} onChange={onFrost} />}
                   <p className="menu-footnote">
                     {desktop?.active
                       ? 'The glass sits over your own desktop and adapts to your wallpaper’s brightness. Your wallpaper is never changed.'
                       : IS_IPAD
-                        ? 'iPadOS doesn’t officially let apps show the Home Screen behind them. Try See-through (experimental), or choose the photo you use as your wallpaper: Tandem lines it up with your screen.'
+                        ? 'iPadOS doesn’t let apps see the Home Screen behind them, so choose the photo you use as your wallpaper: Tandem lines it up with your screen, and Clear glass then looks through to it.'
                         : 'Glass adapts to your wallpaper’s brightness. The wallpaper itself is never changed.'}
                   </p>
                 </div>
@@ -306,17 +303,6 @@ export default function Toolbar({
                     label={IS_IPAD ? 'Your wallpaper' : 'Your image'}
                     description={IS_IPAD ? 'Lined up with your screen' : custom.name}
                     onSelect={() => onWallpaper('custom')}
-                  />
-                )}
-                {IS_IPAD && (
-                  <MenuItem
-                    close={close}
-                    role="menuitemradio"
-                    checked={wallpaper.kind === 'see-through'}
-                    icon={Layers}
-                    label="See-through (experimental)"
-                    description="Your real Home Screen behind the glass, if iPadOS allows it"
-                    onSelect={() => onWallpaper('see-through')}
                   />
                 )}
                 <MenuItem

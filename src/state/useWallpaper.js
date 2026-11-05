@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { loadJSON, saveJSON, STORAGE_KEYS } from '../lib/storage.js';
 import { IS_IPAD } from '../runtime/config.js';
 
@@ -19,13 +19,6 @@ import { IS_IPAD } from '../runtime/config.js';
 const MAX_EDGE = IS_IPAD ? 2800 : 2400; // keeps a stored photo to a few hundred KB (iPad: screen sharp)
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
-// iPad, experimental: 'see-through' asks the app to make its window transparent
-// so the real Home Screen wallpaper shows behind the glass (an unofficial iPadOS
-// switch; see ipad/App/Sources/SeeThrough.swift). If iPadOS doesn't have it,
-// Tandem says so and goes back to the previous backdrop.
-const nativeBridge = () => window.webkit?.messageHandlers?.tandem;
-export const SEE_THROUGH_AVAILABLE = IS_IPAD;
-
 // On iPad: plain until the person picks their wallpaper photo.
 const DEFAULT = { kind: IS_IPAD ? 'plain' : 'dusk' };
 
@@ -37,7 +30,6 @@ const activeKind = (wallpaper) => (wallpaper.kind === 'custom' && !wallpaper.cus
 function apply(wallpaper) {
   const body = document.body;
   body.dataset.wallpaper = activeKind(wallpaper);
-  document.documentElement.dataset.seeThrough = String(wallpaper.kind === 'see-through');
   const custom = wallpaper.custom;
   if (wallpaper.kind === 'custom' && custom?.image) body.style.setProperty('--wallpaper-image', `url("${custom.image}")`);
   else body.style.removeProperty('--wallpaper-image');
@@ -143,8 +135,7 @@ const remembered = (wallpaper) => (IS_IPAD ? { kind: wallpaper.kind } : wallpape
 export function useWallpaper(notify, store = null) {
   const [wallpaper, setWallpaper] = useState(() => {
     const saved = loadJSON(STORAGE_KEYS.wallpaper, DEFAULT);
-    const kinds = IS_IPAD ? ['dusk', 'plain', 'custom', 'see-through'] : ['dusk', 'plain', 'custom'];
-    return saved && kinds.includes(saved.kind) ? saved : DEFAULT;
+    return saved && ['dusk', 'plain', 'custom'].includes(saved.kind) ? saved : DEFAULT;
   });
 
   // iPad: fetch the photo the app keeps. With no remembered choice, a saved
@@ -163,35 +154,6 @@ export function useWallpaper(notify, store = null) {
       live = false;
     };
   }, [store]);
-
-  // iPad: ask the app for a see-through window (or to end it).
-  const previousKind = useRef('plain');
-  useEffect(() => {
-    if (!IS_IPAD) return undefined;
-    const on = wallpaper.kind === 'see-through';
-    if (!on) previousKind.current = wallpaper.kind;
-    const bridge = nativeBridge();
-    if (!bridge) {
-      if (on) {
-        notify('See-through needs the Tandem iPad app.');
-        setWallpaper((w) => ({ ...w, kind: previousKind.current }));
-      }
-      return undefined;
-    }
-    const answer = (e) => {
-      if (on && !e.detail?.supported) {
-        notify('This version of iPadOS doesn’t allow a see-through window. Use your wallpaper photo instead.');
-        setWallpaper((w) => {
-          const next = { ...w, kind: previousKind.current };
-          saveJSON(STORAGE_KEYS.wallpaper, remembered(next));
-          return next;
-        });
-      }
-    };
-    window.addEventListener('tandem-see-through', answer);
-    bridge.postMessage({ seeThrough: on });
-    return () => window.removeEventListener('tandem-see-through', answer);
-  }, [wallpaper.kind, notify]);
 
   // iPad: follow the window as it moves, resizes and rotates.
   useEffect(() => {
@@ -224,10 +186,6 @@ export function useWallpaper(notify, store = null) {
   useEffect(() => {
     apply(wallpaper);
     const kind = activeKind(wallpaper);
-    if (kind === 'see-through') {
-      setLuminance(0.3); // unknown: the wallpaper is drawn by iPadOS
-      return undefined;
-    }
     if (kind === 'plain') {
       setLuminance(PLAIN_LUMINANCE);
       return undefined;
