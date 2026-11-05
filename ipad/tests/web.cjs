@@ -218,7 +218,8 @@ function fakeAnthropic() {
     const jobText = await page.locator('.env-job-head').innerText();
     check(jobText.includes('Installed tabulate.'), `Packages: tabulate installed from PyPI (${jobText} / ${(await page.locator('.env-log').innerText().catch(() => '')).slice(-600)})`);
     const kept = JSON.parse((await api('/api/file?path=.tandem/packages.json')).text);
-    check(kept.pypi.some((p) => p.name === 'tabulate' && p.file.endsWith('.whl')), 'Packages: the wheel is kept with the project');
+    check(kept.pypi.length === 1 && kept.pypi[0].name === 'tabulate' && kept.pypi[0].file.endsWith('.whl'), `Packages: only the tabulate wheel is kept with the project (${JSON.stringify(kept).slice(0, 300)})`);
+    check(kept.pyodide.length === 0, `Packages: no Pyodide packages recorded for a pure-Python install (${JSON.stringify(kept.pyodide).slice(0, 200)})`);
     await page.locator('.dialog-env [aria-label=Close]').click();
     await page.getByRole('treeitem', { name: 'pkgs.py' }).click();
     await run.click();
@@ -228,7 +229,7 @@ function fakeAnthropic() {
       pkgOut = await output();
       await page.waitForTimeout(250);
     }
-    check(pkgOut.includes('city') && pkgOut.includes('KL'), `Python uses the installed package in a fresh run (output: ${JSON.stringify(pkgOut)})`);
+    check(pkgOut.includes('city') && pkgOut.includes('KL') && !pkgOut.includes("couldn't load"), `Python uses the installed package in a fresh run (output: ${JSON.stringify(pkgOut)})`);
   } else {
     await page.locator('.dialog-env [aria-label=Close]').click();
   }

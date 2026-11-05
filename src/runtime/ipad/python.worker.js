@@ -126,36 +126,45 @@ async function install({ packages }) {
   const say = (text) => post({ type: 'output', stream: 'out', text: `${text}\n` });
   await pyodide.loadPackage('micropip', { messageCallback: say, errorCallback: say });
   pyodide.globals.set('_tandem_packages', pyodide.toPy(packages));
+  // micropip.list(): what is installed in this (fresh) Python and where it came
+  // from ("pyodide" for Pyodide's own packages). freeze() has each package's
+  // wheel URL and dependencies, for every package Pyodide knows of.
   const result = JSON.parse(
     await pyodide.runPythonAsync(`
 import json, micropip
 from importlib.metadata import packages_distributions
 await micropip.install(_tandem_packages, verbose=True)
+installed = [{"name": p.name, "version": p.version, "source": str(p.source)} for p in micropip.list().values()]
 lock = json.loads(micropip.freeze())["packages"]
 imports = {}
 for top, dists in packages_distributions().items():
     for d in dists:
         imports.setdefault(d.lower().replace("_", "-"), []).append(top)
-json.dumps({"lock": lock, "imports": imports})
+json.dumps({"installed": installed, "lock": lock, "imports": imports})
 `)
   );
   const norm = (n) => n.toLowerCase().replace(/[-_.]+/g, '-');
-  const entries = Object.values(result.lock);
-  const fromPypi = entries.filter((e) => /^https?:/.test(e.file_name));
-  const pypiNames = new Set(fromPypi.map((e) => norm(e.name)));
+  const lockOf = new Map(Object.values(result.lock).map((e) => [norm(e.name), e]));
+  const fromPypi = result.installed.filter((p) => p.source.toLowerCase() !== 'pyodide');
+  const pypiNames = new Set(fromPypi.map((p) => norm(p.name)));
+  const loadedFromPyodide = new Set(result.installed.filter((p) => !pypiNames.has(norm(p.name))).map((p) => norm(p.name)));
   const needs = new Set();
-  for (const e of fromPypi) for (const d of e.depends || []) if (!pypiNames.has(norm(d))) needs.add(norm(d));
+  for (const p of fromPypi) for (const d of lockOf.get(norm(p.name))?.depends || []) if (!pypiNames.has(norm(d))) needs.add(norm(d));
   // Asked for by name and provided by Pyodide (numpy, …): remembered too.
   for (const p of packages) needs.add(norm(p.split(/[<>=!~[\s;]/)[0]));
-  const pyodideDeps = entries.filter((e) => !/^https?:/.test(e.file_name) && needs.has(norm(e.name))).map((e) => e.name);
+  const pyodideDeps = [...needs].filter((n) => loadedFromPyodide.has(n)).map((n) => lockOf.get(n)?.name || n);
+  if (fromPypi.length > 40) throw new Error(`That would add ${fromPypi.length} packages; install fewer at a time.`);
   const saved = [];
-  for (const e of fromPypi) {
-    const file = decodeURIComponent(e.file_name.split('/').pop().split('#')[0].split('?')[0]);
+  for (const p of fromPypi) {
+    const url = lockOf.get(norm(p.name))?.file_name || '';
+    if (!/^https:\/\//.test(url)) throw new Error(`micropip didn't say where ${p.name} came from.`);
+    const file = decodeURIComponent(url.split('/').pop().split('#')[0].split('?')[0]);
     say(`Saving ${file} in the project…`);
-    const bytes = await (await fetch(e.file_name)).arrayBuffer();
-    const put = await api(`/api/raw?path=${encodeURIComponent(`.tandem/packages/${file}`)}`, { method: 'PUT', body: bytes });
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Couldn't download ${file} (${response.status}).`);
+    const put = await api(`/api/raw?path=${encodeURIComponent(`.tandem/packages/${file}`)}`, { method: 'PUT', body: await response.arrayBuffer() });
     if (!put.ok) throw new Error(`Couldn't save ${file} in the project.`);
-    saved.push({ name: e.name, version: e.version, file, imports: result.imports[norm(e.name)] || [] });
+    saved.push({ name: p.name, version: p.version, file, imports: result.imports[norm(p.name)] || [] });
   }
   post({ type: 'installed', pypi: saved, pyodide: pyodideDeps });
 }
