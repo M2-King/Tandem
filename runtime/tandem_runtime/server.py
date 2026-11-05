@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import platform
+import shutil
 from pathlib import Path
 from urllib.parse import parse_qs
 
@@ -17,7 +18,9 @@ from . import __version__
 from .ai_chat import AssistError, active_provider, assist
 from .ai_settings import AISettings, SettingsError, test_connection
 from .files import MAX_UPLOAD_BYTES, FileError, ProjectFiles
+from . import envs
 from .interpreters import describe, resolve_interpreter
+from .jobs import JobError, JobManager
 from .runs import RunError, RunManager
 from .security import TOKEN_HEADER, AccessPolicy
 
@@ -77,6 +80,10 @@ class AISettingsBody(BaseModel):
     activate: bool | None = None
 
 
+class SelectEnvBody(BaseModel):
+    python: str | None = None
+
+
 class AITestBody(BaseModel):
     provider: str
 
@@ -100,11 +107,13 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
         return resolve_interpreter(files.root, cli_python)[0]
 
     runs = RunManager(files, interpreter)
+    jobs = JobManager()
 
     @contextlib.asynccontextmanager
     async def lifespan(_app):
         yield
         await runs.shutdown()
+        await jobs.shutdown()
 
     app = FastAPI(title="Tandem runtime", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
@@ -163,6 +172,46 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
         except FileError as exc:
             file_error(exc)
 
+    # ---------------- Environments and packages ----------------
+    # Reading is free; creating environments and installing packages run as
+    # jobs over the WebSocket, only after the person confirms the command.
+
+    def env_error(exc: Exception):
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.get("/api/envs")
+    def get_envs(refresh: bool = False):
+        if refresh:
+            envs.interpreters(refresh=True)
+        python, source = resolve_interpreter(files.root, cli_python)
+        return envs.environments(files.root, python, source)
+
+    @app.put("/api/envs/select")
+    def put_env_select(body: SelectEnvBody):
+        if runs.current is not None:
+            raise HTTPException(status_code=400, detail="Stop the run before switching environments.")
+        try:
+            envs.select(files.root, body.python)
+        except envs.EnvError as exc:
+            env_error(exc)
+        python, source = resolve_interpreter(files.root, cli_python)
+        return envs.environments(files.root, python, source)
+
+    @app.get("/api/packages")
+    def get_packages():
+        python, source = resolve_interpreter(files.root, cli_python)
+        if python is None:
+            raise HTTPException(status_code=400, detail="No Python interpreter is selected for this project.")
+        can, reason = envs.can_install_into(python)
+        out = {"python": {"path": str(python), "source": source}, "can_install": can, "reason": reason,
+               "requirements": (files.root / "requirements.txt").is_file(), "packages": [], "missing": []}
+        try:
+            out["packages"] = envs.installed_packages(python)
+        except envs.EnvError as exc:
+            out["error"] = str(exc)
+        out["missing"] = envs.missing_imports(files.root, python)
+        return out
+
     # ---------------- AI provider settings ----------------
     # Keys go in, never out: responses only say whether a key is saved.
 
@@ -200,6 +249,61 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
 
     # ---------------- WebSocket: runs ----------------
 
+    def job_plan(message: dict):
+        """(kind, command, on_done) for a requested job; raises EnvError with a readable reason."""
+        kind = message.get("kind")
+        if kind == "create-env":
+            base = str(message.get("base") or "")
+            command, target = envs.create_command(files.root, base, str(message.get("name") or ".venv"))
+
+            async def done(job, code):
+                if code == 0 and envs.venv_python(target):
+                    python = envs.created_python(target)
+                    if runs.current is None:
+                        envs.select(files.root, str(python))
+                    return {"ok": True, "python": str(python), "selected": runs.current is None}
+                if target.exists():
+                    await asyncio.to_thread(shutil.rmtree, target, True)  # a half-made environment
+                return {"ok": False, "message": envs.explain_create_failure(job.log, describe(base).get("version"))}
+
+            return kind, command, done
+        if kind == "install":
+            python, _ = resolve_interpreter(files.root, cli_python)
+            if python is None:
+                raise envs.EnvError("No Python interpreter is selected for this project.")
+            if message.get("requirements"):
+                if not (files.root / "requirements.txt").is_file():
+                    raise envs.EnvError("This project has no requirements.txt.")
+                command = envs.install_command(python, requirements=files.root / "requirements.txt")
+            else:
+                packages = message.get("packages")
+                command = envs.install_command(python, packages if isinstance(packages, list) else [])
+
+            async def done(job, code):
+                if code == 0:
+                    return {"ok": True}
+                return {"ok": False, "message": envs.explain_install_failure(job.log)}
+
+            return kind, command, done
+        raise envs.EnvError("Unknown task.")
+
+    @app.post("/api/jobs/preview")
+    def preview_job(body: dict):
+        # The exact command a job would run, shown to the person before they confirm it.
+        try:
+            kind, command, _ = job_plan(body)
+        except envs.EnvError as exc:
+            env_error(exc)
+        return {"kind": kind, "command": command, "cwd": str(files.root)}
+
+    async def start_job(message: dict, send) -> None:
+        job_id = str(message.get("id"))
+        try:
+            kind, command, done = job_plan(message)
+            await jobs.start(job_id, kind, command, files.root, send, done)
+        except (envs.EnvError, JobError) as exc:
+            await send({"type": "job.rejected", "id": job_id, "message": str(exc)})
+
     @app.websocket("/ws")
     async def ws(socket: WebSocket):
         await socket.accept()
@@ -234,6 +338,10 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
                     bps = message.get("breakpoints")
                     await runs.debug_command(str(message.get("id")), str(message.get("cmd", "")),
                                              bps if isinstance(bps, list) else None)
+                elif kind == "job.start":
+                    await start_job(message, send)
+                elif kind == "job.cancel":
+                    await jobs.cancel(str(message.get("id")))
                 elif kind == "ping":
                     await send({"type": "pong"})
         except (WebSocketDisconnect, RuntimeError, ValueError):

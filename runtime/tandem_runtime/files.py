@@ -42,7 +42,9 @@ class ProjectFiles:
         """Project files, sorted, with size and whether they are readable text."""
         out: list[dict] = []
         for dirpath, dirnames, filenames in os.walk(self.root):
-            dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith("."))
+            # Virtual environments (any name) aren't project files.
+            dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")
+                                 and not (Path(dirpath) / d / "pyvenv.cfg").exists())
             for name in sorted(filenames):
                 if name.startswith(".") and name not in {".gitignore", ".env.example"}:
                     continue
