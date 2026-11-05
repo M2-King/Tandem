@@ -73,7 +73,7 @@ jobs:
           set -o pipefail
           xcodebuild -project ipad/App/Tandem.xcodeproj -scheme Tandem -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim \
-            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee sim-build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build 2>&1 | tee sim-build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
           test -f build/sim/Build/Products/Debug-iphonesimulator/Tandem.app/Tandem || { tail -60 sim-build.log; exit 1; }
 
       - name: Run in the iPad simulator

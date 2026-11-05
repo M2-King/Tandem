@@ -4,6 +4,10 @@ import Security
 // Which AI provider and model the assistant uses. Keys go in the iPad
 // Keychain; the page only ever learns that a key is saved (and its last four
 // characters). Same shape and rules as the desktop runtime's ai_settings.py.
+//
+// If the Keychain isn't available to the app (some signing setups), keys go to
+// a file in the app's private Application Support folder instead, encrypted by
+// iPadOS data protection and excluded from backups.
 final class AISettingsStore {
     struct Provider {
         let label: String
@@ -43,7 +47,8 @@ final class AISettingsStore {
             providers[name] = ["label": meta.label, "needs_key": meta.needsKey, "base_url": cfg.baseURL, "model": cfg.model,
                                "default_base_url": meta.baseURL, "has_key": key != nil, "key_hint": hint] as [String: Any]
         }
-        return ["active": config["active"] ?? NSNull(), "providers": providers, "stored_in": "iPad Keychain"]
+        let storedIn = usesFallback ? "Tandem's encrypted app storage on this iPad" : "iPad Keychain"
+        return ["active": config["active"] ?? NSNull(), "providers": providers, "stored_in": storedIn]
     }
 
     func update(_ body: [String: Any]) throws -> [String: Any] {
@@ -89,9 +94,39 @@ final class AISettingsStore {
         return url.hasSuffix("/") ? String(url.dropLast()) : url
     }
 
+    // MARK: fallback file (only when the Keychain refuses)
+
+    private var fallbackURL: URL? {
+        guard let dir = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else { return nil }
+        return dir.appendingPathComponent("ai-keys.json")
+    }
+
+    private var fallbackKeys: [String: String] {
+        get {
+            guard let url = fallbackURL, let data = try? Data(contentsOf: url) else { return [:] }
+            return (try? JSONSerialization.jsonObject(with: data)) as? [String: String] ?? [:]
+        }
+        set {
+            guard var url = fallbackURL else { return }
+            if newValue.isEmpty { try? FileManager.default.removeItem(at: url); return }
+            if let data = try? JSONSerialization.data(withJSONObject: newValue) {
+                try? data.write(to: url, options: [.atomic, .completeFileProtection])
+                var values = URLResourceValues()
+                values.isExcludedFromBackup = true
+                try? url.setResourceValues(values)
+            }
+        }
+    }
+
+    private var usesFallback: Bool { !fallbackKeys.isEmpty }
+
     // MARK: Keychain
 
     func key(_ provider: String) -> String? {
+        keychainKey(provider) ?? fallbackKeys[provider]
+    }
+
+    private func keychainKey(_ provider: String) -> String? {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                     kSecAttrAccount as String: provider, kSecReturnData as String: true,
                                     kSecMatchLimit as String: kSecMatchLimitOne]
@@ -105,13 +140,18 @@ final class AISettingsStore {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                     kSecAttrAccount as String: provider, kSecValueData as String: Data(value.utf8),
                                     kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else { throw APIError(status: 500, message: "Couldn't save the key in the Keychain (\(status)).") }
+        if SecItemAdd(query as CFDictionary, nil) != errSecSuccess {
+            var keys = fallbackKeys
+            keys[provider] = value
+            fallbackKeys = keys
+        }
     }
 
     private func deleteKey(_ provider: String) {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                     kSecAttrAccount as String: provider]
         SecItemDelete(query as CFDictionary)
+        var keys = fallbackKeys
+        if keys.removeValue(forKey: provider) != nil { fallbackKeys = keys }
     }
 }
