@@ -66,6 +66,35 @@ The assistant then uses that model on your own files: ask for a change or press 
 error, and it sees the file, the traceback and the output, and proposes a new version of the file. The
 change opens as a diff; nothing is written until you accept it, and nothing runs until you press Run.
 
+**Tab autocomplete** (on by default once a model is connected; switch it off in AI settings or the
+command palette): after a short pause in typing, the model suggests the next code in grey. Each
+suggestion is one small request (at most 200 tokens) to the same model.
+
+### Keyboard shortcuts (like Cursor)
+
+⌘ on Mac and iPad, Ctrl on Windows and Linux. The command palette lists every command with its shortcut.
+
+| Shortcut | What it does |
+| --- | --- |
+| Tab / Esc / Ctrl+→ (⌘→) | Accept the AI suggestion / dismiss it / accept one word |
+| Ctrl/⌘+K | Edit the selection (or the current line) with AI: describe the change, review the diff |
+| Ctrl/⌘+L | Add the selection to the assistant |
+| Ctrl/⌘+I | Open the assistant (press again from it to close) |
+| @ in the assistant | Add a file to the request |
+| Ctrl/⌘+P | Go to a file by name (`>` for commands, `:12` for line 12) |
+| Ctrl/⌘+Shift+P | Command palette |
+| Ctrl/⌘+Shift+F | Search in all files, notebooks included (match case, whole word, regular expressions) |
+| Ctrl/⌘+Shift+H | Replace in all files: one match, or all with Undo (`$1` works with regular expressions) |
+| Ctrl/⌘+F, Ctrl+H (⌘⌥F) | Find, and find and replace, in the open file |
+| Ctrl/⌘+D | Select the next match too |
+| Alt+↑/↓ (⌥↑/↓) | Move the line up or down |
+| Ctrl/⌘+/ | Comment or uncomment |
+| F12 / F2 | Go to definition / rename (Python: the file, the notebook, and the project's other .py files) |
+| Ctrl+\` | Show or hide the output panel (Tandem has no terminal) |
+
+On iPad without a keyboard, the same things are on screen: **Search** on the left rail,
+**Search and replace…** and **Commands…** in the ⋯ menu, and **Edit** in the bar under a selection.
+
 ### From source in a browser (macOS, Linux, Windows)
 
 Requires Python 3.11+ and Node.js 18+.
@@ -164,8 +193,8 @@ Also try: run `summary.py` (it has a bug) and choose **Ask AI to fix**, or use
   accept, reject, undo. Proposals become *stale* if their file changes after they
   were created, and must be regenerated or discarded instead of overwriting edits.
   Changes can't be applied to a file while it is running.
-- Selection actions: Ask AI (adds a context chip such as `main.py · Lines 18–26`), Explain, Fix.
-  Ctrl/⌘+L also adds the selection.
+- Selection actions: Ask AI (adds a context chip such as `main.py · Lines 18–26`), Edit (Ctrl/⌘+K),
+  Explain, Fix. Ctrl/⌘+L also adds the selection. They work in notebook cells too.
 - Run with a running state and Stop; a success scenario (`main.py`) and an error
   scenario (`summary.py`) with a working "Ask AI to fix" repair.
 - Step through and Debug with breakpoints, a highlighted next line, and a Variables

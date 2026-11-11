@@ -1,4 +1,5 @@
-import { Files, ChartColumn, History } from 'lucide-react';
+import { Files, ChartColumn, History, Search } from 'lucide-react';
+import { keyLabel } from '../lib/keys.js';
 
 // Slim navigation rail on the left edge of the shell. Files toggles the
 // explorer; Charts and Runs open the results area on that view (or close it
@@ -20,7 +21,7 @@ function RailButton({ icon: Icon, label, pressed, onClick, badge }) {
   );
 }
 
-export default function NavRail({ filesOpen, onToggleFiles, resultsOpen, resultsTab, onResultsView, newCharts }) {
+export default function NavRail({ filesOpen, onToggleFiles, resultsOpen, resultsTab, onResultsView, newCharts, searchOpen, onSearch }) {
   const showing = (tab) => resultsOpen && resultsTab === tab;
   return (
     <nav className="rail" aria-label="Views">
@@ -31,6 +32,14 @@ export default function NavRail({ filesOpen, onToggleFiles, resultsOpen, results
           pressed={filesOpen}
           onClick={onToggleFiles}
         />
+        {onSearch && (
+          <RailButton
+            icon={Search}
+            label={`Search and replace (${keyLabel('Mod+Shift+F')})`}
+            pressed={!!searchOpen}
+            onClick={onSearch}
+          />
+        )}
         <span className="rail-sep" aria-hidden="true" />
         <RailButton
           icon={ChartColumn}

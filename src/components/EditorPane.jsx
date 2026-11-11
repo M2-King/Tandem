@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, ChevronUp, ChevronDown, FileCode2, FileSpreadsheet, FileDiff, MessageSquarePlus, MessageSquareText, Wrench, Check, AlertTriangle, StepForward, FastForward, RotateCcw, Square, Bug, Footprints, Info, CircleCheck, ArrowDownToLine, ArrowUpFromLine, Loader2 } from 'lucide-react';
+import { PencilLine, CornerDownLeft, X, ChevronUp, ChevronDown, FileCode2, FileSpreadsheet, FileDiff, MessageSquarePlus, MessageSquareText, Wrench, Check, AlertTriangle, StepForward, FastForward, RotateCcw, Square, Bug, Footprints, Info, CircleCheck, ArrowDownToLine, ArrowUpFromLine, Loader2 } from 'lucide-react';
 import CodeEditor from './CodeEditor.jsx';
+import { focusLastEditor } from '../lib/editorRegistry.js';
 import NotebookView from './NotebookView.jsx';
 import { isDatabase, typeOf } from '../lib/fileTypes.js';
 import DiffReview from './DiffReview.jsx';
@@ -319,7 +320,59 @@ function NoticeBar({ notice, onReset, onDismiss }) {
   );
 }
 
-function SelectionActions({ selection, onAskAI, onExplain, onFix }) {
+// Ctrl/Cmd+K: a one-line prompt under the selection; the change comes back as a diff to review.
+function InlineEdit({ target, onSubmit, onClose }) {
+  const [text, setText] = useState('');
+  const inputRef = useRef(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [target.key]);
+  const lines = target.startLine === target.endLine ? `line ${target.startLine}` : `lines ${target.startLine}–${target.endLine}`;
+  const where = target.cell ? `${lines} of cell ${target.cell}` : lines;
+  const submit = () => {
+    if (!text.trim()) return;
+    onSubmit(text.trim());
+  };
+  return (
+    <form
+      className="inline-edit"
+      style={{ top: target.visible ? target.top : 12 }}
+      role="dialog"
+      aria-label="Edit with AI"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose(true);
+        }
+      }}
+    >
+      <PencilLine size={16} aria-hidden="true" className="inline-edit-icon" />
+      <input
+        ref={inputRef}
+        className="inline-edit-input"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={`Edit ${where} with AI: describe the change`}
+        aria-label={`Describe the change to ${where}`}
+        spellCheck={false}
+        autoComplete="off"
+      />
+      <button type="submit" className="btn btn-primary btn-sm" disabled={!text.trim()}>
+        <CornerDownLeft size={14} aria-hidden="true" /> Edit
+      </button>
+      <button type="button" className="icon-btn icon-btn-sm" aria-label="Cancel (Esc)" data-tooltip="Cancel (Esc)" onClick={() => onClose(true)}>
+        <X size={14} aria-hidden="true" />
+      </button>
+    </form>
+  );
+}
+
+function SelectionActions({ selection, onAskAI, onEdit, onExplain, onFix }) {
   if (!selection || !selection.visible) return null;
   const keep = (e) => e.preventDefault(); // don't steal focus from the editor
   return (
@@ -339,6 +392,17 @@ function SelectionActions({ selection, onAskAI, onExplain, onFix }) {
       >
         <MessageSquarePlus size={16} aria-hidden="true" /> Ask AI
         <kbd className="sel-kbd">{MOD_KEY === '⌘' ? '⌘L' : 'Ctrl L'}</kbd>
+      </button>
+      <button
+        type="button"
+        className="sel-btn"
+        onMouseDown={keep}
+        onClick={onEdit}
+        data-tooltip="Describe a change to these lines"
+        aria-keyshortcuts="Control+K Meta+K"
+      >
+        <PencilLine size={16} aria-hidden="true" /> Edit
+        <kbd className="sel-kbd">{MOD_KEY === '⌘' ? '⌘K' : 'Ctrl K'}</kbd>
       </button>
       <span className="sel-divider" aria-hidden="true" />
       <button type="button" className="sel-btn" onMouseDown={keep} onClick={onExplain}>
@@ -379,6 +443,7 @@ export default function EditorPane(props) {
     onAskAI,
     onExplain,
     onFix,
+    onInlineEdit,
     notebook,
     onInstallPackage,
     onRunShortcut,
@@ -386,6 +451,7 @@ export default function EditorPane(props) {
     onOpenDatabase,
   } = props;
   const [selection, setSelection] = useState(null);
+  const [inlineEdit, setInlineEdit] = useState(null); // Ctrl/Cmd+K target: a selection plus a key
   const [diffNav, setDiffNav] = useState(null);
 
   // Hide the selection actions when code changes under them (accept/undo).
@@ -397,6 +463,22 @@ export default function EditorPane(props) {
   const showNotice = notice && notice.kind === 'trace' && notice.path === activePath && !showSession;
 
   const currentSelection = selection && selection.path === activePath && !showDiff ? selection : null;
+  const currentInlineEdit = inlineEdit && inlineEdit.path === activePath && !showDiff ? inlineEdit : null;
+  const startInlineEdit = (sel) => sel && setInlineEdit({ ...sel, key: Date.now() });
+  const closeInlineEdit = (refocus) => {
+    setInlineEdit(null);
+    if (refocus) focusLastEditor();
+  };
+  const inlineEditUI = currentInlineEdit && (
+    <InlineEdit
+      target={currentInlineEdit}
+      onClose={closeInlineEdit}
+      onSubmit={(text) => {
+        onInlineEdit?.(currentInlineEdit, text);
+        closeInlineEdit(false);
+      }}
+    />
+  );
 
   // Review shortcuts, only while the diff is on screen. Typing in the
   // assistant or a menu is never intercepted.
@@ -474,13 +556,18 @@ export default function EditorPane(props) {
               onInstallPackage={onInstallPackage}
               setSelection={setSelection}
               onAskAI={onAskAI}
+              onInlineEdit={startInlineEdit}
             />
-            <SelectionActions
-              selection={currentSelection}
-              onAskAI={() => onAskAI(currentSelection)}
-              onExplain={() => onExplain(currentSelection)}
-              onFix={() => onFix(currentSelection)}
-            />
+            {!currentInlineEdit && (
+              <SelectionActions
+                selection={currentSelection}
+                onAskAI={() => onAskAI(currentSelection)}
+                onEdit={() => startInlineEdit(currentSelection)}
+                onExplain={() => onExplain(currentSelection)}
+                onFix={() => onFix(currentSelection)}
+              />
+            )}
+            {inlineEditUI}
           </>
         ) : showDiff ? (
           <DiffReview proposal={review.proposal} inline={diffInline} fontSize={fontSize} onChanges={setDiffNav} />
@@ -500,16 +587,21 @@ export default function EditorPane(props) {
               onGlyphClick={onToggleBreakpoint}
               onSelection={setSelection}
               onAskAI={() => currentSelection && onAskAI(currentSelection)}
+              onInlineEdit={startInlineEdit}
               revealRequest={revealRequest}
               onRunShortcut={onRunShortcut}
               onCaret={onCaret}
             />
-            <SelectionActions
-              selection={currentSelection}
-              onAskAI={() => onAskAI(currentSelection)}
-              onExplain={() => onExplain(currentSelection)}
-              onFix={() => onFix(currentSelection)}
-            />
+            {!currentInlineEdit && (
+              <SelectionActions
+                selection={currentSelection}
+                onAskAI={() => onAskAI(currentSelection)}
+                onEdit={() => startInlineEdit(currentSelection)}
+                onExplain={() => onExplain(currentSelection)}
+                onFix={() => onFix(currentSelection)}
+              />
+            )}
+            {inlineEditUI}
           </>
         )}
       </div>

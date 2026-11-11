@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { monaco as monacoApi } from '../lib/monacoSetup.js';
 import { languageFor } from '../lib/fileTypes.js';
+import { trackEditor } from '../lib/editorRegistry.js';
 
 // Replace a model's text as one undoable edit (Ctrl+Z still works after
 // accepting an AI change or undoing it).
@@ -35,6 +36,7 @@ export default function CodeEditor({
   onGlyphClick,
   onSelection,
   onAskAI,
+  onInlineEdit,
   revealRequest,
   onRunShortcut,
   onCaret,
@@ -47,10 +49,11 @@ export default function CodeEditor({
 
   // Callbacks change every render; keep the latest in refs for Monaco listeners.
   const latest = useRef({});
-  latest.current = { path, files, onChange, onGlyphClick, onSelection, onAskAI, glyphEnabled, breakpoints, onRunShortcut, onCaret };
+  latest.current = { path, files, onChange, onGlyphClick, onSelection, onAskAI, onInlineEdit, glyphEnabled, breakpoints, onRunShortcut, onCaret };
 
   const handleMount = (editor, monaco) => {
     editorRef.current = editor;
+    trackEditor(editor);
 
     // The selected text, kept when focus moves to a button (Run in the SQL workspace).
     editor.onDidChangeCursorSelection(() => {
@@ -88,12 +91,18 @@ export default function CodeEditor({
     flashDecorations.current = editor.createDecorationsCollection();
     hoverDecorations.current = editor.createDecorationsCollection();
 
-    const reportSelection = () => {
-      const selection = editor.getSelection();
+    // The selection and where it ends on screen. With `line`, an empty
+    // selection means the cursor's whole line (Ctrl/Cmd+K).
+    const selectionInfo = ({ line = false } = {}) => {
+      let selection = editor.getSelection();
       const model = editor.getModel();
-      if (!selection || !model || selection.isEmpty()) return latest.current.onSelection(null);
+      if (selection && model && selection.isEmpty() && line) {
+        const n = selection.positionLineNumber;
+        selection = new monaco.Selection(n, 1, n, model.getLineMaxColumn(n));
+      }
+      if (!selection || !model || selection.isEmpty()) return null;
       const text = model.getValueInRange(selection);
-      if (!text.trim()) return latest.current.onSelection(null);
+      if (!text.trim() && !line) return null;
       // A selection ending at column 1 doesn't really include that line.
       const endLine =
         selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber
@@ -104,7 +113,7 @@ export default function CodeEditor({
         column: selection.endColumn,
       });
       const height = editor.getLayoutInfo().height;
-      latest.current.onSelection({
+      return {
         path: latest.current.path,
         startLine: selection.startLineNumber,
         endLine,
@@ -112,8 +121,9 @@ export default function CodeEditor({
         top: anchor ? anchor.top + anchor.height + 6 : 0,
         left: anchor ? anchor.left : 0,
         visible: !!anchor && anchor.top >= 0 && anchor.top < height - 20,
-      });
+      };
     };
+    const reportSelection = () => latest.current.onSelection(selectionInfo());
 
     editor.onDidChangeCursorSelection(reportSelection);
     editor.onDidScrollChange(reportSelection);
@@ -121,7 +131,7 @@ export default function CodeEditor({
     editor.onDidBlurEditorWidget(() => {
       // Let clicks on the floating selection actions land first.
       setTimeout(() => {
-        if (!document.activeElement?.closest('.selection-actions')) latest.current.onSelection(null);
+        if (!document.activeElement?.closest('.selection-actions, .inline-edit')) latest.current.onSelection(null);
       }, 0);
     });
 
@@ -153,6 +163,18 @@ export default function CodeEditor({
       contextMenuGroupId: 'navigation',
       contextMenuOrder: 0,
       run: () => latest.current.onAskAI(),
+    });
+    // Ctrl/Cmd+K: edit the selection (or this line) with AI, like Cursor.
+    editor.addAction({
+      id: 'tandem.inlineEdit',
+      label: 'Edit with AI',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK],
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 0.5,
+      run: () => {
+        const sel = selectionInfo({ line: true });
+        if (sel) latest.current.onInlineEdit?.(sel);
+      },
     });
 
     setMounted(true);
@@ -210,7 +232,11 @@ export default function CodeEditor({
     if (!mounted || !revealRequest || revealRequest.path !== path) return;
     const editor = editorRef.current;
     editor.revealLineInCenter(revealRequest.line);
-    editor.setPosition({ lineNumber: revealRequest.line, column: 1 });
+    if (revealRequest.column != null) {
+      // A search result: select the match (columns are 0-based there).
+      const start = revealRequest.column + 1;
+      editor.setSelection(new monacoApi.Selection(revealRequest.line, start, revealRequest.line, start + (revealRequest.length || 0)));
+    } else editor.setPosition({ lineNumber: revealRequest.line, column: 1 });
     editor.focus();
   }, [revealRequest, mounted, path]);
 

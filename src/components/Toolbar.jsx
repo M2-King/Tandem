@@ -1,24 +1,6 @@
+import { keyLabel } from '../lib/keys.js';
 import { useRef } from 'react';
-import {
-  ImagePlus,
-  PanelLeft,
-  PanelBottom,
-  PanelRight,
-  MoreHorizontal,
-  Check,
-  Loader2,
-  AlertTriangle,
-  Minus,
-  Plus,
-  RotateCcw,
-  Rows2,
-  Columns2,
-  Sparkles,
-  FolderOpen,
-  Upload,
-  Code2,
-  Database,
-} from 'lucide-react';
+import { ImagePlus, PanelLeft, PanelBottom, PanelRight, MoreHorizontal, Check, Loader2, AlertTriangle, Minus, Plus, RotateCcw, Rows2, Columns2, Sparkles, FolderOpen, Upload, Code2, Database, Search, Command } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import TandemMark from './TandemMark.jsx';
 import { GLASS_PRESETS } from '../lib/glass.js';
@@ -103,6 +85,7 @@ export default function Toolbar({
   onDiffInline,
   onReset,
   onAISettings,
+  onQuick,
   desktop,
   onOpenFolder,
   onAddFiles,
@@ -191,6 +174,25 @@ export default function Toolbar({
           >
             {(close) => (
               <>
+                {onQuick && (
+                  <>
+                    <MenuItem
+                      close={close}
+                      icon={Search}
+                      label="Search and replace…"
+                      description={`In every file · ${keyLabel('Mod+Shift+F')}`}
+                      onSelect={() => onQuick('search')}
+                    />
+                    <MenuItem
+                      close={close}
+                      icon={Command}
+                      label="Commands…"
+                      description={`Every action and its shortcut · ${keyLabel('Mod+Shift+P')}`}
+                      onSelect={() => onQuick('commands')}
+                    />
+                    <div className="menu-sep" role="separator" />
+                  </>
+                )}
                 {onOpenFolder && (
                   <MenuItem
                     close={close}

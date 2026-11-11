@@ -110,7 +110,13 @@ One glass surface with one header row: Output, Variables, Charts and Runs as pil
 
 ### Selection actions
 
-- A small frosted bar under a selection: Ask AI (with its shortcut, Ctrl/⌘ L), Explain, Fix. Three actions, no more.
+- A small frosted bar under a selection: Ask AI (Ctrl/⌘ L), Edit (Ctrl/⌘ K), Explain, Fix. Four actions, no more. It works in notebook cells too.
+- Edit opens a one-line prompt in the same place, with an accent edge; Enter sends it, Esc closes it. The result is an ordinary proposal: a diff to accept or reject.
+
+### Quick panel
+
+- One floating panel at the top centre for Go to file (Ctrl/⌘ P), Commands (Ctrl/⌘ Shift P) and Search and replace (Ctrl/⌘ Shift F / H). Same material as menus; rows use the accent-soft fill for the active row.
+- Search: the chevron shows Replace. Matches are amber; with Replace showing, the old text is struck through in red and the new text follows in green. Replace all reports in a toast with Undo.
 - It disappears when the selection collapses (Esc or a click), the file changes, the editor loses focus, or the code changes under it.
 
 ## Shared tokens for grouped content

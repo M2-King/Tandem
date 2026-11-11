@@ -21,6 +21,7 @@ const createPrefs = () => ({
   glass: DEFAULT_GLASS,
   frost: DEFAULT_FROST,
   workspace: 'python', // 'python' | 'sql'
+  tabComplete: true, // AI suggestions as you type (only with a connected model)
 });
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));

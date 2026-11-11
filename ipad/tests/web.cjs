@@ -38,6 +38,10 @@ function fakeAnthropic() {
       if (req.method === 'GET') {
         return json(200, { data: [{ type: 'model', id: 'claude-opus-5-5', display_name: 'Claude Opus 5.5', created_at: '2026-01-01T00:00:00Z' }], has_more: false, first_id: 'claude-opus-5-5', last_id: 'claude-opus-5-5' });
       }
+      if (JSON.stringify(JSON.parse(body).system || '').includes('You complete code')) {
+        // Tab autocomplete: a short continuation at the cursor.
+        return json(200, { id: 'msg_2', type: 'message', role: 'assistant', model: JSON.parse(body).model, content: [{ type: 'text', text: 'urn x * 2' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } });
+      }
       const text = 'Loop until DONE.\n\n<tandem-file path="ask.py">\nwhile True:\n    raw = input("Number or DONE: ")\n    if raw == "DONE":\n        break\n    print(float(raw) * 2)\n</tandem-file>\n\n- Loop until DONE\n';
       json(200, { id: 'msg_1', type: 'message', role: 'assistant', model: JSON.parse(body).model, content: [{ type: 'text', text }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } });
     });
@@ -93,6 +97,8 @@ function fakeAnthropic() {
     nbformat: 4,
     nbformat_minor: 5,
   }));
+  await put('tab.py', 'def double(x):\n');
+  await put('app.py', 'from stats import average\nvalue = average([1, 2])\nprint("value", value)\n');
   await put('q.sql', "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);\nINSERT INTO notes (body) VALUES ('hi'), ('there');\nSELECT count(*) AS n FROM notes;\n");
   await put('readdb.py', "import sqlite3\nc = sqlite3.connect('practice.db')\nprint('students', c.execute('select count(*) from students').fetchone()[0], 'notes', c.execute('select count(*) from notes').fetchone()[0])\n");
   await put('readcsv.py', "import csv\nrows = list(csv.reader(open('data.csv')))\nprint('rows', len(rows), rows[1])\n");
@@ -273,6 +279,67 @@ function fakeAnthropic() {
   await nbChip.waitFor({ timeout: 10000 });
   check(true, 'notebook: select code in a cell → Ask AI adds "nb.ipynb · Cell 2 · Line 1"');
   await nbChip.getByRole('button', { name: /Remove/ }).click();
+
+  // Cursor-style shortcuts. Ctrl on Windows/Linux, ⌘ on Mac and iPad.
+  const MOD = engine === 'webkit' && process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.getByRole('treeitem', { name: 'stats.py' }).click();
+  await page.locator('.monaco-editor .view-lines').first().waitFor();
+  await page.keyboard.press(`${MOD}+Shift+F`);
+  await page.getByLabel('Search in all files').fill('prices');
+  await page.locator('.quick-status', { hasText: 'result' }).waitFor({ timeout: 10000 });
+  check((await page.locator('.quick-status').innerText()).startsWith('2 results in 1 file'), 'search: "prices" → 2 results in stats.py');
+  await page.locator('.quick-expand').click();
+  await page.getByLabel('Replace with').fill('costs');
+  await page.getByRole('button', { name: 'Replace all' }).click();
+  await page.locator('.toast', { hasText: 'Replaced 2 matches in stats.py' }).waitFor();
+  await page.waitForTimeout(1200);
+  check((await api('/api/file?path=stats.py')).text.includes('costs = [120, 95, 140]'), 'replace all: stats.py saved with "costs"');
+  await page.locator('.toast', { hasText: 'Replaced 2' }).getByRole('button', { name: 'Undo' }).click();
+  await page.waitForTimeout(1200);
+  check((await api('/api/file?path=stats.py')).text.includes('prices = [120, 95, 140]'), 'replace: Undo puts "prices" back');
+  await page.keyboard.press(`${MOD}+P`);
+  await page.keyboard.type('app');
+  await page.keyboard.press('Enter');
+  await page.getByRole('tab', { name: /app\.py/ }).first().waitFor();
+  check(true, 'Ctrl/⌘+P: go to app.py by name');
+  await page.waitForTimeout(500);
+  const goto = async (line, col) => {
+    await page.locator('.monaco-editor .view-lines').first().click();
+    await page.keyboard.press(`${MOD}+Home`);
+    for (let i = 1; i < line; i++) await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Home');
+    for (let i = 0; i < col; i++) await page.keyboard.press('ArrowRight');
+  };
+  await goto(2, 2);
+  await page.keyboard.press('F2');
+  await page.waitForFunction(() => document.activeElement?.closest?.('.rename-box'), null, { timeout: 5000 });
+  await page.keyboard.press(`${MOD}+A`);
+  await page.keyboard.type('result');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1200);
+  check((await api('/api/file?path=app.py')).text === 'from stats import average\nresult = average([1, 2])\nprint("value", result)\n', 'F2: rename value → result (not inside the string)');
+  await goto(2, 11);
+  await page.keyboard.press('F12');
+  await page.getByRole('tab', { name: /stats\.py/, selected: true }).waitFor({ timeout: 5000 });
+  check(true, 'F12: go to average() in stats.py');
+  await goto(6, 0);
+  await page.keyboard.press(`${MOD}+K`);
+  await page.locator('.inline-edit').waitFor({ timeout: 5000 });
+  check((await page.locator('.inline-edit-input').getAttribute('placeholder')).includes('line 6'), 'Ctrl/⌘+K: edit-with-AI prompt for line 6');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press(`${MOD}+I`);
+  await page.waitForFunction(() => document.activeElement?.classList.contains('composer-input'));
+  await page.keyboard.type('check @stat');
+  await page.locator('.mention-row').first().waitFor();
+  await page.keyboard.press('Enter');
+  await page.locator('.composer .context-chip', { hasText: 'stats.py' }).waitFor();
+  check(true, 'Ctrl/⌘+I, then @stat adds stats.py to the request');
+  await page.locator('.composer .context-chip', { hasText: 'stats.py' }).getByRole('button', { name: /Remove/ }).click();
+  await page.locator('.composer-input').fill('');
+  await page.keyboard.press(`${MOD}+Shift+P`);
+  await page.keyboard.type('output panel');
+  check((await page.locator('.quick-row.is-active').innerText()).includes('output panel'), 'Ctrl/⌘+Shift+P: command palette finds "output panel"');
+  await page.keyboard.press('Escape');
   await page.getByRole('treeitem', { name: 'stats.py' }).click();
 
   // Packages: what the code imports, what Pyodide provides, and pure-Python
@@ -345,6 +412,18 @@ function fakeAnthropic() {
   const fixed = await api('/api/file?path=ask.py');
   check(fixed.text.includes('Number or DONE'), 'Ask AI to fix → review → accept: file updated');
   check(fake.seen.some((s) => s.path.startsWith('/v1/messages') && s.auth.includes(KEY)), 'the app sent the key to the provider');
+
+  // Tab autocomplete: grey suggestion after a pause, Tab accepts it.
+  await page.getByRole('treeitem', { name: 'tab.py' }).click();
+  await page.locator('.monaco-editor .view-lines').first().waitFor();
+  await page.waitForTimeout(500);
+  await page.locator('.monaco-editor .view-lines').first().click();
+  await page.keyboard.press(`${engine === 'webkit' && process.platform === 'darwin' ? 'Meta' : 'Control'}+End`);
+  await page.keyboard.type('    ret');
+  await page.locator('.monaco-editor .ghost-text, .monaco-editor .ghost-text-decoration').first().waitFor({ timeout: 15000 });
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(1200);
+  check((await api('/api/file?path=tab.py')).text.includes('    return x * 2'), 'Tab autocomplete: suggestion shown, Tab accepts it');
   check(!bodies.some((b) => b.includes(KEY)), 'the key never reached the page');
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
   await browser.close();

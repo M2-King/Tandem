@@ -39,6 +39,12 @@ When the developer asks for a change, or asks you to fix an error, propose ONE c
 
 Before the block, write one or two sentences saying what you changed and why. After the block, list the changes as short lines starting with "- ". Keep the developer's style and change only what is needed. Do not use a file block when you are only explaining or answering. Never claim you ran the code."""
 
+# Tab autocomplete: a short continuation at the cursor (ghost text in the editor).
+COMPLETE_SYSTEM = """You complete code in Tandem's editor. You get one file with the marker <CURSOR> where the developer's cursor is. Reply with ONLY the text to insert at <CURSOR>: no explanation, no Markdown fences, and nothing that is already before or after the cursor. Finish the current line or add the next few lines (at most 8), in the file's style. If nothing useful fits, reply with nothing."""
+MAX_COMPLETE_TOKENS = 200
+MAX_PREFIX_CHARS = 6_000
+MAX_SUFFIX_CHARS = 2_000
+
 _FILE_BLOCK = re.compile(r'<tandem-file path="([^"\n]+)">\n?(.*?)\n?</tandem-file>', re.DOTALL)
 
 
@@ -94,6 +100,8 @@ def _context_message(request: dict, files: ProjectFiles) -> str:
             parts.append(f"They are asking about the error in {chip.get('path')} at line {chip.get('line')}.")
         elif chip.get("type") == "chart":
             parts.append(f"They are asking about a chart: {chip.get('label')}.")
+        elif chip.get("type") == "file":
+            parts.append(f"They mentioned {chip.get('path')} (its content is above).")
 
     run = request.get("last_run")
     if isinstance(run, dict) and run.get("path"):
@@ -136,13 +144,15 @@ def _history(request: dict) -> list[dict]:
 
 # ---------------------------------------------------------------- providers
 
-def _ask_anthropic(cfg: dict, key: str, messages: list[dict], timeout: float) -> str:
+def _ask_anthropic(cfg: dict, key: str, messages: list[dict], timeout: float,
+                   system: str = SYSTEM, max_tokens: int = MAX_TOKENS, short: bool = False) -> str:
+    """`short`: a Tab completion (no fallback model, no "cut off" note, one try)."""
     import anthropic
 
-    client = anthropic.Anthropic(api_key=key, base_url=cfg["base_url"], timeout=timeout, max_retries=1)
-    params = {"model": cfg["model"], "max_tokens": MAX_TOKENS, "system": SYSTEM, "messages": messages}
+    client = anthropic.Anthropic(api_key=key, base_url=cfg["base_url"], timeout=timeout, max_retries=0 if short else 1)
+    params = {"model": cfg["model"], "max_tokens": max_tokens, "system": system, "messages": messages}
     try:
-        if cfg["model"] in FALLBACK_MODELS and cfg["base_url"].rstrip("/") == PROVIDERS["anthropic"]["base_url"]:
+        if not short and cfg["model"] in FALLBACK_MODELS and cfg["base_url"].rstrip("/") == PROVIDERS["anthropic"]["base_url"]:
             # If a safety classifier declines, Anthropic retries on a fallback model in the same call.
             response = client.beta.messages.create(**params, betas=["server-side-fallback-2026-07-01"],
                                                    fallbacks="default")
@@ -163,7 +173,7 @@ def _ask_anthropic(cfg: dict, key: str, messages: list[dict], timeout: float) ->
     if response.stop_reason == "refusal":
         raise AssistError("The model declined this request.")
     text = "".join(b.text for b in response.content if getattr(b, "type", "") == "text")
-    if response.stop_reason == "max_tokens":
+    if response.stop_reason == "max_tokens" and not short:
         text += "\n\n[cut off: the answer was too long]"
     return text
 
@@ -192,9 +202,12 @@ def _post_json(url: str, body: dict, headers: dict, timeout: float) -> dict:
         raise AssistError(f"{host} didn't answer with JSON.") from None
 
 
-def _ask_openai(cfg: dict, key: str | None, messages: list[dict], timeout: float) -> str:
-    data = _post_json(cfg["base_url"].rstrip("/") + "/chat/completions",
-                      {"model": cfg["model"], "messages": [{"role": "system", "content": SYSTEM}, *messages]},
+def _ask_openai(cfg: dict, key: str | None, messages: list[dict], timeout: float,
+                system: str = SYSTEM, max_tokens: int | None = None) -> str:
+    body = {"model": cfg["model"], "messages": [{"role": "system", "content": system}, *messages]}
+    if max_tokens:
+        body["max_tokens"] = max_tokens
+    data = _post_json(cfg["base_url"].rstrip("/") + "/chat/completions", body,
                       {"Authorization": f"Bearer {key}"} if key else {}, timeout)
     try:
         return data["choices"][0]["message"]["content"] or ""
@@ -202,10 +215,12 @@ def _ask_openai(cfg: dict, key: str | None, messages: list[dict], timeout: float
         raise AssistError("The server's answer had no message in it.") from None
 
 
-def _ask_ollama(cfg: dict, messages: list[dict], timeout: float) -> str:
-    data = _post_json(cfg["base_url"].rstrip("/") + "/api/chat",
-                      {"model": cfg["model"], "stream": False,
-                       "messages": [{"role": "system", "content": SYSTEM}, *messages]}, {}, timeout)
+def _ask_ollama(cfg: dict, messages: list[dict], timeout: float,
+                system: str = SYSTEM, max_tokens: int | None = None) -> str:
+    body = {"model": cfg["model"], "stream": False, "messages": [{"role": "system", "content": system}, *messages]}
+    if max_tokens:
+        body["options"] = {"num_predict": max_tokens}
+    data = _post_json(cfg["base_url"].rstrip("/") + "/api/chat", body, {}, timeout)
     try:
         return data["message"]["content"] or ""
     except (KeyError, TypeError):
@@ -274,3 +289,52 @@ def assist(settings: AISettings, files: ProjectFiles, request: dict, timeout: fl
     result["provider"] = provider["label"]
     result["elapsed_ms"] = int((time.monotonic() - started) * 1000)
     return result
+
+
+# ---------------------------------------------------------------- Tab autocomplete
+
+def clean_completion(text: str, prefix: str, suffix: str) -> str:
+    """The model's reply as text to insert: no fences, no repeat of what surrounds the cursor."""
+    text = text.replace("\r\n", "\n")
+    stripped = text.strip("\n")
+    if stripped.lstrip().startswith("```"):
+        lines = stripped.strip().split("\n")[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines)
+    text = text.replace("<CURSOR>", "")
+    line_start = prefix.rsplit("\n", 1)[-1]
+    if line_start.strip() and text.startswith(line_start):
+        text = text[len(line_start):]  # the model repeated the start of the line
+    next_line = suffix.split("\n", 1)[0]
+    if next_line.strip() and text.rstrip().endswith(next_line.strip()):
+        text = text.rstrip()[: -len(next_line.strip())]
+    text = "\n".join(text.split("\n")[:12]).rstrip()
+    return text if text.strip() else ""
+
+
+def complete(settings: AISettings, request: dict, timeout: float = 20) -> dict:
+    """A short continuation at the cursor. Never raises: no model or an error gives no suggestion."""
+    provider = active_provider(settings)
+    if provider is None:
+        return {"text": ""}
+    prefix = str(request.get("prefix") or "")[-MAX_PREFIX_CHARS:]
+    suffix = str(request.get("suffix") or "")[:MAX_SUFFIX_CHARS]
+    if not prefix.strip():
+        return {"text": ""}
+    path = str(request.get("path") or "untitled")
+    messages = [{"role": "user", "content": f"File {path}:\n{prefix}<CURSOR>{suffix}"}]
+    cfg = {"model": provider["model"], "base_url": provider["base_url"]}
+    name = provider["provider"]
+    try:
+        if name == "anthropic":
+            text = _ask_anthropic(cfg, settings.key("anthropic"), messages, timeout,
+                                  system=COMPLETE_SYSTEM, max_tokens=MAX_COMPLETE_TOKENS, short=True)
+        elif name == "openai":
+            text = _ask_openai(cfg, settings.key("openai"), messages, timeout,
+                               system=COMPLETE_SYSTEM, max_tokens=MAX_COMPLETE_TOKENS)
+        else:
+            text = _ask_ollama(cfg, messages, timeout, system=COMPLETE_SYSTEM, max_tokens=MAX_COMPLETE_TOKENS)
+    except AssistError as exc:
+        return {"text": "", "error": str(exc)}
+    return {"text": clean_completion(text, prefix, suffix)}

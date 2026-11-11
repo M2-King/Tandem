@@ -1,13 +1,21 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, Sparkles, ChevronRight, MessageSquareText, Wrench, Lightbulb, FileCode2, Table2, History } from 'lucide-react';
+import { FileText, ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, Sparkles, ChevronRight, MessageSquareText, Wrench, Lightbulb, FileCode2, Table2, History } from 'lucide-react';
 import TandemMark from './TandemMark.jsx';
 import Markdown from './Markdown.jsx';
 import ProposalCard from './ProposalCard.jsx';
 import IconButton from './IconButton.jsx';
 import { DEMO_PROMPTS } from '../services/aiService.js';
+import { fuzzy } from './QuickPanel.jsx';
+import { iconFor } from './FileSidebar.jsx';
 import { IS_LOCAL } from '../runtime/config.js';
 
-const chipIcon = (type) => (type === 'chart' ? BarChart3 : type === 'error' ? AlertCircle : Code2);
+const chipIcon = (type) => (type === 'chart' ? BarChart3 : type === 'error' ? AlertCircle : type === 'file' ? FileText : Code2);
+
+// "@name" right before the caret: the file being mentioned, or null.
+const mentionAt = (text, caret) => {
+  const m = /(^|\s)@([^\s@]*)$/.exec(text.slice(0, caret));
+  return m ? { start: caret - m[2].length - 1, query: m[2] } : null;
+};
 
 function ContextChip({ chip, onRemove, onOpen }) {
   const Icon = chipIcon(chip.type);
@@ -313,9 +321,39 @@ function EmptyConversation({ onSuggestion, project }) {
   );
 }
 
-const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, onSend, onCancel, suggestions, placeholder }, ref) {
+const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, onSend, onCancel, suggestions, placeholder, files, onMention }, ref) {
   const [text, setText] = useState('');
   const textareaRef = useRef(null);
+  // @ mentions: type @ and part of a file name to add the file to the request.
+  const [mention, setMention] = useState(null); // { start, query }
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const mentionList =
+    mention && files?.length
+      ? files
+          .map((p) => ({ p, m: fuzzy(mention.query, p) }))
+          .filter((x) => x.m)
+          .sort((a, b) => (mention.query ? b.m.score - a.m.score : 0))
+          .slice(0, 8)
+          .map((x) => x.p)
+      : [];
+  const updateMention = (el) => {
+    const next = el ? mentionAt(el.value, el.selectionStart) : null;
+    setMention(next);
+    if (!next || next.query !== mention?.query) setMentionIndex(0);
+  };
+  const chooseMention = (path) => {
+    if (!mention) return;
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? text.length;
+    const next = text.slice(0, mention.start) + text.slice(caret);
+    setText(next);
+    setMention(null);
+    onMention?.(path);
+    setTimeout(() => {
+      el?.focus();
+      el?.setSelectionRange(mention.start, mention.start);
+    }, 0);
+  };
 
   // Let the parent focus the textarea (e.g. after "Ask AI").
   useEffect(() => {
@@ -359,6 +397,29 @@ const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, 
             ))}
           </div>
         )}
+        {mentionList.length > 0 && (
+          <div className="mention-list" role="listbox" aria-label="Mention a file">
+            <div className="mention-head">Add a file to the request</div>
+            {mentionList.map((p, i) => {
+              const Icon = iconFor(p);
+              return (
+                <div
+                  key={p}
+                  role="option"
+                  aria-selected={i === mentionIndex}
+                  className={`mention-row ${i === mentionIndex ? 'is-active' : ''}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onPointerEnter={() => setMentionIndex(i)}
+                  onClick={() => chooseMention(p)}
+                >
+                  <Icon size={14} aria-hidden="true" />
+                  <span className="mention-name">{p.split('/').pop()}</span>
+                  <span className="mention-dir">{p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : ''}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           className="composer-input"
@@ -366,8 +427,33 @@ const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, 
           value={text}
           placeholder={placeholder}
           aria-label="Message the assistant"
-          onChange={(e) => setText(e.target.value)}
+          aria-autocomplete="list"
+          onChange={(e) => {
+            setText(e.target.value);
+            updateMention(e.target);
+          }}
+          onSelect={(e) => updateMention(e.target)}
+          onBlur={() => setMention(null)}
           onKeyDown={(e) => {
+            if (mentionList.length) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const n = mentionList.length;
+                setMentionIndex((i) => (e.key === 'ArrowDown' ? (i + 1) % n : (i - 1 + n) % n));
+                return;
+              }
+              if ((e.key === 'Enter' || e.key === 'Tab') && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                chooseMention(mentionList[Math.min(mentionIndex, mentionList.length - 1)]);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                setMention(null);
+                return;
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               submit();
@@ -375,7 +461,7 @@ const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, 
           }}
         />
         <div className="composer-footer">
-          <span className="composer-hint">Enter to send · Shift+Enter for a new line</span>
+          <span className="composer-hint">Enter to send · Shift+Enter for a new line{files?.length ? ' · @ to add a file' : ''}</span>
           {busy ? (
             <button type="button" className="send-btn send-btn-stop" aria-label="Stop generating" data-tooltip="Stop generating" onClick={onCancel}>
               <Square size={12} fill="currentColor" aria-hidden="true" />
@@ -418,6 +504,7 @@ export default function AssistantPanel({
   onGoToCode,
   onConnectAI,
   aiModel,
+  onMention,
 }) {
   const listRef = useRef(null);
   const contentRef = useRef(null);
@@ -559,6 +646,8 @@ export default function AssistantPanel({
         onSend={onSend}
         onCancel={onCancel}
         suggestions={composerSuggestions}
+        files={project?.files}
+        onMention={onMention}
         placeholder={project?.activePath ? `Ask about ${project.activePath.split('/').pop()}…` : 'Ask for a change…'}
       />
     </section>

@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from . import __version__
-from .ai_chat import AssistError, active_provider, assist
+from .ai_chat import AssistError, active_provider, assist, complete
 from .ai_settings import AISettings, SettingsError, test_connection
 from .files import MAX_UPLOAD_BYTES, FileError, ProjectFiles
 from . import envs
@@ -97,6 +97,13 @@ class AssistBody(BaseModel):
     active_path: str | None = None
     last_run: dict | None = None
     history: list[dict] = []
+
+
+class CompleteBody(BaseModel):
+    path: str = ""
+    language: str = ""
+    prefix: str = ""
+    suffix: str = ""
 
 
 def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cli_python: str | None = None,
@@ -265,6 +272,11 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
             return assist(ai, files, body.model_dump())
         except AssistError as exc:
             return {"kind": "error", "text": str(exc)}
+
+    @app.post("/api/ai/complete")
+    def post_ai_complete(body: CompleteBody):
+        # Tab autocomplete: a short suggestion at the cursor, or "" (never an error dialog).
+        return complete(ai, body.model_dump())
 
     # ---------------- WebSocket: runs ----------------
 

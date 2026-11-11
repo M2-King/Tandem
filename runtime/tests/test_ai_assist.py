@@ -143,3 +143,18 @@ def test_a_notebook_selection_sends_the_selected_cell_code(client, project, fake
     # The notebook file is JSON, so the selected code itself goes with the request.
     assert "line 2 of cell 3 in W6.ipynb" in json.loads(sent)["messages"][-1]["content"]
     assert "X = df['Message']" in json.loads(sent)["messages"][-1]["content"]
+
+
+def test_tab_autocomplete_returns_a_clean_suggestion(client, project, fake):
+    # No model connected: no suggestion, no error.
+    assert client.post("/api/ai/complete", json={"path": "a.py", "prefix": "x = 1\n", "suffix": ""}).json() == {"text": ""}
+    client.put("/api/ai/settings", json={"provider": "openai", "base_url": fake + "/openai/v1", "api_key": KEY,
+                                         "model": "model-a", "activate": True})
+    Fake.reply = "```python\n    return x * 2\n```"
+    result = client.post("/api/ai/complete", json={"path": "tab.py", "prefix": "def double(x):\n    ret",
+                                                    "suffix": "\n\nprint(double(2))\n"}).json()
+    # Fences gone; the model repeated "    ret", which is already typed.
+    assert result == {"text": "urn x * 2"}
+    path, headers, body = Fake.seen[-1]
+    assert body["max_tokens"] == 200 and "You complete code" in body["messages"][0]["content"]
+    assert "    ret<CURSOR>\n\nprint(double(2))" in body["messages"][-1]["content"]

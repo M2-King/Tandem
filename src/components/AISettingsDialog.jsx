@@ -8,7 +8,7 @@ const MODEL_PLACEHOLDER = { anthropic: 'claude-opus-5-5', openai: 'Model name fr
 
 // Where the assistant's AI comes from. Keys are sent to the local runtime once
 // and stored there; the browser only ever learns that a key is saved.
-export default function AISettingsDialog({ backend, onClose, onSaved }) {
+export default function AISettingsDialog({ backend, onClose, onSaved, tabComplete, onTabComplete }) {
   const [settings, setSettings] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [tab, setTab] = useState('anthropic');
@@ -238,6 +238,17 @@ export default function AISettingsDialog({ backend, onClose, onSaved }) {
               <p className="field-error" role="alert">
                 {error}
               </p>
+            )}
+
+            {onTabComplete && (
+              <label className="ai-toggle">
+                <input type="checkbox" checked={!!tabComplete} onChange={(e) => onTabComplete(e.target.checked)} />
+                <span>
+                  <strong>Tab autocomplete.</strong> Suggests code as you type, in grey: Tab accepts it, Esc dismisses it,{' '}
+                  {navigator.platform?.match(/Mac|iPad|iPhone/) ? '⌘→' : 'Ctrl+→'} takes one word. Each suggestion is a
+                  small request to the model above.
+                </span>
+              </label>
             )}
 
             <p className="field-hint ai-note">

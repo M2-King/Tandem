@@ -359,6 +359,7 @@ export function createIpadBackend(config) {
     aiActive: () => ai.active(),
     testAI: (provider) => ai.test(provider),
     assist: (body, signal) => ai.assist(body, signal),
+    complete: (body, signal) => ai.complete(body, signal),
 
     // Same callbacks and handle as the desktop's startRun.
     startRun({ path, mode = 'run', breakpoints = [], onStart, onOutput, onPartial, onPaused, onResumed, onFinish }) {

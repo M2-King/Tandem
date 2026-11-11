@@ -139,6 +139,7 @@ export function createLocalBackend(config, { socket = true } = {}) {
     testAI: (provider) => client.api('/api/ai/test', { method: 'POST', body: { provider } }),
     aiActive: () => client.api('/api/ai/active').then((r) => r.active),
     assist: (body, signal) => client.api('/api/ai/assist', { method: 'POST', body, signal }),
+    complete: (body, signal) => client.api('/api/ai/complete', { method: 'POST', body, signal }),
 
     // Starts a real run. mode: 'run' | 'step' | 'debug'. Callbacks:
     //   onStart({python, cwd}), onOutput(line), onPartial(text),

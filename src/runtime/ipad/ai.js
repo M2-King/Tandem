@@ -25,6 +25,30 @@ When the developer asks for a change, or asks you to fix an error, propose ONE c
 
 Before the block, write one or two sentences saying what you changed and why. After the block, list the changes as short lines starting with "- ". Keep the developer's style and change only what is needed. Do not use a file block when you are only explaining or answering. Never claim you ran the code.`;
 
+// Tab autocomplete: a short continuation at the cursor (ghost text in the editor).
+export const COMPLETE_SYSTEM = `You complete code in Tandem's editor. You get one file with the marker <CURSOR> where the developer's cursor is. Reply with ONLY the text to insert at <CURSOR>: no explanation, no Markdown fences, and nothing that is already before or after the cursor. Finish the current line or add the next few lines (at most 8), in the file's style. If nothing useful fits, reply with nothing.`;
+const MAX_COMPLETE_TOKENS = 200;
+const MAX_PREFIX_CHARS = 6_000;
+const MAX_SUFFIX_CHARS = 2_000;
+
+// The model's reply as text to insert: no fences, no repeat of what surrounds the cursor.
+export function cleanCompletion(raw, prefix, suffix) {
+  let text = String(raw || '').replace(/\r\n/g, '\n');
+  const stripped = text.replace(/^\n+|\n+$/g, '');
+  if (stripped.trimStart().startsWith('```')) {
+    let lines = stripped.trim().split('\n').slice(1);
+    if (lines.length && lines.at(-1).trim().startsWith('```')) lines = lines.slice(0, -1);
+    text = lines.join('\n');
+  }
+  text = text.replaceAll('<CURSOR>', '');
+  const lineStart = prefix.slice(prefix.lastIndexOf('\n') + 1);
+  if (lineStart.trim() && text.startsWith(lineStart)) text = text.slice(lineStart.length);
+  const nextLine = suffix.split('\n')[0].trim();
+  if (nextLine && text.trimEnd().endsWith(nextLine)) text = text.trimEnd().slice(0, -nextLine.length);
+  text = text.split('\n').slice(0, 12).join('\n').trimEnd();
+  return text.trim() ? text : '';
+}
+
 const FILE_BLOCK = /<tandem-file path="([^"\n]+)">\n?([\s\S]*?)\n?<\/tandem-file>/;
 
 class AssistError extends Error {}
@@ -52,6 +76,7 @@ function contextMessage(request, projectFiles) {
     } else if (chip.type === 'selection') parts.push(`They selected lines ${chip.startLine}–${chip.endLine} of ${chip.path}.`);
     else if (chip.type === 'error') parts.push(`They are asking about the error in ${chip.path} at line ${chip.line}.`);
     else if (chip.type === 'chart') parts.push(`They are asking about a chart: ${chip.label}.`);
+    else if (chip.type === 'file') parts.push(`They mentioned ${chip.path} (its content is above).`);
   }
   const run = request.last_run;
   if (run?.path) {
@@ -115,15 +140,17 @@ export function createIpadAI({ api, token, settings }) {
       timeout: 300_000,
     });
 
-  async function proxyJSON(provider, path, { method = 'GET', body } = {}) {
+  async function proxyJSON(provider, path, { method = 'GET', body, signal } = {}) {
     let response;
     try {
       response = await fetch(`${proxyBase(provider)}/${path}`, {
         method,
+        signal,
         headers: { 'x-tandem-token': token, authorization: `Bearer ${PLACEHOLDER_KEY}`, ...(body ? { 'content-type': 'application/json' } : {}) },
         body: body ? JSON.stringify(body) : undefined,
       });
-    } catch {
+    } catch (e) {
+      if (e?.name === 'AbortError') throw e;
       throw new AssistError('Couldn’t reach the provider. Check your internet connection.');
     }
     const data = await response.json().catch(() => null);
@@ -227,5 +254,51 @@ export function createIpadAI({ api, token, settings }) {
     return { ...parseReply(text, request), model: provider.model, provider: provider.label };
   }
 
-  return { active, test, assist };
+  // Tab autocomplete. Never throws for provider problems: no suggestion instead.
+  async function complete(request, signal) {
+    const provider = await active();
+    if (!provider) return { text: '' };
+    const prefix = String(request.prefix || '').slice(-MAX_PREFIX_CHARS);
+    const suffix = String(request.suffix || '').slice(0, MAX_SUFFIX_CHARS);
+    if (!prefix.trim()) return { text: '' };
+    const messages = [{ role: 'user', content: `File ${request.path || 'untitled'}:\n${prefix}<CURSOR>${suffix}` }];
+    let text;
+    try {
+      if (provider.provider === 'anthropic') {
+        const client = new Anthropic({
+          apiKey: PLACEHOLDER_KEY,
+          baseURL: proxyBase('anthropic'),
+          dangerouslyAllowBrowser: true,
+          defaultHeaders: { 'x-tandem-token': token },
+          maxRetries: 0,
+          timeout: 20_000,
+        });
+        const response = await client.messages.create(
+          { model: provider.model, max_tokens: MAX_COMPLETE_TOKENS, system: COMPLETE_SYSTEM, messages },
+          { signal }
+        );
+        text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      } else if (provider.provider === 'openai') {
+        const data = await proxyJSON('openai', 'chat/completions', {
+          method: 'POST',
+          body: { model: provider.model, max_tokens: MAX_COMPLETE_TOKENS, messages: [{ role: 'system', content: COMPLETE_SYSTEM }, ...messages] },
+          signal,
+        });
+        text = data?.choices?.[0]?.message?.content || '';
+      } else {
+        const data = await proxyJSON('ollama', 'api/chat', {
+          method: 'POST',
+          body: { model: provider.model, stream: false, options: { num_predict: MAX_COMPLETE_TOKENS }, messages: [{ role: 'system', content: COMPLETE_SYSTEM }, ...messages] },
+          signal,
+        });
+        text = data?.message?.content || '';
+      }
+    } catch (e) {
+      if (e?.name === 'AbortError' || e instanceof Anthropic.APIUserAbortError) throw e;
+      return { text: '', error: anthropicError(e) || e.message };
+    }
+    return { text: cleanCompletion(text, prefix, suffix) };
+  }
+
+  return { active, test, assist, complete };
 }

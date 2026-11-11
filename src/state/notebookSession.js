@@ -52,6 +52,7 @@ export class NotebookSession {
       selected: this.selected,
       editing: this.editing,
       reveal: this.reveal,
+      target: this.target || null,
     };
   }
 
@@ -89,6 +90,24 @@ export class NotebookSession {
     if (!cell || cell.source === source) return;
     this.updateCell(id, (c) => ({ ...c, source }));
     this.emit({ changed: true });
+  }
+
+  // Search and replace: new sources for cells by position (Map index → source).
+  setSourcesAt(sources) {
+    if (!this.nb || !sources.size) return;
+    this.nb = { ...this.nb, cells: this.nb.cells.map((c, i) => (sources.has(i) ? { ...c, source: sources.get(i) } : c)) };
+    this.emit({ changed: true });
+  }
+
+  // Show a cell (a search result): select it and scroll it into view.
+  revealCell(index, line = 1) {
+    const cell = this.nb?.cells[index];
+    if (!cell) return;
+    this.selected = cell.id;
+    this.target = { id: cell.id, line, key: Date.now() };
+    if (cell.cell_type === 'markdown') this.editing = cell.id;
+    this.reveal += 1;
+    this.emit();
   }
 
   insert(type, { after = this.selected, before = null } = {}) {
@@ -313,3 +332,4 @@ export function closeNotebookSession(path) {
 }
 
 export const hasNotebookSession = (path) => sessions.has(path);
+export const openNotebookSession = (path) => sessions.get(path) || null;

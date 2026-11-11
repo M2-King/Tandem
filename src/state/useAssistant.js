@@ -163,9 +163,12 @@ export function useAssistant({ getFiles, getActivePath, onSave, request = sendAs
     [setChat]
   );
 
-  // Only one selection chip and one chart chip at a time.
+  // Only one selection chip and one chart chip at a time; any number of files (@ mentions).
   const addContext = useCallback((chip) => {
-    setDraftContext((list) => [...list.filter((c) => c.type !== chip.type), chip]);
+    setDraftContext((list) => [
+      ...list.filter((c) => (chip.type === 'file' ? !(c.type === 'file' && c.path === chip.path) : c.type !== chip.type)),
+      chip,
+    ]);
   }, []);
   const removeContext = useCallback((index) => setDraftContext((list) => list.filter((_, i) => i !== index)), []);
   const clearContext = useCallback(() => setDraftContext([]), []);

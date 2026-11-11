@@ -17,8 +17,9 @@ import {
   Package,
   Pencil,
 } from 'lucide-react';
-import '../lib/monacoSetup.js';
+import { monaco as monacoApi } from '../lib/monacoSetup.js';
 import { lineHeightFor } from './CodeEditor.jsx';
+import { trackEditor } from '../lib/editorRegistry.js';
 import { bestMime, joinText, stripAnsi } from '../lib/notebook.js';
 
 // A Jupyter notebook: code and Markdown cells, run in a real kernel.
@@ -102,12 +103,17 @@ function InputPrompt({ input, onSubmit }) {
 
 // Where a cell's selection sits, for the floating Ask AI / Explain / Fix bar.
 // Positions are relative to the editor area (.editor-body), which holds the bar.
-function selectionInfo(editor, cell) {
-  const selection = editor.getSelection();
+// With `line`, an empty selection means the cursor's whole line (Ctrl+K).
+function selectionInfo(editor, cell, { line = false } = {}) {
+  let selection = editor.getSelection();
   const model = editor.getModel();
+  if (selection && model && selection.isEmpty() && line) {
+    const n = selection.positionLineNumber;
+    selection = new monacoApi.Selection(n, 1, n, model.getLineMaxColumn(n));
+  }
   if (!selection || !model || selection.isEmpty()) return null;
   const text = model.getValueInRange(selection);
-  if (!text.trim()) return null;
+  if (!text.trim() && !line) return null;
   // A selection ending at column 1 doesn't really include that line.
   const endLine =
     selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber
@@ -158,6 +164,7 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
         theme="tandem-dusk"
         onChange={(v) => onChange(v ?? '')}
         onMount={(editor, monaco) => {
+          trackEditor(editor);
           const fit = () => setHeight(Math.max(lineHeightFor(fontSize) + 16, editor.getContentHeight()));
           editor.onDidContentSizeChange(fit);
           fit();
@@ -170,9 +177,15 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
           editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => keys.current('insert'));
           editor.onDidFocusEditorText(() => keys.current('focus'));
 
-          // Selection → the floating Ask AI / Explain / Fix bar.
           const api = selectionApi?.current;
           if (api) {
+            // Search results jump to a line in this cell.
+            const id = cellRef.current.id;
+            api.editors.set(id, editor);
+            editor.onDidDispose(() => api.editors.get(id) === editor && api.editors.delete(id));
+          }
+          // Selection → the floating Ask AI / Explain / Fix bar.
+          if (api?.setSelection) {
             const report = () => api.setSelection(selectionInfo(editor, cellRef.current));
             editor.onDidChangeCursorSelection(() => {
               if (!editor.hasTextFocus()) return; // e.g. text replaced in a cell you're not in
@@ -182,7 +195,7 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
             editor.onDidBlurEditorWidget(() => {
               // Let clicks on the bar land first; only clear this cell's own selection.
               setTimeout(() => {
-                if (document.activeElement?.closest('.selection-actions')) return;
+                if (document.activeElement?.closest('.selection-actions, .inline-edit')) return;
                 const id = cellRef.current.id;
                 api.setSelection((prev) => (prev?.cellId === id ? null : prev));
                 if (api.reporter === report) api.reporter = null;
@@ -197,6 +210,18 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
               run: () => {
                 const sel = selectionInfo(editor, cellRef.current);
                 if (sel) api.onAskAI(sel);
+              },
+            });
+            // Ctrl/Cmd+K: edit the selection (or this line) with AI, like Cursor.
+            editor.addAction({
+              id: 'tandem.inlineEdit',
+              label: 'Edit with AI',
+              keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK],
+              contextMenuGroupId: 'navigation',
+              contextMenuOrder: 0.5,
+              run: () => {
+                const sel = selectionInfo(editor, cellRef.current, { line: true });
+                if (sel) api.onInlineEdit?.(sel);
               },
             });
           }
@@ -334,15 +359,39 @@ function AddBar({ session, after }) {
 }
 
 // setSelection: a state setter for the editor's selection bar (takes a value or an updater).
-// onAskAI: Ctrl/Cmd+L in a cell, with that cell's selection.
-export default function NotebookView({ session, path, fontSize, onInstallPackage, setSelection, onAskAI }) {
+// onAskAI / onInlineEdit: Ctrl/Cmd+L and Ctrl/Cmd+K in a cell, with that cell's selection.
+export default function NotebookView({ session, path, fontSize, onInstallPackage, setSelection, onAskAI, onInlineEdit }) {
   const snap = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const scroller = useRef(null);
   // One stable object for every cell (cells are memoised), holding the latest callbacks.
-  const selectionApi = useRef({ reporter: null });
-  selectionApi.current.setSelection = setSelection || (() => {});
+  const selectionApi = useRef({ reporter: null, editors: new Map() });
+  selectionApi.current.setSelection = setSelection || null;
   selectionApi.current.onAskAI = onAskAI || (() => {});
+  selectionApi.current.onInlineEdit = onInlineEdit || null;
   const hasSelectionBar = !!setSelection;
+
+  // A search result in this notebook: put the cursor on its line.
+  useEffect(() => {
+    const target = snap.target;
+    if (!target) return undefined;
+    let tries = 0;
+    let timer;
+    const go = () => {
+      const editor = selectionApi.current.editors.get(target.id);
+      if (!editor) {
+        // The cell's editor may still be loading (the notebook just opened).
+        if (tries++ < 40) timer = setTimeout(go, 50);
+        return;
+      }
+      const line = Math.min(target.line, editor.getModel()?.getLineCount() || 1);
+      editor.setPosition({ lineNumber: line, column: 1 });
+      editor.revealLine(line);
+      editor.focus();
+      scroller.current?.querySelector('.nb-cell.is-selected')?.scrollIntoView?.({ block: 'center' });
+    };
+    timer = setTimeout(go, 30);
+    return () => clearTimeout(timer);
+  }, [snap.target]);
 
   // Keep the selection bar under the selection while the cells scroll.
   useEffect(() => {
@@ -426,7 +475,7 @@ export default function NotebookView({ session, path, fontSize, onInstallPackage
             editing={snap.editing === cell.id}
             input={snap.input?.cell === cell.id ? snap.input : null}
             session={session}
-            selectionApi={hasSelectionBar ? selectionApi : null}
+            selectionApi={selectionApi}
           />
         ))}
         <AddBar session={session} after={snap.cells[snap.cells.length - 1]?.id} />

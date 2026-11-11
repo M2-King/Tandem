@@ -4,7 +4,7 @@ import IconButton from './IconButton.jsx';
 import { typeOf } from '../lib/fileTypes.js';
 
 const CODE = new Set(['python', 'javascript', 'typescript', 'shell', 'r', 'java', 'c', 'cpp', 'html', 'css', 'sql']);
-const iconFor = (path) => {
+export const iconFor = (path) => {
   const type = typeOf(path)?.id;
   if (type === 'notebook') return NotebookText;
   if (type === 'database') return FileDatabase;

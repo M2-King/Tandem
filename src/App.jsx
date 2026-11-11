@@ -30,7 +30,13 @@ import SqlResults from './components/SqlResults.jsx';
 import { useSqlWorkspace } from './state/useSqlWorkspace.js';
 import { isSqlFile } from './lib/fileTypes.js';
 import { isNotebook } from './lib/notebook.js';
-import { closeNotebookSession, notebookSession } from './state/notebookSession.js';
+import { closeNotebookSession, notebookSession, openNotebookSession } from './state/notebookSession.js';
+import QuickPanel from './components/QuickPanel.jsx';
+import { matches as keyMatches, IS_MAC } from './lib/keys.js';
+import { replaceInText, replaceInCells, notebookCells, notebookWithSources } from './lib/search.js';
+import { runEditorAction } from './lib/editorRegistry.js';
+import { configureInlineCompletions } from './lib/inlineCompletions.js';
+import { configurePythonNav } from './lib/pythonNav.js';
 import AISettingsDialog from './components/AISettingsDialog.jsx';
 import ProjectsDialog from './components/ProjectsDialog.jsx';
 import { createRealAssistant } from './services/realAI.js';
@@ -145,6 +151,23 @@ export default function App() {
     if (IS_LOCAL) backend.aiActive().then(setAIActive, () => {});
   }, []);
   useEffect(() => refreshAI(), [refreshAI]);
+
+  // Tab autocomplete: asks the connected model; off without one or when turned off.
+  const tabCompleteRef = useRef(prefs.tabComplete);
+  tabCompleteRef.current = prefs.tabComplete !== false;
+  const completionProblem = useRef(false);
+  useEffect(() => {
+    if (!IS_LOCAL || !backend?.complete) return;
+    configureInlineCompletions({
+      complete: (body, signal) => backend.complete(body, signal),
+      enabled: () => tabCompleteRef.current && !!aiActiveRef.current,
+      onError: (message) => {
+        if (completionProblem.current) return; // say it once, not on every pause in typing
+        completionProblem.current = true;
+        notify(`Tab autocomplete: ${message}`, { label: 'AI settings', onClick: () => setAISettingsOpen(true) });
+      },
+    });
+  }, [notify]);
   const realRequest = useMemo(
     () =>
       IS_LOCAL
@@ -613,6 +636,214 @@ export default function App() {
 
   /* ---------- reset ---------- */
 
+  /* ---------- quick panel: go to file, commands, search and replace ---------- */
+
+  const [quick, setQuick] = useState(null); // { mode: files | commands | line | search | replace, key, query }
+  const openQuick = useCallback((mode) => {
+    let query = '';
+    if (mode === 'search' || mode === 'replace') {
+      // Start from the word or text selected in the editor, like VS Code.
+      const sel = caretRef.current;
+      if (sel.path === activeRef.current && sel.text && !sel.text.includes('\n') && sel.text.length <= 200) query = sel.text;
+    }
+    setQuick({ mode, key: Date.now(), query });
+  }, []);
+  const closeQuick = useCallback(() => setQuick(null), []);
+
+  // The open notebook's session for a path (search results, replace).
+  const sessionFor = (path) =>
+    IS_LOCAL && isNotebook(path) && ws.files[path] !== undefined
+      ? notebookSession(path, { text: ws.files[path], backend, save: (text) => ws.setFile(path, text) })
+      : null;
+
+  const searchSources = () =>
+    ws.fileOrder
+      .filter((path) => typeof ws.files[path] === 'string')
+      .map((path) => ({ path, text: ws.files[path], cells: isNotebook(path) ? openNotebookSession(path)?.nb?.cells : undefined }));
+
+  const goToLine = (path, line, extra = {}) => {
+    openFile(path);
+    setReviewingId(null);
+    setRevealRequest({ path, line, key: Date.now(), ...extra });
+    setFlash({ path, lines: [line], key: Date.now() });
+  };
+
+  // F12 into another file or notebook cell opens it here.
+  const navRef = useRef(null);
+  navRef.current = {
+    openAt: (path, line) => goToLine(path, line),
+    openCell: (path, cellId, line) => {
+      const session = openNotebookSession(path) || sessionFor(path);
+      const index = session?.nb?.cells.findIndex((c) => c.id === cellId) ?? -1;
+      if (index < 0) return;
+      if (ws.activePath !== path) openFile(path);
+      session.revealCell(index, line);
+    },
+  };
+  useEffect(() => {
+    configurePythonNav({
+      getFiles: () => filesRef.current,
+      openAt: (...args) => navRef.current.openAt(...args),
+      openCell: (...args) => navRef.current.openCell(...args),
+    });
+  }, []);
+
+  const openMatch = (m) => {
+    if (m.cell && IS_LOCAL) {
+      openFile(m.path);
+      setReviewingId(null);
+      sessionFor(m.path)?.revealCell(m.cell - 1, m.line);
+      return;
+    }
+    goToLine(m.path, m.line, { column: m.column, length: m.length });
+  };
+
+  // Replace one match (`only`) or every match. Files a run or debug session
+  // is using are left alone. Undo puts back whatever wasn't edited since.
+  const replaceInProject = ({ pattern, replacement, regex, only }) => {
+    const changes = [];
+    const skipped = [];
+    let count = 0;
+    const busyPath = sessionRef.current && !sessionRef.current.finished ? sessionRef.current.path : null;
+    for (const path of only ? [only.path] : ws.fileOrder) {
+      const text = ws.files[path];
+      if (typeof text !== 'string') continue;
+      if (path === busyPath) {
+        skipped.push(path);
+        continue;
+      }
+      if (isNotebook(path)) {
+        const open = openNotebookSession(path);
+        const cells = open?.nb?.cells || notebookCells(text);
+        if (!cells) continue;
+        const r = replaceInCells(cells, pattern, replacement, { regex, only });
+        if (!r.count) continue;
+        const before = new Map([...r.sources.keys()].map((i) => [i, cells[i].source]));
+        if (open) open.setSourcesAt(r.sources);
+        else ws.setFile(path, notebookWithSources(text, r.sources));
+        changes.push({ path, notebook: true, before, after: r.sources });
+        count += r.count;
+      } else {
+        const r = replaceInText(text, pattern, replacement, { regex, only });
+        if (!r.count) continue;
+        ws.setFile(path, r.text);
+        changes.push({ path, before: text, after: r.text });
+        count += r.count;
+      }
+    }
+    if (skipped.length) notify(`Skipped ${skipped.join(', ')}: it is running. Stop it to replace there.`);
+    if (!count) return;
+    const where = changes.length === 1 ? changes[0].path : `${changes.length} files`;
+    notify(`Replaced ${count} match${count === 1 ? '' : 'es'} in ${where}.`, { label: 'Undo', onClick: () => undoReplace(changes) });
+  };
+
+  const undoReplace = (changes) => {
+    const kept = [];
+    for (const c of changes) {
+      if (c.notebook) {
+        const open = openNotebookSession(c.path);
+        const cells = open?.nb?.cells || notebookCells(filesRef.current[c.path]);
+        if (!cells || [...c.after].some(([i, src]) => cells[i]?.source !== src)) {
+          kept.push(c.path);
+          continue;
+        }
+        if (open) open.setSourcesAt(c.before);
+        else ws.setFile(c.path, notebookWithSources(filesRef.current[c.path], c.before));
+      } else if (filesRef.current[c.path] === c.after) ws.setFile(c.path, c.before);
+      else kept.push(c.path);
+    }
+    notify(kept.length ? `Undid the replace, except in ${kept.join(', ')} (edited since).` : 'Undid the replace.');
+  };
+
+  const toggleOutput = () => {
+    if (resultsOpen && resultsTab === 'Output') setResultsOpen(false);
+    else {
+      setResultsTab('Output');
+      setResultsOpen(true);
+    }
+  };
+  // Ctrl/⌘+I: the assistant (Cursor's Agent). Pressed again from the composer, it closes.
+  const toggleAgent = () => {
+    if (assistantVisible && document.activeElement === composerRef.current) closeAssistant();
+    else {
+      showAssistant();
+      focusComposer();
+    }
+  };
+
+  const commands = [
+    { id: 'files', label: 'Go to file…', shortcut: 'Mod+P', run: () => openQuick('files') },
+    { id: 'search', label: 'Search in all files', shortcut: 'Mod+Shift+F', run: () => openQuick('search') },
+    { id: 'replace', label: 'Replace in all files', shortcut: 'Mod+Shift+H', run: () => openQuick('replace') },
+    { id: 'line', label: 'Go to line…', run: () => openQuick('line'), disabled: ws.activePath ? null : 'Open a file first' },
+    {
+      id: 'run',
+      label: sqlMode ? 'Run SQL' : activeNotebook ? 'Run all cells' : `Run ${runTarget || 'the file'}`,
+      run: handleRun,
+      disabled: !sqlMode && !activeNotebook && (runBlocked || (exec.session && !exec.session.finished ? 'Already running' : null)),
+    },
+    { id: 'stop', label: 'Stop', run: exec.stop, disabled: exec.session && !exec.session.finished ? null : 'Nothing is running', hidden: sqlMode },
+    { id: 'step', label: 'Step through', run: () => handleTrace('step'), hidden: sqlMode || !!activeNotebook },
+    { id: 'debug', label: 'Debug', run: () => handleTrace('debug'), hidden: sqlMode || !!activeNotebook },
+    { id: 'restart-kernel', label: 'Restart kernel', run: () => activeNotebook?.restart(), hidden: !activeNotebook },
+    { id: 'agent', label: 'Ask the assistant (Agent)', shortcut: 'Mod+I', run: () => (showAssistant(), focusComposer()) },
+    { id: 'edit-ai', label: 'Edit with AI at the cursor', shortcut: 'Mod+K', run: () => runEditorAction('tandem.inlineEdit') },
+    { id: 'ask-ai', label: 'Add the selection to the assistant', shortcut: 'Mod+L', run: () => runEditorAction('tandem.askAI') },
+    { id: 'find', label: 'Find in this file', shortcut: 'Mod+F', run: () => runEditorAction('actions.find') },
+    { id: 'find-replace', label: 'Replace in this file', shortcut: IS_MAC ? 'Mod+Alt+F' : 'Ctrl+H', run: () => runEditorAction('editor.action.startFindReplaceAction') },
+    { id: 'definition', label: 'Go to definition', shortcut: 'F12', run: () => runEditorAction('editor.action.revealDefinition') },
+    { id: 'rename', label: 'Rename symbol', shortcut: 'F2', run: () => runEditorAction('editor.action.rename') },
+    { id: 'comment', label: 'Comment or uncomment line', shortcut: 'Mod+/', run: () => runEditorAction('editor.action.commentLine') },
+    { id: 'next-match', label: 'Select the next match too', shortcut: 'Mod+D', run: () => runEditorAction('editor.action.addSelectionToNextFindMatch') },
+    { id: 'line-up', label: 'Move line up', shortcut: 'Alt+ArrowUp', run: () => runEditorAction('editor.action.moveLinesUpAction') },
+    { id: 'line-down', label: 'Move line down', shortcut: 'Alt+ArrowDown', run: () => runEditorAction('editor.action.moveLinesDownAction') },
+    { id: 'duplicate', label: 'Duplicate line', shortcut: 'Shift+Alt+ArrowDown', run: () => runEditorAction('editor.action.copyLinesDownAction') },
+    { id: 'delete-line', label: 'Delete line', shortcut: 'Mod+Shift+K', run: () => runEditorAction('editor.action.deleteLines') },
+    { id: 'output', label: 'Show or hide the output panel', shortcut: 'Ctrl+`', run: toggleOutput },
+    { id: 'files-panel', label: 'Show or hide the files panel', run: toggleFiles },
+    { id: 'assistant-panel', label: 'Show or hide the assistant', run: toggleAssistant },
+    { id: 'new-file', label: 'New file…', run: () => setNewFileOpen(sqlMode ? 'sql' : 'python'), hidden: !IS_LOCAL },
+    { id: 'close-tab', label: 'Close this tab', run: () => ws.activePath && closeTab(ws.activePath), hidden: !ws.activePath },
+    { id: 'sql', label: sqlMode ? 'Switch to the Python workspace' : 'Switch to the SQL workspace', run: () => setWorkspace(sqlMode ? 'python' : 'sql'), hidden: !IS_LOCAL },
+    { id: 'packages', label: 'Packages…', run: () => setEnvDialog({ tab: 'packages' }), hidden: !IS_LOCAL },
+    { id: 'ai-settings', label: 'AI settings…', run: () => setAISettingsOpen(true), hidden: !IS_LOCAL },
+    {
+      id: 'tab-complete',
+      label: prefs.tabComplete !== false ? 'Turn off Tab autocomplete' : 'Turn on Tab autocomplete',
+      run: () => update({ tabComplete: prefs.tabComplete === false }),
+      hidden: !IS_LOCAL,
+      disabled: aiActive ? null : 'Connect a model in AI settings first',
+    },
+    { id: 'projects', label: 'Projects…', run: () => setProjectsOpen(true), hidden: !IS_IPAD },
+    { id: 'font-up', label: 'Bigger editor text', run: () => changeFontSize(1) },
+    { id: 'font-down', label: 'Smaller editor text', run: () => changeFontSize(-1) },
+  ];
+
+  // Shortcuts that work anywhere in the window (Cursor's, where Tandem has the feature).
+  const globalKeys = useRef([]);
+  globalKeys.current = [
+    ['Mod+Shift+F', () => openQuick('search')],
+    ['Mod+Shift+H', () => openQuick('replace'), () => !document.querySelector('.quick-is-search')],
+    ['Mod+Shift+P', () => openQuick('commands')],
+    ['Mod+P', () => openQuick('files')],
+    ['Mod+I', toggleAgent],
+    ['Ctrl+`', toggleOutput],
+  ];
+  useEffect(() => {
+    const onKey = (e) => {
+      if (document.querySelector('.dialog')) return; // a modal dialog has the keyboard
+      for (const [spec, run, when] of globalKeys.current) {
+        if (!keyMatches(e, spec) || (when && !when())) continue;
+        e.preventDefault();
+        e.stopPropagation();
+        run();
+        return;
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, []);
+
   const resetDemo = () => {
     exec.reset();
     assistant.reset();
@@ -674,6 +905,7 @@ export default function App() {
         onDiffInline={(inline) => update({ diffInline: inline })}
         onReset={IS_LOCAL ? null : () => setConfirmReset(true)}
         onAISettings={IS_LOCAL ? () => setAISettingsOpen(true) : null}
+        onQuick={openQuick}
         onAddFiles={IS_LOCAL ? handleAddFiles : null}
         desktop={{ ...desktop, setMaterial: (m) => desktop.setMaterial(m, { busy: !!exec.session }) }}
         onOpenFolder={
@@ -705,6 +937,8 @@ export default function App() {
           resultsOpen={resultsOpen}
           resultsTab={resultsTab}
           newCharts={newCharts}
+          searchOpen={quick?.mode === 'search' || quick?.mode === 'replace'}
+          onSearch={() => (quick?.mode === 'search' || quick?.mode === 'replace' ? closeQuick() : openQuick('search'))}
           onResultsView={(tab) => {
             if (resultsOpen && resultsTab === tab) setResultsOpen(false);
             else {
@@ -828,6 +1062,12 @@ export default function App() {
                 context: [selectionChip(sel)],
               })
             }
+            onInlineEdit={(sel, instruction) =>
+              sendPrompt(`Edit ${selectionWhere(sel)}: ${instruction}`, {
+                intent: 'edit',
+                context: [selectionChip(sel)],
+              })
+            }
           />
           <div
             className={`results ${resultsOpen ? 'is-open' : 'is-closed'}`}
@@ -896,6 +1136,7 @@ export default function App() {
             onClose={closeAssistant}
             onConnectAI={IS_LOCAL ? () => setAISettingsOpen(true) : null}
             composerSuggestions={composerSuggestions}
+            onMention={(path) => assistant.addContext({ type: 'file', path, label: path })}
             onGoToCode={(chip) => {
               ws.openFile(chip.path);
               setReviewingId(null);
@@ -931,6 +1172,22 @@ export default function App() {
         )}
       </div>
 
+      {quick && (
+        <QuickPanel
+          request={quick}
+          onClose={closeQuick}
+          paths={ws.fileOrder}
+          commands={commands}
+          activePath={ws.activePath}
+          onOpenFile={openFile}
+          onGoToLine={(path, line) => goToLine(path, line)}
+          getSources={searchSources}
+          version={ws.files}
+          onOpenMatch={openMatch}
+          onReplace={replaceInProject}
+        />
+      )}
+
       <Toasts toasts={toasts} dismiss={dismiss} />
       <TooltipLayer />
 
@@ -954,6 +1211,11 @@ export default function App() {
             refreshAI();
           }}
           onSaved={(message) => notify(message)}
+          tabComplete={prefs.tabComplete !== false}
+          onTabComplete={(on) => {
+            update({ tabComplete: on });
+            completionProblem.current = false;
+          }}
         />
       )}
 

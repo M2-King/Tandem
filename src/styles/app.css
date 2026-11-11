@@ -4382,3 +4382,380 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
 .sql-history-dot.is-error {
   background: var(--error);
 }
+
+/* ---------------------------------------------------------------------------
+   Quick panel: go to file (Ctrl/⌘ P), commands (Ctrl/⌘ Shift P), and search
+   and replace in all files (Ctrl/⌘ Shift F / H). Floats at the top centre.
+   ------------------------------------------------------------------------ */
+.quick {
+  position: fixed;
+  top: calc(var(--toolbar-height) + 12px);
+  left: 50%;
+  z-index: 55;
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(72vh, 640px);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-50%);
+  padding: 6px;
+  background: var(--material-3);
+  -webkit-backdrop-filter: var(--blur-3);
+  backdrop-filter: var(--blur-3);
+  border: 1px solid var(--border-float);
+  border-radius: var(--radius-float);
+  box-shadow: var(--shadow-menu);
+  animation: quick-in var(--t-menu) var(--ease-out);
+}
+@keyframes quick-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px) scale(0.99);
+  }
+}
+.quick-search {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.quick-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.quick-field {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 4px 0 10px;
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.quick-field:focus-within {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.quick-field-icon {
+  flex: none;
+  color: var(--text-muted);
+  margin-right: 6px;
+}
+.quick-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--fs-lg);
+}
+.quick-input::placeholder {
+  color: var(--text-muted);
+}
+.quick-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+}
+.quick-toggle:hover {
+  background: var(--bg-hover);
+}
+.quick-toggle[aria-pressed='true'] {
+  background: var(--accent-tint);
+  color: var(--on-accent-tint);
+  box-shadow: inset 0 0 0 1px rgba(128, 155, 220, 0.45);
+}
+.quick-expand {
+  margin-top: 4px;
+}
+.quick-expand svg {
+  transition: transform var(--t-hover) var(--ease);
+}
+.quick-expand.is-open svg {
+  transform: rotate(90deg);
+}
+.quick-replace-all {
+  flex: none;
+  margin-left: 4px;
+}
+.quick-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 4px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--text-muted);
+}
+.quick-error {
+  color: var(--error);
+}
+.quick-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-top: 4px;
+  padding-bottom: 2px;
+}
+.quick-group + .quick-group {
+  margin-top: 6px;
+}
+.quick-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.quick-group-name {
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+}
+.quick-group-dir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.quick-count {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  font-size: var(--fs-xs);
+}
+.quick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+.quick-row.is-active {
+  background: var(--accent-soft);
+}
+.quick-row.is-disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+.quick-row-icon {
+  flex: none;
+  color: var(--text-secondary);
+}
+.quick-row-label {
+  white-space: nowrap;
+}
+.quick-row-detail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.quick-kbd {
+  margin-left: auto;
+  flex: none;
+}
+.quick-match {
+  padding-left: 30px;
+}
+.quick-where {
+  flex: none;
+  min-width: 34px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-align: right;
+}
+.quick-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+  font-size: var(--fs-code-ui);
+  color: var(--text-secondary);
+}
+.quick-hit {
+  background: rgba(217, 178, 92, 0.28);
+  color: var(--text-primary);
+  border-radius: 2px;
+}
+.quick-old {
+  background: rgba(229, 119, 111, 0.22);
+  color: var(--text-primary);
+  text-decoration: line-through;
+  border-radius: 2px;
+}
+.quick-new {
+  background: rgba(111, 191, 142, 0.24);
+  color: var(--text-primary);
+  border-radius: 2px;
+}
+.quick-new:empty {
+  display: none;
+}
+.quick-row-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-sm);
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+}
+.quick-row-btn:hover {
+  background: var(--bg-pressed);
+  color: var(--text-primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .quick {
+    animation: none;
+  }
+}
+.quick-row-label .quick-hit {
+  background: none;
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+
+/* Ctrl/⌘ K: edit with AI, a one-line prompt under the selection */
+.inline-edit {
+  position: absolute;
+  left: 56px;
+  z-index: 11;
+  width: min(560px, calc(100% - 72px));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 10px;
+  background: var(--material-3);
+  -webkit-backdrop-filter: var(--blur-3);
+  backdrop-filter: var(--blur-3);
+  border: 1px solid rgba(128, 155, 220, 0.45);
+  border-radius: var(--radius-float);
+  box-shadow: var(--shadow-menu);
+  animation: menu-in var(--t-menu) var(--ease-out);
+}
+.inline-edit-icon {
+  flex: none;
+  color: var(--accent);
+}
+.inline-edit-input {
+  flex: 1;
+  min-width: 0;
+  height: var(--control);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--fs-lg);
+}
+.inline-edit-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* @ mentions in the assistant composer */
+.composer {
+  position: relative;
+}
+.mention-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 12;
+  padding: 4px;
+  background: var(--material-3);
+  -webkit-backdrop-filter: var(--blur-3);
+  backdrop-filter: var(--blur-3);
+  border: 1px solid var(--border-float);
+  border-radius: var(--radius-float);
+  box-shadow: var(--shadow-menu);
+  cursor: default;
+  animation: menu-in var(--t-menu) var(--ease-out);
+}
+.mention-head {
+  padding: 4px 8px 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.mention-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-md);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.mention-row svg {
+  flex: none;
+  color: var(--text-secondary);
+}
+.mention-row.is-active {
+  background: var(--accent-soft);
+}
+.mention-dir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.ai-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: var(--space-3);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--group-fill);
+  box-shadow: var(--group-edge);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.ai-toggle input {
+  margin-top: 2px;
+  accent-color: var(--accent-fill);
+}
+.ai-toggle strong {
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+}
+/* The field draws the focus edge; no second ring on the input inside it. */
+.quick-input:focus-visible,
+.inline-edit-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
