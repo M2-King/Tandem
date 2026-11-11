@@ -19,6 +19,14 @@ on:
 permissions:
   contents: read
 
+# Cowork staging for the app build (docs/cowork-backend.md). Set these as
+# repository variables; leave them unset for the sample preview. The key is
+# the Supabase publishable key, never a secret one.
+env:
+  VITE_COWORK_MODE: ${{ vars.VITE_COWORK_MODE }}
+  VITE_TANDEM_SUPABASE_URL: ${{ vars.VITE_TANDEM_SUPABASE_URL }}
+  VITE_TANDEM_SUPABASE_KEY: ${{ vars.VITE_TANDEM_SUPABASE_KEY }}
+
 jobs:
   web:
     name: iPad web app (Chromium + WebKit)

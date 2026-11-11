@@ -44,16 +44,16 @@ export default function SignInPage({ cowork, localName, notify }) {
     setShakes((n) => n + 1);
   };
 
-  // Show the check, then the projects.
-  const finish = async (idOrEmail) => {
+  // Show the check, then the projects. Live mode passes the signed-in user.
+  const finish = async (idOrEmail, user = null) => {
     const person =
-      cowork.people[idOrEmail] || Object.values(cowork.people).find((p) => p.email === idOrEmail) || personForEmail(idOrEmail);
+      user || cowork.people[idOrEmail] || Object.values(cowork.people).find((p) => p.email === idOrEmail) || personForEmail(idOrEmail);
     setWelcome(person);
     setStep('done');
-    await pause(900);
+    await Promise.all([pause(900), user ? cowork.completeSignIn(user) : null]);
     if (!alive.current) return;
-    const signedIn = cowork.signIn(idOrEmail);
-    notify(`Signed in as ${signedIn.name}.`);
+    if (user) notify(`Signed in as ${user.email}.`);
+    else notify(`Signed in as ${cowork.signIn(idOrEmail).name}.`);
   };
 
   const submitEmail = async (e) => {
@@ -64,7 +64,14 @@ export default function SignInPage({ cowork, localName, notify }) {
     setEmail(address);
     setError(null);
     setBusy(true);
-    await pause(650); // "sending"
+    try {
+      // Live: the code is emailed by the sign-in service. Preview: a pause.
+      await (cowork.live ? cowork.sendCode(address) : pause(650));
+    } catch (err) {
+      if (!alive.current) return;
+      setBusy(false);
+      return fail(err.message);
+    }
     if (!alive.current) return;
     setBusy(false);
     setCode('');
@@ -77,6 +84,18 @@ export default function SignInPage({ cowork, localName, notify }) {
     const typed = code.replace(/\s/g, '');
     if (typed.length !== 6) return fail('Enter the 6-digit code from the email.');
     setBusy(true);
+    if (cowork.live) {
+      try {
+        const user = await cowork.verifyCode(email, typed);
+        if (!alive.current) return;
+        setBusy(false);
+        return finish(user.email, user);
+      } catch (err) {
+        if (!alive.current) return;
+        setBusy(false);
+        return fail(err.message);
+      }
+    }
     await pause(450); // "checking"
     if (!alive.current) return;
     setBusy(false);
@@ -177,7 +196,13 @@ export default function SignInPage({ cowork, localName, notify }) {
               </p>
             ) : (
               <p className="field-hint" id="signin-code-hint">
-                Preview: no email is sent. The code is <span className="mono">{SAMPLE_CODE}</span>.
+                {cowork.live ? (
+                  'The email comes from Tandem’s sign-in service. Check spam if it isn’t there in a minute.'
+                ) : (
+                  <>
+                    Preview: no email is sent. The code is <span className="mono">{SAMPLE_CODE}</span>.
+                  </>
+                )}
               </p>
             )}
             <button type="submit" className="btn btn-primary signin-submit" disabled={busy}>
@@ -196,14 +221,34 @@ export default function SignInPage({ cowork, localName, notify }) {
               >
                 <ArrowLeft size={14} aria-hidden="true" /> Use a different email
               </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => notify(`Preview: a new code would be sent to ${email}.`)}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={busy}
+                onClick={async () => {
+                  if (!cowork.live) return notify(`Preview: a new code would be sent to ${email}.`);
+                  try {
+                    await cowork.sendCode(email);
+                    notify(`Sent a new code to ${email}.`);
+                  } catch (err) {
+                    fail(err.message);
+                  }
+                  return undefined;
+                }}
+              >
                 Send a new code
               </button>
             </div>
           </form>
         )}
 
-        {step === 'email' && (
+        {cowork.configProblem && (
+          <p className="field-error signin-config" role="alert">
+            Cowork isn’t set up in this build: {cowork.configProblem}
+          </p>
+        )}
+
+        {step === 'email' && !cowork.live && (
           <div className="signin-samples" role="group" aria-labelledby="signin-samples-title">
             <p className="signin-samples-title" id="signin-samples-title">
               Preview: sign in as a sample person

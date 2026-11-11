@@ -4,7 +4,7 @@ import Dialog from '../components/Dialog.jsx';
 
 // A new shared project: a name; it starts with main.py and a notebook, and
 // you are its owner. Invite people from Share once it is open.
-export default function NewSharedProjectDialog({ existing, onCreate, onClose }) {
+export default function NewSharedProjectDialog({ existing, onCreate, onClose, startsEmpty = false }) {
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
 
@@ -48,8 +48,14 @@ export default function NewSharedProjectDialog({ existing, onCreate, onClose }) 
           </p>
         ) : (
           <p className="field-hint" id="new-shared-hint">
-            You’ll be the owner. It starts with <span className="mono">main.py</span> and <span className="mono">notebook.ipynb</span>; invite
-            people from Share.
+            {startsEmpty ? (
+              'You’ll be the owner. It starts empty: add or upload files, then invite people from Share.'
+            ) : (
+              <>
+                You’ll be the owner. It starts with <span className="mono">main.py</span> and <span className="mono">notebook.ipynb</span>; invite
+                people from Share.
+              </>
+            )}
           </p>
         )}
         <div className="dialog-actions">

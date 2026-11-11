@@ -41,6 +41,24 @@ function parseHash() {
   return m[1] ? { screen: 'project', id: m[1] } : { screen: 'home' };
 }
 
+// The Cowork route (in the URL hash), shared by the preview and live mode.
+export function useCoworkRoute() {
+  const [route, setRoute] = useState(parseHash);
+  useEffect(() => {
+    const onHash = () => setRoute(parseHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  const go = useCallback((screen, id) => {
+    const hash = screen === 'local' ? LOCAL_HASH : screen === 'home' ? '#/shared' : `#/shared/${id}`;
+    if ((window.location.hash || '') === hash) return;
+    if (hash) window.location.hash = hash;
+    else window.history.pushState(null, '', window.location.pathname + window.location.search);
+    setRoute(parseHash());
+  }, []);
+  return { route, go };
+}
+
 const slug = (name) =>
   name
     .toLowerCase()
@@ -58,7 +76,7 @@ export function useCowork({ notify }) {
   const [signedIn, setSignedIn] = useState(false);
   // Who just joined which project (their avatar arrives in the people list).
   const [arrival, setArrival] = useState(null);
-  const [route, setRoute] = useState(parseHash);
+  const { route, go } = useCoworkRoute();
   const [sync, setSync] = useState('saved'); // saved | saving | reconnecting
   const [tick, setTick] = useState(0);
   const pendingEdits = useRef(0);
@@ -68,20 +86,6 @@ export function useCowork({ notify }) {
   syncRef.current = sync;
   const projectsRef = useRef(projects);
   projectsRef.current = projects;
-
-  useEffect(() => {
-    const onHash = () => setRoute(parseHash());
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
-
-  const go = useCallback((screen, id) => {
-    const hash = screen === 'local' ? LOCAL_HASH : screen === 'home' ? '#/shared' : `#/shared/${id}`;
-    if ((window.location.hash || '') === hash) return;
-    if (hash) window.location.hash = hash;
-    else window.history.pushState(null, '', window.location.pathname + window.location.search);
-    setRoute(parseHash());
-  }, []);
 
   const viewer = people[viewerId];
   const roleIn = useCallback((project, id = viewerId) => project.members.find((m) => m.id === id)?.role || null, [viewerId]);
@@ -351,7 +355,10 @@ export function useCowork({ notify }) {
     [projects, viewerId, go]
   );
 
-  const join = useCallback(
+  // Joining in two steps, as live mode does: join() accepts (here there is
+  // nothing to wait for), enter() then adds you and opens the project.
+  const join = useCallback(async () => true, []);
+  const enter = useCallback(
     (id) => {
       const p = projects.find((x) => x.id === id);
       const invite = p?.invites.find((i) => i.email === viewer.email);
@@ -473,6 +480,7 @@ export function useCowork({ notify }) {
     go,
     createProject,
     join,
+    enter,
     decline,
     invite,
     cancelInvite,

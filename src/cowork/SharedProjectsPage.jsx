@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, ChevronRight, FolderOpen, HardDrive, Loader2, LogOut, Mail, Plus, Users } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronRight, FolderOpen, HardDrive, Loader2, LogOut, Mail, Plus, RefreshCw, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Avatar, AvatarStack } from './CoworkBits.jsx';
 import { SuccessCheck, pause } from './motion.jsx';
@@ -24,16 +24,18 @@ function InviteCard({ cowork, project, invite, from, people }) {
   useEffect(() => () => (alive.current = false), []);
   const join = async () => {
     setState('joining');
-    await pause(500);
+    const [ok] = await Promise.all([cowork.join(project.id), pause(500)]);
     if (!alive.current) return;
+    if (ok === false) return setState('open'); // the reason is shown as a message
     setState('joined');
     await pause(1000);
-    if (alive.current) cowork.join(project.id);
+    if (alive.current) cowork.enter(project.id);
   };
   const decline = async () => {
     setState('leaving');
     await pause(320, { motionOnly: true });
-    if (alive.current) cowork.decline(project.id);
+    const ok = await cowork.decline(project.id);
+    if (ok === false && alive.current) setState('open');
   };
   return (
     <div className={`invite-wrap ${state === 'leaving' ? 'is-leaving' : ''}`}>
@@ -92,10 +94,22 @@ export default function SharedProjectsPage({ cowork, localName, onOpenLocal, onN
             <h1 className="shared-title">Shared projects</h1>
             <p className="shared-sub">Work on the same files and notebooks with your team. Python runs on each person’s own device.</p>
           </div>
-          <button type="button" className="btn btn-primary" onClick={onNew}>
-            <Plus size={16} aria-hidden="true" /> New shared project
-          </button>
+          <div className="shared-head-actions">
+            {cowork.live && (
+              <button type="button" className="btn btn-secondary" onClick={() => cowork.refresh()} disabled={cowork.loading} data-tooltip="Check for new invitations and changes">
+                <RefreshCw size={15} className={cowork.loading ? 'spin' : undefined} aria-hidden="true" /> Refresh
+              </button>
+            )}
+            <button type="button" className="btn btn-primary" onClick={onNew}>
+              <Plus size={16} aria-hidden="true" /> New shared project
+            </button>
+          </div>
         </header>
+        {cowork.opening && (
+          <p className="shared-opening" role="status">
+            <Loader2 size={14} className="spin" aria-hidden="true" /> Opening the project…
+          </p>
+        )}
 
         {invitations.length > 0 && (
           <section className="shared-section" aria-labelledby="invites-heading">
@@ -214,7 +228,7 @@ export default function SharedProjectsPage({ cowork, localName, onOpenLocal, onN
         <div className="shared-foot">
           <Avatar person={viewer} size="sm" />
           <span className="shared-foot-text">
-            Signed in as {viewer.name} · {viewer.email}
+            Signed in as {viewer.email}
           </span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={cowork.signOut}>
             <LogOut size={14} aria-hidden="true" /> Sign out

@@ -13,10 +13,10 @@ export default function ProjectSettingsDialog({ cowork, project, onClose, notify
   const [confirming, setConfirming] = useState(false);
   const owners = project.members.filter((m) => m.role === 'owner').map((m) => cowork.people[m.id]?.name);
 
-  const save = (e) => {
+  const save = async (e) => {
     e.preventDefault();
     if (name.trim() === project.name) return;
-    const problem = cowork.renameProject(project.id, name);
+    const problem = await cowork.renameProject(project.id, name);
     if (problem) return setError(problem);
     setError(null);
     notify(`Renamed the project to ${name.trim()}.`);
@@ -32,7 +32,8 @@ export default function ProjectSettingsDialog({ cowork, project, onClose, notify
         </button>
       </div>
       <p className="dialog-text share-intro">
-        You’re {role === 'owner' ? 'an owner' : 'a member'} of {project.name}. Preview: changes here stay in this page.
+        You’re {role === 'owner' ? 'an owner' : 'a member'} of {project.name}.
+        {cowork.live ? '' : ' Preview: changes here stay in this page.'}
       </p>
 
       <section className="settings-section" aria-labelledby="settings-name">

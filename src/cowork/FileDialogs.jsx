@@ -18,9 +18,13 @@ export function RenameFileDialog({ path, onRename, onClose }) {
     el.setSelectionRange(slash, dot > slash ? dot : path.length);
   }, [path]);
 
-  const submit = (e) => {
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
     e.preventDefault();
-    const problem = onRename(value);
+    if (busy) return;
+    setBusy(true);
+    const problem = await onRename(value);
+    setBusy(false);
     if (problem) setError(problem);
     else onClose();
   };
@@ -58,8 +62,8 @@ export function RenameFileDialog({ path, onRename, onClose }) {
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn btn-primary">
-            Rename
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy ? 'Renaming…' : 'Rename'}
           </button>
         </div>
       </form>

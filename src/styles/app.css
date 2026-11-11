@@ -5826,3 +5826,34 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
 .signin-form .field-input {
   width: 100%;
 }
+.shared-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.shared-opening {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.sync-status.is-unsaved {
+  color: var(--error);
+  background: rgba(229, 119, 111, 0.12);
+}
+.sync-status.is-unsaved svg {
+  color: var(--error);
+}
+@media (max-width: 600px) {
+  .shared-head-actions {
+    width: 100%;
+  }
+  .shared-head-actions .btn {
+    flex: 1;
+  }
+  .cowork-strip .sync-status.is-unsaved .sync-text {
+    display: inline;
+  }
+}

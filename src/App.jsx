@@ -47,6 +47,8 @@ import { buildRunAnalysis, proposalForRun } from './services/analysisService.js'
 import { shortHash } from './lib/text.js';
 import { RunModeContext, COWORK_RUN_MODE, DEMO_RUN_MODE } from './lib/runMode.js';
 import { useCowork } from './cowork/useCowork.js';
+import { useCoworkLive } from './cowork/live/useCoworkLive.js';
+import { COWORK_LIVE } from './cowork/live/api.js';
 import { createCoworkBackend } from './cowork/coworkBackend.js';
 import { AvatarStack, CoworkTitle, DeviceChip, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
 import ProjectSettingsDialog from './cowork/ProjectSettingsDialog.jsx';
@@ -61,6 +63,20 @@ const DATA_FILE = 'data/housing.csv';
 // Real mode talks to the local runtime; Demo mode never does. Decided once.
 setupIpadShell();
 const backend = IS_IPAD ? createIpadBackend(RUNTIME_CONFIG) : IS_LOCAL ? createLocalBackend(RUNTIME_CONFIG) : null;
+
+// Cowork: the sample preview (UI review) or live mode (Supabase), chosen
+// when the app is built (VITE_COWORK_MODE). Fixed for the page's life, so
+// the hook order is stable.
+const useCoworkMode = COWORK_LIVE ? useCoworkLive : useCowork;
+const LIVE_RUN_BLOCKED =
+  'Running shared projects isn’t available yet: each member’s own Python comes in a later update. Projects on this device still run.';
+// Live mode: notebooks in shared projects don't run yet either.
+const liveNotebookBackend = {
+  startKernel(_path, h) {
+    setTimeout(() => h.onRejected?.(LIVE_RUN_BLOCKED), 0);
+    return { execute() {}, input() {}, interrupt() {}, restart() {}, shutdown() {} };
+  },
+};
 
 // Rows and columns of the sample CSV, read from the file as it is now.
 // The block of code that draws figure `index` in a script: each figure ends
@@ -115,9 +131,9 @@ export default function App() {
 
   // Cowork preview: shared projects (sample data). A shared project uses the
   // same layout with its own files, and runs on "this device" (sample results).
-  const cowork = useCowork({ notify });
+  const cowork = useCoworkMode({ notify });
   const inCowork = cowork.screen === 'project';
-  const onSharedHome = cowork.screen === 'home' || cowork.screen === 'signin';
+  const onSharedHome = ['home', 'signin', 'opening'].includes(cowork.screen);
   const coworkRef = useRef(cowork);
   coworkRef.current = cowork;
   const coworkBackend = useMemo(
@@ -164,7 +180,9 @@ export default function App() {
   }, [coworkProjectId]);
 
   const runBlocked = inCowork
-    ? null
+    ? cowork.live
+      ? LIVE_RUN_BLOCKED
+      : null
     : !IS_LOCAL
     ? null
     : runtime.connection !== 'connected'
@@ -450,7 +468,7 @@ export default function App() {
     (IS_LOCAL || inCowork) && isNotebook(ws.activePath) && ws.files[ws.activePath] !== undefined
       ? notebookSession(notebookKey(ws.activePath), {
           text: ws.files[ws.activePath],
-          backend: inCowork ? coworkBackend : backend,
+          backend: inCowork ? (cowork.live ? liveNotebookBackend : coworkBackend) : backend,
           save: ((path) => (text) => ws.setFile(path, text))(ws.activePath),
         })
       : null;
@@ -731,7 +749,10 @@ export default function App() {
         return { person: cowork.people[m.id], you: m.id === cowork.viewer.id, online: m.id === cowork.viewer.id || !!here, where: offline ? null : here?.path };
       })
     : [];
-  const openShare = () => setShareOpen(true);
+  const openShare = () => {
+    setShareOpen(true);
+    cowork.refreshPeople?.(); // live: who joined since the project was opened
+  };
   // You, just joined: your avatar arrives in the people list.
   const arrivingId = inCowork && cowork.arrival?.project === cowork.project.id ? cowork.arrival.person : null;
   const coworkControls = inCowork && (
@@ -761,7 +782,7 @@ export default function App() {
             <CoworkTitle cowork={cowork}>{inCowork && <span className="cowork-inline">{coworkControls}</span>}</CoworkTitle>
           ) : undefined
         }
-        beforeRun={inCowork ? <span className="toolbar-device"><DeviceChip /></span> : null}
+        beforeRun={inCowork && !cowork.live ? <span className="toolbar-device"><DeviceChip /></span> : null}
         hideWork={onSharedHome}
         onSharedProjects={onSharedHome ? null : () => cowork.go('home')}
         projectName={projectName}
@@ -774,6 +795,7 @@ export default function App() {
                 session,
                 runTarget: activeNotebook ? ws.activePath : runTarget,
                 simple: true,
+                blockedReason: runBlocked,
                 runTooltip: activeNotebook ? 'Run all cells on this device' : `Run ${runTarget} on this device`,
                 onRun: handleRun,
                 onStop: exec.stop,
@@ -842,8 +864,8 @@ export default function App() {
         <div className="cowork-strip" role="region" aria-label={`${cowork.project.name}: people and status`}>
           <AvatarStack entries={peopleEntries} onClick={openShare} offline={offline} arrivingId={arrivingId} />
           <SyncStatus sync={cowork.sync} />
-          <PreviewMenu cowork={cowork} inProject />
-          <DeviceChip />
+          {!cowork.live && <PreviewMenu cowork={cowork} inProject />}
+          {!cowork.live && <DeviceChip />}
           <ShareButton onClick={openShare} />
           <SettingsButton onClick={() => setSettingsOpen(true)} />
         </div>
@@ -937,7 +959,7 @@ export default function App() {
             }}
             remoteCursors={remoteCursors}
             notebookPresence={notebookPresence}
-            kernelNote={inCowork ? 'this device · preview' : null}
+            kernelNote={inCowork ? (cowork.live ? 'shared projects don’t run yet' : 'this device · preview') : null}
             onOpenDatabase={
               IS_LOCAL && !inCowork
                 ? (path) => {
@@ -1177,9 +1199,9 @@ export default function App() {
         <RenameFileDialog
           path={renaming}
           onClose={() => setRenaming(null)}
-          onRename={(to) => {
+          onRename={async (to) => {
             const from = renaming;
-            const problem = ws.renameFile(from, to);
+            const problem = await ws.renameFile(from, to);
             if (!problem && to.trim() !== from) {
               if (isNotebook(from)) closeNotebookSession(notebookKey(from));
               notify(`Renamed ${from} to ${to.trim()}.`);
@@ -1203,10 +1225,11 @@ export default function App() {
         <NewSharedProjectDialog
           existing={cowork.projects}
           onClose={() => setNewSharedOpen(false)}
-          onCreate={(name) => {
+          startsEmpty={!!cowork.live}
+          onCreate={async (name) => {
             setNewSharedOpen(false);
-            cowork.createProject(name);
-            notify(`Created ${name}. Invite people from Share.`);
+            const id = await cowork.createProject(name);
+            if (id) notify(`Created ${name}. Invite people from Share.`);
           }}
         />
       )}

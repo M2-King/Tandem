@@ -52,5 +52,31 @@ npx vite preview
 - Small additions to `App.jsx`, the toolbar, rail, file list, editor,
   notebook, results panel and `useExecution.js`.
 
-Not in this phase: real accounts, live editing between people (to be verified
-with two accounts in the sync phase), real Python in the browser.
+## Live mode
+
+`VITE_COWORK_MODE=live` connects the same screens to a Supabase staging
+project: see [cowork-backend.md](cowork-backend.md). Without it the app shows
+this preview.
+
+### Testing live mode without a staging project
+
+`supabase/tests/local-supabase.mjs` stands in for Supabase's sign-in and API
+on a local Postgres, running the real migration and access rules (codes are
+read from `/__test/code?email=…` instead of email):
+
+```sh
+# Postgres on 127.0.0.1:54329, then:
+createdb -h 127.0.0.1 -p 54329 -U postgres cowork_e2e
+psql -h 127.0.0.1 -p 54329 -U postgres -d cowork_e2e -f supabase/tests/local_auth_stub.sql
+psql -h 127.0.0.1 -p 54329 -U postgres -d cowork_e2e -f supabase/migrations/001_tandem_cowork.sql
+COWORK_TEST_DB=postgres://postgres@127.0.0.1:54329/cowork_e2e npm run cowork:local
+VITE_COWORK_MODE=live VITE_TANDEM_SUPABASE_URL=http://127.0.0.1:54400 \
+  VITE_TANDEM_SUPABASE_KEY=local npm run dev
+```
+
+The database access rules have their own tests:
+`COWORK_TEST_DB=postgres://…/cowork_test npm run test:cowork-db` (a database
+with the stub and the migration applied).
+
+Still to come: live editing between people, keeping sessions across app
+restarts, and running shared projects with each device's Python.

@@ -67,14 +67,22 @@ export default function ShareDialog({ cowork, project, presence, onClose, notify
   const owners = project.members.filter((m) => m.role === 'owner');
   const members = project.members.filter((m) => m.role === 'member');
 
-  const submit = (e) => {
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
     e.preventDefault();
-    const problem = cowork.invite(project.id, email, role);
+    if (busy) return;
+    setBusy(true);
+    const problem = await cowork.invite(project.id, email, role);
+    setBusy(false);
     if (problem) {
       setError(problem);
       return;
     }
-    notify(`Invited ${email.trim().toLowerCase()} (preview: no email is sent).`);
+    notify(
+      cowork.live
+        ? `Invited ${email.trim().toLowerCase()}. They’ll see it in Shared projects when they sign in.`
+        : `Invited ${email.trim().toLowerCase()} (preview: no email is sent).`
+    );
     setEmail('');
     setError(null);
   };
@@ -117,8 +125,8 @@ export default function ShareDialog({ cowork, project, presence, onClose, notify
               <option value="owner">Owner</option>
             </select>
           </label>
-          <button type="submit" className="btn btn-primary share-invite-btn">
-            Invite
+          <button type="submit" className="btn btn-primary share-invite-btn" disabled={busy}>
+            {busy ? 'Inviting…' : 'Invite'}
           </button>
           {error ? (
             <p className="field-error share-msg" id="share-error" role="alert">
@@ -126,7 +134,9 @@ export default function ShareDialog({ cowork, project, presence, onClose, notify
             </p>
           ) : (
             <p className="field-hint share-msg" id="share-hint">
-              Preview: invitations are added below; no email is sent.
+              {cowork.live
+                ? 'They see the invitation in Shared projects after signing in with this email.'
+                : 'Preview: invitations are added below; no email is sent.'}
             </p>
           )}
         </form>
@@ -180,6 +190,7 @@ export default function ShareDialog({ cowork, project, presence, onClose, notify
                     </span>
                     {isOwner && (
                       <span className="share-controls">
+                        {cowork.viewAs && (
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
@@ -191,6 +202,7 @@ export default function ShareDialog({ cowork, project, presence, onClose, notify
                         >
                           <Eye size={14} aria-hidden="true" /> Preview as invitee
                         </button>
+                        )}
                         <button
                           type="button"
                           className="icon-btn icon-btn-sm"
@@ -217,8 +229,9 @@ export default function ShareDialog({ cowork, project, presence, onClose, notify
           <button
             type="button"
             className="btn btn-ghost share-leave"
-            onClick={() => {
-              cowork.removeMember(project.id, viewer.id);
+            onClick={async () => {
+              const ok = await cowork.removeMember(project.id, viewer.id);
+              if (ok === false) return;
               onClose();
               cowork.go('home');
               notify(`You left ${project.name}.`);

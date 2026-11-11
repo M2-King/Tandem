@@ -17,3 +17,7 @@ desktop/release/
 ipad/App/Resources/web/
 ipad/App/Tandem.xcodeproj/
 build/
+
+# Local settings (Cowork staging keys)
+.env.local
+.env.*.local

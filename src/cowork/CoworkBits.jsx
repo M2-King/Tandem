@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, Laptop, Loader2, LogOut, RefreshCw, RotateCcw, Settings, Share2, UserRound, WifiOff } from 'lucide-react';
+import { Check, ChevronLeft, CloudOff, Laptop, Loader2, LogOut, RefreshCw, RotateCcw, Settings, Share2, UserRound, WifiOff } from 'lucide-react';
 import Menu, { MenuItem } from '../components/Menu.jsx';
 import { initialsOf } from './fixtures.js';
 
@@ -54,6 +54,11 @@ export function AvatarStack({ entries, max = 3, onClick, offline, arrivingId }) 
 const SYNC = {
   saved: { Icon: Check, text: 'Saved', tip: 'Your edits are saved to the shared project.' },
   saving: { Icon: Loader2, text: 'Saving…', tip: 'Saving your edits to the shared project.', spin: true },
+  unsaved: {
+    Icon: CloudOff,
+    text: 'Unsaved',
+    tip: 'An edit couldn’t be saved and is kept only in this app. Copy the draft before closing the app if it still fails.',
+  },
   reconnecting: {
     Icon: RefreshCw,
     text: 'Reconnecting…',
@@ -181,7 +186,7 @@ export function CoworkTitle({ cowork, children }) {
       ) : (
         <span className="cowork-project-name">Shared projects</span>
       )}
-      <PreviewMenu cowork={cowork} inProject={!!project} className={`toolbar-preview ${project ? 'in-project' : ''}`} />
+      {!cowork.live && <PreviewMenu cowork={cowork} inProject={!!project} className={`toolbar-preview ${project ? 'in-project' : ''}`} />}
       {children}
     </>
   );
