@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X, ChevronUp, ChevronDown, FileCode2, FileSpreadsheet, FileDiff, MessageSquarePlus, MessageSquareText, Wrench, Check, AlertTriangle, StepForward, FastForward, RotateCcw, Square, Bug, Footprints, Info, CircleCheck, ArrowDownToLine, ArrowUpFromLine, Loader2 } from 'lucide-react';
 import CodeEditor from './CodeEditor.jsx';
 import NotebookView from './NotebookView.jsx';
+import { isDatabase, typeOf } from '../lib/fileTypes.js';
 import DiffReview from './DiffReview.jsx';
 import { TRACE } from '../services/traceService.js';
 import { SAMPLE_FILES } from '../data/sampleProject.js';
@@ -20,7 +21,7 @@ function fileMeta(path, text = '') {
     }
   }
   if (path.endsWith('.csv')) return `CSV · ${Math.max(0, text.trim().split('\n').length - 1)} rows`;
-  return `${path.endsWith('.py') ? 'Python' : 'Text'} · ${lines} lines`;
+  return `${typeOf(path)?.label ?? 'Text'} · ${lines} lines`;
 }
 
 function Tabs({ openTabs, activePath, onSelect, onClose, reviewPath, files }) {
@@ -380,6 +381,9 @@ export default function EditorPane(props) {
     onFix,
     notebook,
     onInstallPackage,
+    onRunShortcut,
+    onCaret,
+    onOpenDatabase,
   } = props;
   const [selection, setSelection] = useState(null);
   const [diffNav, setDiffNav] = useState(null);
@@ -450,6 +454,16 @@ export default function EditorPane(props) {
             <p className="empty-title">{fileName(activePath)} can’t be opened here</p>
             <p className="empty-text">Only text files up to 2 MB open in the editor. The file on disk is unchanged.</p>
           </div>
+        ) : isDatabase(activePath) ? (
+          <div className="empty-state">
+            <p className="empty-title">{fileName(activePath)} is a SQLite database</p>
+            <p className="empty-text">Explore and query it in the SQL workspace.</p>
+            {onOpenDatabase && (
+              <button type="button" className="btn btn-primary" onClick={() => onOpenDatabase(activePath)}>
+                Open in the SQL workspace
+              </button>
+            )}
+          </div>
         ) : notebook && !showDiff ? (
           <NotebookView key={activePath} session={notebook} path={activePath} fontSize={fontSize} onInstallPackage={onInstallPackage} />
         ) : showDiff ? (
@@ -471,6 +485,8 @@ export default function EditorPane(props) {
               onSelection={setSelection}
               onAskAI={() => currentSelection && onAskAI(currentSelection)}
               revealRequest={revealRequest}
+              onRunShortcut={onRunShortcut}
+              onCaret={onCaret}
             />
             <SelectionActions
               selection={currentSelection}

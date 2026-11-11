@@ -143,3 +143,17 @@ def test_upload_outside_the_project_is_refused(client: TestClient, path):
 def test_upload_requires_token(client: TestClient):
     r = client.post("/api/upload", params={"path": "t.txt"}, content=b"x", headers={"x-tandem-token": "wrong"})
     assert r.status_code == 403
+
+
+def test_raw_bytes_round_trip_inside_the_project_only(client, project):
+    blob = bytes(range(256)) * 10
+    assert client.put("/api/raw", params={"path": "data/practice.db"}, content=blob).status_code == 200
+    assert (project / "data" / "practice.db").read_bytes() == blob
+    assert client.get("/api/raw", params={"path": "data/practice.db"}).content == blob
+    assert client.put("/api/raw", params={"path": "data/practice.db"}, content=b"v2").status_code == 200
+    assert client.get("/api/raw", params={"path": "data/practice.db"}).content == b"v2"
+    assert client.get("/api/raw", params={"path": "missing.db"}).status_code == 404
+    for bad in ("../x.db", "/etc/passwd"):
+        assert client.get("/api/raw", params={"path": bad}).status_code in (400, 404)
+        assert client.put("/api/raw", params={"path": bad}, content=b"x").status_code == 400
+    assert client.get("/api/raw", params={"path": "data/practice.db"}, headers={"x-tandem-token": "no"}).status_code == 403

@@ -4050,3 +4050,335 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
     padding-left: 34px;
   }
 }
+
+/* ---------- Python | SQL workspace switch ---------- */
+.workspace-switch {
+  margin-right: var(--space-2);
+}
+.workspace-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+@media (max-width: 760px) {
+  .workspace-label {
+    display: none;
+  }
+}
+.run-simple {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------- New file: kinds of file ---------- */
+.dialog-newfile {
+  width: min(560px, calc(100vw - 32px));
+}
+.newfile-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  margin: 10px 0 14px;
+  max-height: 248px;
+  overflow: auto;
+}
+.newfile-type {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--group-edge);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.newfile-type:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.newfile-type.is-active {
+  background: var(--bg-selected);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1.5px var(--accent, #7c9cf0);
+}
+.newfile-ext {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.newfile-name {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.newfile-name .field-input {
+  flex: 1;
+  min-width: 0;
+}
+.newfile-suffix {
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+
+/* ---------- SQL workspace: database panel ---------- */
+.sidebar-stack {
+  width: var(--w);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sidebar-stack > .sidebar-inner {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+.db-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  max-height: 58%;
+  min-height: 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  padding-bottom: 8px;
+}
+.db-choose {
+  padding: 0 10px 6px;
+}
+.db-choose select {
+  width: 100%;
+}
+.db-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 12px 8px;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.db-empty p {
+  margin: 0 0 4px;
+}
+.db-tables,
+.db-columns {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.db-tables {
+  overflow: auto;
+  min-height: 0;
+  padding: 0 6px;
+}
+.db-table {
+  display: flex;
+  align-items: center;
+}
+.db-twisty {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 26px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.db-table-name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.db-table-name:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.db-table-name .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.db-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.db-columns li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 2px 40px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.db-columns svg {
+  color: #d9b98a;
+}
+.db-dot {
+  width: 11px;
+  text-align: center;
+}
+.db-dot::before {
+  content: '·';
+  color: var(--text-muted);
+}
+.db-type {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: lowercase;
+}
+.db-note {
+  padding: 4px 10px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.db-practice {
+  align-self: flex-start;
+  margin: 6px 10px 0;
+}
+.db-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 6px 12px 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ---------- SQL workspace: results ---------- */
+.sql-results-body {
+  padding: 8px 12px 16px;
+  overflow: auto;
+}
+.sql-summary {
+  margin: 0 0 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.sql-statement {
+  margin-bottom: 14px;
+}
+.sql-statement-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+.sql-index {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.sql-snippet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sql-meta {
+  margin-left: auto;
+  flex: none;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.sql-grid-wrap {
+  max-height: 340px;
+  overflow: auto;
+  border-radius: var(--radius);
+  box-shadow: var(--group-edge);
+}
+.sql-grid {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  min-width: 100%;
+}
+.sql-grid th,
+.sql-grid td {
+  padding: 4px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+  white-space: nowrap;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sql-grid thead th {
+  position: sticky;
+  top: 0;
+  background: rgb(30, 34, 42);
+  color: var(--text-primary);
+  font-weight: 600;
+  z-index: 1;
+}
+.sql-grid td.is-number {
+  text-align: right;
+}
+.sql-grid td.is-null {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.sql-rownum {
+  width: 1%;
+  color: var(--text-muted);
+  text-align: right !important;
+  font-size: 11px;
+}
+.sql-empty,
+.sql-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.sql-done svg {
+  color: var(--success);
+}
+.sql-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sql-history li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.sql-history-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+}
+.sql-history-dot.is-ok {
+  background: var(--success);
+}
+.sql-history-dot.is-error {
+  background: var(--error);
+}

@@ -92,6 +92,17 @@ Status of the Python and Jupyter runtime work. Each item is marked:
 | Kernels end with their window or tab; can't be driven from another window | done | tests |
 | iPad: one long-lived Pyodide per notebook (state carries over), IPython-style display, inline charts, input(), Interrupt, Restart | done | web tests (Chromium; WebKit and the simulator in CI) |
 
+## SQL workspace and file types — done
+
+| Item | Status | How it was verified |
+| --- | --- | --- |
+| Python / SQL switch in the toolbar; the SQL workspace has a database panel (tables, columns, row counts) and a results grid | done | browser (laptop), web tests (iPad) |
+| Real SQLite (sql.js) in a worker, the same on laptop and iPad; Stop ends a runaway query and reopens the database as last saved | done | browser |
+| Run the whole .sql file, or the selection (Ctrl/Cmd+Enter or ▶ Run); each statement's rows, changes, time; errors with statement and line; history; copy as CSV | done | browser |
+| Changes are saved to the .db file in the project straight away; Python's sqlite3 reads the same file | done | browser + CPython sqlite3 (laptop); Pyodide sqlite3 (iPad web test) |
+| Practice database (a made-up school) and practice.sql exercises | done | browser, web tests |
+| New file: choose the kind (Python, notebook, SQL, SQLite database, Markdown, text, CSV, JSON, YAML, HTML, CSS, JavaScript, TypeScript, shell, R, Java, C, C++, XML, config, or any name); extension and a starter template are added; highlighting for each | done | browser |
+
 ## Pending
 
 - Phase 5: machine-learning sample project with real scikit-learn metrics.

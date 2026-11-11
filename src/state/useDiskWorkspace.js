@@ -185,6 +185,9 @@ export function useDiskWorkspace(onSave, backend, { notify } = {}) {
     [backend]
   );
 
+  // A file created outside the editor (a database the SQL workspace saved): list it.
+  const noteFile = useCallback((path) => setFileOrder((order) => (order.includes(path) ? order : [...order, path].sort())), []);
+
   const openFile = useCallback(
     (path) =>
       setUi((u) => ({
@@ -242,6 +245,7 @@ export function useDiskWorkspace(onSave, backend, { notify } = {}) {
     toggleBreakpoint,
     createFile,
     addFiles,
+    noteFile,
     flush,
     resetFile: () => {},
     reset: () => {},
