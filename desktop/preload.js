@@ -19,4 +19,5 @@ contextBridge.exposeInMainWorld('tandemDesktop', {
   onMaximized: listen('desktop:maximized'),
   onWallpaper: listen('desktop:wallpaper'),
   onRuntimeExit: listen('desktop:runtime-exit'),
+  onOpenFile: listen('desktop:open-file'),
 });

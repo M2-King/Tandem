@@ -91,6 +91,32 @@ jobs:
           npm ci
           npx electron-builder --win --publish never
 
+      - name: Check the installer ("Open with" entries)
+        shell: pwsh
+        run: |
+          $classes = 'HKCU:\Software\Classes'
+          function DefaultOf($key) { $k = Get-Item -Path "$classes\$key" -ErrorAction SilentlyContinue; if ($k) { $k.GetValue('') } else { $null } }
+          function OpenWith($ext) { $k = Get-Item -Path "$classes\$ext\OpenWithProgids" -ErrorAction SilentlyContinue; if ($k) { $k.GetValueNames() } else { @() } }
+          $pyBefore = DefaultOf '.py'
+          $setup = (Resolve-Path desktop/release/Tandem-Setup-*.exe).Path
+          Start-Process -FilePath $setup -ArgumentList '/S' -Wait
+          $command = DefaultOf 'Tandem.File\shell\open\command'
+          Write-Output "open command: $command"
+          if ($command -notmatch '^"(.+\\Tandem\.exe)" "%1"$') { throw 'Tandem.File has no open command' }
+          $exe = $Matches[1]
+          if (-not (Test-Path $exe)) { throw "installed app not found: $exe" }
+          foreach ($ext in '.py', '.ipynb', '.sql', '.csv') {
+            if ((OpenWith $ext) -notcontains 'Tandem.File') { throw "Tandem is not in Open with for $ext" }
+          }
+          if ((DefaultOf '.py') -ne $pyBefore) { throw 'the default app for .py changed' }
+          Write-Output 'ok   installed: Tandem is in Open with for .py, .ipynb, .sql, .csv; defaults unchanged'
+          $uninstaller = Join-Path (Split-Path $exe) 'Uninstall Tandem.exe'
+          Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait
+          for ($i = 0; $i -lt 60 -and (DefaultOf 'Tandem.File\shell\open\command'); $i++) { Start-Sleep -Seconds 1 }
+          if (DefaultOf 'Tandem.File\shell\open\command') { throw 'Open with entries left after uninstall' }
+          if ((OpenWith '.ipynb') -contains 'Tandem.File') { throw 'Open with entry for .ipynb left after uninstall' }
+          Write-Output 'ok   uninstalled: Open with entries removed'
+
       - name: Check the desktop app
         shell: pwsh
         env:

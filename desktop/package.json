@@ -1,7 +1,7 @@
 {
   "name": "tandem-desktop",
   "productName": "Tandem",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Tandem desktop app: real Python with an AI assistant, in a native window.",
   "author": "Tandem",
   "private": true,
@@ -63,7 +63,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Tandem",
-      "artifactName": "Tandem-Setup-${version}.exe"
+      "artifactName": "Tandem-Setup-${version}.exe",
+      "include": "build/installer.nsh"
     },
     "portable": {
       "artifactName": "Tandem-${version}-portable.exe"
