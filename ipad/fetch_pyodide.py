@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE = ["pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip", "pyodide-lock.json", "pyodide.js"]
-SHIPPED = ["numpy", "pandas", "matplotlib", "scikit-learn", "micropip"]
+SHIPPED = ["numpy", "pandas", "matplotlib", "scikit-learn", "micropip", "jedi"]  # jedi: code completion
 
 
 def closure(lock: dict, names: list[str]) -> list[str]:

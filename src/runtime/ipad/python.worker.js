@@ -18,15 +18,60 @@ const post = (message) => self.postMessage(message);
 const api = (path, init = {}) =>
   fetch(path, { ...init, headers: { 'x-tandem-token': token, ...(init.headers || {}) }, cache: 'no-store' });
 
+// A program printing in a tight loop makes far more output than anyone can
+// read: forward at most OUTPUT_RATE characters a second and say how much was
+// skipped, so the page stays responsive and Stop is quick. (Python blocks
+// this worker while it runs, so the clock is checked on each write.)
+const OUTPUT_RATE = 400000;
+const OUTPUT_WINDOW = 250;
+function throttle(send) {
+  let windowStart = Date.now();
+  let budget = (OUTPUT_RATE * OUTPUT_WINDOW) / 1000;
+  let skipped = 0;
+  let tail = '';
+  const write = (text) => {
+    const now = Date.now();
+    if (now - windowStart >= OUTPUT_WINDOW) {
+      windowStart = now;
+      budget = (OUTPUT_RATE * OUTPUT_WINDOW) / 1000;
+    }
+    if (text.length > budget) {
+      const cut = Math.max(budget, 0);
+      skipped += text.length - cut;
+      tail = (tail + text.slice(cut)).slice(-4000); // the end is always shown
+      text = text.slice(0, cut);
+    }
+    budget -= text.length;
+    if (skipped && text && budget > 0) {
+      text = `\n… ${skipped.toLocaleString()} characters of output skipped (the program prints faster than it can be shown) …\n${text}`;
+      skipped = 0;
+      tail = '';
+    }
+    if (text) send(text);
+  };
+  // The program ended while output was being skipped: show how it ended.
+  write.end = () => {
+    if (!skipped) return;
+    const nl = tail.indexOf('\n');
+    const last = nl >= 0 && nl < tail.length - 1 ? tail.slice(nl + 1) : tail;
+    send(`\n… ${(skipped - last.length).toLocaleString()} characters of output skipped …\n${last}`);
+    skipped = 0;
+    tail = '';
+  };
+  return write;
+}
+
 // Text arrives from Python as bytes; a character can be split across writes.
 function streamWriter(stream) {
   const decoder = new TextDecoder();
+  const send = throttle((text) => post({ type: 'output', stream, text }));
   return {
     write(buffer) {
       const text = decoder.decode(buffer, { stream: true });
-      if (text) post({ type: 'output', stream, text });
+      if (text) send(text);
       return buffer.length;
     },
+    end: () => send.end(),
   };
 }
 
@@ -181,8 +226,10 @@ async function run({ path, mode, breakpoints }) {
     // A package Tandem doesn't ship: Python reports the ImportError itself.
   }
 
-  pyodide.setStdout(streamWriter('out'));
-  pyodide.setStderr(streamWriter('err'));
+  const outWriter = streamWriter('out');
+  const errWriter = streamWriter('err');
+  pyodide.setStdout(outWriter);
+  pyodide.setStderr(errWriter);
   pyodide.setStdin({
     stdin: () => {
       post({ type: 'stdin-wait' });
@@ -230,6 +277,8 @@ except SystemExit as exc:
     _code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
 _code
 `);
+  outWriter.end();
+  errWriter.end();
   const saved = await saveChanges(snapshot);
   post({ type: 'exit', code, saved });
 }
@@ -241,10 +290,13 @@ let kernel = null; // { snapshot, cell, run }
 
 function kernelStream(name) {
   const decoder = new TextDecoder();
+  const send = throttle((text) => {
+    if (kernel?.cell) post({ type: 'kernel-output', cell: kernel.cell, output: { output_type: 'stream', name, text } });
+  });
   return {
     write(buffer) {
       const text = decoder.decode(buffer, { stream: true });
-      if (text && kernel?.cell) post({ type: 'kernel-output', cell: kernel.cell, output: { output_type: 'stream', name, text } });
+      if (text) send(text);
       return buffer.length;
     },
   };
@@ -315,6 +367,33 @@ async function kernelExecute({ cell, code }) {
   post({ type: 'kernel-done', cell, status });
 }
 
+// ---------------------------------------------------------------- completion
+// Completion mode: this worker answers "what can follow here?" with Jedi.
+let completer = null;
+
+async function completeInit() {
+  await mountProject();
+  await loadProjectPackages();
+  await pyodide.loadPackage(['jedi'], { messageCallback: () => {}, errorCallback: () => {} });
+  pyodide.runPython('import sys\nsys.path.append("/tandem")\nsys.path.insert(0, "/project")\nimport tandem_complete');
+  completer = pyodide.pyimport('tandem_complete');
+  post({ type: 'complete-ready' });
+}
+
+async function completeRequest({ id, kind, request }) {
+  try {
+    // Packages the code imports (numpy, …) are loaded so Jedi can read them.
+    await pyodide.loadPackagesFromImports(request.text, { messageCallback: () => {}, errorCallback: () => {} }).catch(() => {});
+    const json =
+      kind === 'detail'
+        ? completer.detail(request.path, request.text, request.line, request.column, request.name)
+        : completer.complete(request.path, request.text, request.line, request.column);
+    post({ type: 'complete-result', id, result: JSON.parse(json) });
+  } catch (e) {
+    post({ type: 'complete-result', id, error: String(e?.message || e) });
+  }
+}
+
 self.onmessage = async (e) => {
   const message = e.data;
   try {
@@ -322,6 +401,8 @@ self.onmessage = async (e) => {
     else if (message.type === 'run') await run(message);
     else if (message.type === 'install') await install(message);
     else if (message.type === 'kernel-start') await kernelStart();
+    else if (message.type === 'complete-init') await completeInit();
+    else if (message.type === 'complete') await completeRequest(message);
     else if (message.type === 'kernel-execute') await kernelExecute(message);
   } catch (error) {
     post({ type: 'failed', message: String(error?.message || error) });

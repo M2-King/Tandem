@@ -298,6 +298,21 @@ function fakeAnthropic() {
     await page.locator('.dialog-env [aria-label=Close]').click();
   }
 
+  // Code completion (Jedi inside Python on iPad): what can follow "clean.", with notes.
+  if (FULL) {
+    await page.getByRole('treeitem', { name: 'ask.py' }).click();
+    await page.locator('.monaco-editor .view-lines').first().click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type("\nclean = ' Python '.strip()\nclean.");
+    await page.locator('.suggest-widget.visible .monaco-list-row').first().waitFor({ timeout: 120000 });
+    const rows = (await page.locator('.suggest-widget.visible .monaco-list-row').allInnerTexts()).join(' | ');
+    check(/upper|split|strip/.test(rows), `completion: str methods after "clean." (${rows.slice(0, 160)})`);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+Z');
+    await page.keyboard.press('Control+Z');
+    await page.keyboard.press('Control+Z');
+  }
+
   // SQL workspace: real SQLite in the page; the database is a file in the project.
   await page.getByRole('radio', { name: 'SQL' }).click();
   await page.getByRole('button', { name: 'Create the practice database' }).click();

@@ -4,7 +4,7 @@
 // server (127.0.0.1 only), which keeps project files in the Files app and
 // API keys in the iPad Keychain.
 
-import { createLocalBackend, lineCollector } from './localBackend.js';
+import { createLocalBackend, lineCollector, OUTPUT_KEEP } from './localBackend.js';
 import { createMailbox, writeSlot, SLOT_STDIN, SLOT_COMMAND } from './ipad/mailbox.js';
 import { parseTraceback } from './ipad/traceback.js';
 import { createIpadAI } from './ipad/ai.js';
@@ -14,6 +14,7 @@ import { uid } from '../lib/id.js';
 import tandemRun from '../../runtime/tandem_runtime/support/tandem_run.py?raw';
 import tandemMpl from '../../runtime/tandem_runtime/support/tandem_mpl.py?raw';
 import tandemKernel from './ipad/tandem_kernel.py?raw';
+import tandemComplete from './ipad/tandem_complete.py?raw';
 
 const INDEX_URL = '/pyodide/';
 const STOP_GRACE_MS = 1500;
@@ -36,7 +37,7 @@ export function createIpadBackend(config) {
       };
       worker.onerror = (e) => reject(new Error(e.message || 'Python couldn’t start.'));
     });
-    worker.postMessage({ type: 'init', indexURL: INDEX_URL, token: config.token, mailbox, support: { 'tandem_run.py': tandemRun, 'tandem_mpl.py': tandemMpl, 'tandem_kernel.py': tandemKernel } });
+    worker.postMessage({ type: 'init', indexURL: INDEX_URL, token: config.token, mailbox, support: { 'tandem_run.py': tandemRun, 'tandem_mpl.py': tandemMpl, 'tandem_kernel.py': tandemKernel, 'tandem_complete.py': tandemComplete } });
     return ready;
   }
   let warm = spawn();
@@ -93,8 +94,44 @@ export function createIpadBackend(config) {
     return 'The install failed. The log above shows why.';
   };
 
+  // Code completion: one long-lived Python with Jedi, started on first use.
+  let completer = null; // Promise<{ worker }>
+  let completeId = 0;
+  const completeWaiting = new Map();
+  const startCompleter = () => {
+    completer ??= spawn().then(
+      (slot) =>
+        new Promise((resolve, reject) => {
+          slot.worker.onmessage = (e) => {
+            const m = e.data;
+            if (m.type === 'complete-ready') resolve(slot);
+            else if (m.type === 'complete-result') {
+              const p = completeWaiting.get(m.id);
+              completeWaiting.delete(m.id);
+              if (p) (m.error ? p.reject(new Error(m.error)) : p.resolve(m.result));
+            } else if (m.type === 'failed') reject(new Error(m.message));
+          };
+          slot.worker.postMessage({ type: 'complete-init' });
+        })
+    );
+    completer.catch(() => {
+      completer = null; // try again next time
+    });
+    return completer;
+  };
+  const askCompleter = async (kind, request) => {
+    const slot = await startCompleter();
+    const id = ++completeId;
+    return new Promise((resolve, reject) => {
+      completeWaiting.set(id, { resolve, reject });
+      slot.worker.postMessage({ type: 'complete', id, kind, request });
+    });
+  };
+
   const backend = {
     ...base,
+    complete: (request) => askCompleter('complete', request),
+    completionDetail: (request) => askCompleter('detail', request),
     kind: 'ipad',
 
     async status() {
@@ -376,9 +413,15 @@ export function createIpadBackend(config) {
       const queue = []; // lines typed before Python asked for them
       const commands = []; // debugger commands, one per pause read
       const startedAt = Date.now();
+      let droppedLines = 0;
       const lines = lineCollector(
         (line) => {
           output.push(line);
+          // Keep the run's record bounded (a loop can print forever).
+          if (output.length > OUTPUT_KEEP * 2) {
+            droppedLines += output.length - OUTPUT_KEEP;
+            output.splice(0, output.length - OUTPUT_KEEP);
+          }
           onOutput(line);
         },
         (out) => onPartial?.(out)
@@ -389,7 +432,7 @@ export function createIpadBackend(config) {
         done = true;
         lines.flush();
         slot?.worker.terminate(); // every run gets a fresh Python
-        onFinish({ output, figures, variables, metrics, python: python ? `Python ${python.version} (Pyodide)` : null, ...result });
+        onFinish({ output, droppedLines, figures, variables, metrics, python: python ? `Python ${python.version} (Pyodide)` : null, ...result });
       };
 
       const deliverCommand = () => {
@@ -465,9 +508,14 @@ export function createIpadBackend(config) {
       return {
         id,
         // Ctrl+C first (KeyboardInterrupt, with its traceback); end the worker if Python doesn't stop.
-        stop() {
+        stop(force = false) {
           if (done) return;
           stopping = true;
+          if (force) {
+            // End the worker (and the Python in it) at once.
+            finish({ status: 'stopped', exitCode: null, durationMs: Date.now() - startedAt, error: null });
+            return;
+          }
           if (!slot) return;
           Atomics.store(new Int32Array(slot.mailbox.interrupt), 0, 2);
           commands.length = 0;
