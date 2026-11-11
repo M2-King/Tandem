@@ -306,7 +306,8 @@ function fakeAnthropic() {
     await page.keyboard.type("\nclean = ' Python '.strip()\nclean.");
     await page.locator('.suggest-widget.visible .monaco-list-row').first().waitFor({ timeout: 120000 });
     const rows = (await page.locator('.suggest-widget.visible .monaco-list-row').allInnerTexts()).join(' | ');
-    check(/upper|split|strip/.test(rows), `completion: str methods after "clean." (${rows.slice(0, 160)})`);
+    // The list is alphabetical and only the visible rows exist on the page.
+    check(/capitalize|casefold|center|count/.test(rows), `completion: str methods after "clean." (${rows.slice(0, 160)})`);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Control+Z');
     await page.keyboard.press('Control+Z');
