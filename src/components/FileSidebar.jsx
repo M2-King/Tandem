@@ -1,5 +1,7 @@
-import { useRef, useState } from 'react';
-import { FileCode2, FileSpreadsheet, FileText, Folder, FolderOpen, ChevronRight, ChevronsDownUp, Layers, Plus, Upload, NotebookText, FileDatabase, FileBraces, FileImage } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { FileCode2, FileSpreadsheet, FileText, Folder, FolderOpen, ChevronRight, ChevronLeft, ChevronsDownUp, Layers, Plus, Upload, NotebookText, FileDatabase, FileBraces, FileImage, Users, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { MenuItem } from './Menu.jsx';
 import IconButton from './IconButton.jsx';
 import { typeOf } from '../lib/fileTypes.js';
 
@@ -36,10 +38,78 @@ function buildTree(paths) {
 
 // Every row has the same columns: disclosure arrow (empty for files), icon,
 // name. Depth only moves the row right, so icons and names line up.
-function FileRow({ node, depth, active, onOpen }) {
-  const Icon = iconFor(node.path);
+// Teammates in a file (Cowork): small coloured dots after its name.
+function PeerDots({ peers }) {
+  if (!peers?.length) return null;
   return (
-    <li role="none">
+    <span className="file-peers" aria-label={`${peers.map((p) => p.name).join(', ')} here`}>
+      {peers.map((p) => (
+        <span key={p.id} className="file-peer" style={{ '--peer-hue': p.hue }} data-tooltip={`${p.name} is in this file`} />
+      ))}
+    </span>
+  );
+}
+
+// Rename / Remove for one file. The menu floats above the page (the file
+// list scrolls, and would cut it off).
+function FileActionsMenu({ path, anchor, actions, onClose }) {
+  const ref = useRef(null);
+  const rect = anchor.getBoundingClientRect();
+  const width = 240;
+  // Opens from the button towards the editor; kept on screen.
+  const left = Math.max(8, Math.min(rect.left - 8, window.innerWidth - width - 8));
+  const below = rect.bottom + 6 + 110 < window.innerHeight;
+  const style = below ? { top: rect.bottom + 6, left, width } : { bottom: window.innerHeight - rect.top + 6, left, width };
+  const close = (returnFocus = true) => {
+    onClose();
+    if (returnFocus) anchor.focus();
+  };
+  useEffect(() => {
+    const items = () => [...ref.current.querySelectorAll('[role="menuitem"]:not([disabled])')];
+    items()[0]?.focus();
+    const onDown = (e) => {
+      if (!ref.current?.contains(e.target) && !anchor.contains(e.target)) onClose();
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const list = items();
+        const i = list.indexOf(document.activeElement);
+        list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length]?.focus();
+      } else if (e.key === 'Tab') onClose();
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return createPortal(
+    <div ref={ref} className="menu file-actions-menu" role="menu" aria-label={`Actions for ${path}`} style={style} tabIndex={-1}>
+      <MenuItem close={() => close(false)} icon={Pencil} label="Rename…" description="F2" onSelect={() => actions.onRename(path)} />
+      <MenuItem
+        close={() => close(false)}
+        icon={Trash2}
+        label="Remove…"
+        description={actions.canRemove ? 'Delete' : 'Only owners can remove files'}
+        disabled={!actions.canRemove}
+        onSelect={() => actions.onRemove(path)}
+      />
+    </div>,
+    document.body
+  );
+}
+
+function FileRow({ node, depth, active, onOpen, peers, actions }) {
+  const Icon = iconFor(node.path);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  return (
+    <li role="none" className={actions ? 'file-item has-actions' : undefined}>
       <button
         type="button"
         role="treeitem"
@@ -47,12 +117,28 @@ function FileRow({ node, depth, active, onOpen }) {
         aria-level={depth + 1}
         className={`file-row ${active ? 'is-active' : ''}`}
         style={{ '--depth': depth }}
+        data-path={node.path}
         onClick={() => onOpen(node.path)}
       >
         <span className="file-twisty" aria-hidden="true" />
         <Icon size={16} strokeWidth={1.75} aria-hidden="true" className="file-icon" />
         <span className="file-name">{node.name}</span>
+        <PeerDots peers={peers} />
       </button>
+      {actions && (
+        <button
+          type="button"
+          className={`icon-btn icon-btn-sm file-more ${menuAnchor ? 'is-open' : ''}`}
+          aria-label={`More actions for ${node.name}`}
+          aria-haspopup="menu"
+          aria-expanded={!!menuAnchor}
+          data-tooltip="Rename or remove"
+          onClick={(e) => setMenuAnchor(menuAnchor ? null : e.currentTarget)}
+        >
+          <MoreHorizontal size={14} aria-hidden="true" />
+        </button>
+      )}
+      {menuAnchor && <FileActionsMenu path={node.path} anchor={menuAnchor} actions={actions} onClose={() => setMenuAnchor(null)} />}
     </li>
   );
 }
@@ -101,7 +187,7 @@ function handleTreeKeys(e, setCollapsed) {
 // Files dragged in from outside (Finder, Explorer, the iPad Files app).
 const carriesFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
 
-export default function FileSidebar({ paths, activePath, onOpen, projectName, runCount, onNewFile, onAddFiles }) {
+export default function FileSidebar({ paths, activePath, onOpen, projectName, runCount, onNewFile, onAddFiles, presence = {}, projectNav, footerMeta, fileActions, addFilesLabel }) {
   const [collapsed, setCollapsed] = useState({});
   const [dropping, setDropping] = useState(false);
   const picker = useRef(null);
@@ -130,6 +216,14 @@ export default function FileSidebar({ paths, activePath, onOpen, projectName, ru
 
   return (
     <nav className={`sidebar-inner ${dropping ? 'is-drop-target' : ''}`} aria-label="Project files" {...dropProps}>
+      {projectNav && (
+        // Phones have no rail: the way to Shared projects is here.
+        <button type="button" className="sidebar-projects" onClick={projectNav.onClick}>
+          {projectNav.back ? <ChevronLeft size={16} aria-hidden="true" /> : <Users size={16} aria-hidden="true" />}
+          <span>{projectNav.label}</span>
+          {!projectNav.back && <ChevronRight size={14} aria-hidden="true" className="push-right" />}
+        </button>
+      )}
       <div className="panel-header">
         <span className="panel-title">Files</span>
         {folders.length > 0 && (
@@ -144,7 +238,7 @@ export default function FileSidebar({ paths, activePath, onOpen, projectName, ru
           <>
             <IconButton
               icon={Upload}
-              label="Add files…"
+              label={addFilesLabel || 'Add files…'}
               className={`icon-btn-sm ${folders.length > 0 ? '' : 'push-right'}`}
               onClick={() => picker.current?.click()}
             />
@@ -172,10 +266,27 @@ export default function FileSidebar({ paths, activePath, onOpen, projectName, ru
         )}
       </div>
       {dropping && <div className="drop-hint" aria-hidden="true">Drop to add to {projectName}</div>}
-      <ul className="file-tree" role="tree" aria-label="Files" onKeyDown={(e) => handleTreeKeys(e, setCollapsed)}>
+      <ul
+        className="file-tree"
+        role="tree"
+        aria-label="Files"
+        onKeyDown={(e) => {
+          // F2 renames and Delete removes the focused file (where allowed).
+          const path = document.activeElement?.dataset?.path;
+          if (fileActions && path && e.key === 'F2') {
+            e.preventDefault();
+            return fileActions.onRename(path);
+          }
+          if (fileActions?.canRemove && path && (e.key === 'Delete' || (e.key === 'Backspace' && (e.metaKey || e.ctrlKey)))) {
+            e.preventDefault();
+            return fileActions.onRemove(path);
+          }
+          return handleTreeKeys(e, setCollapsed);
+        }}
+      >
         {tree.map((node) =>
           node.type === 'file' ? (
-            <FileRow key={node.path} node={node} depth={0} active={node.path === activePath} onOpen={onOpen} />
+            <FileRow key={node.path} node={node} depth={0} active={node.path === activePath} onOpen={onOpen} peers={presence[node.path]} actions={fileActions} />
           ) : (
             <li key={node.name} role="none">
               <button
@@ -201,7 +312,7 @@ export default function FileSidebar({ paths, activePath, onOpen, projectName, ru
               {!collapsed[node.name] && (
                 <ul role="group" className="file-group">
                   {node.children.map((child) => (
-                    <FileRow key={child.path} node={child} depth={1} active={child.path === activePath} onOpen={onOpen} />
+                    <FileRow key={child.path} node={child} depth={1} active={child.path === activePath} onOpen={onOpen} peers={presence[child.path]} actions={fileActions} />
                   ))}
                 </ul>
               )}
@@ -215,6 +326,7 @@ export default function FileSidebar({ paths, activePath, onOpen, projectName, ru
           <span className="sidebar-footer-name">{projectName}</span>
           <span className="sidebar-footer-meta">
             {paths.length} files · {runCount === 0 ? 'no runs yet' : `${runCount} run${runCount === 1 ? '' : 's'}`}
+            {footerMeta ? ` · ${footerMeta}` : ''}
           </span>
         </div>
       </div>

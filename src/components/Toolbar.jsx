@@ -18,6 +18,7 @@ import {
   Upload,
   Code2,
   Database,
+  Users,
 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import TandemMark from './TandemMark.jsx';
@@ -115,6 +116,10 @@ export default function Toolbar({
   wallpaper,
   onWallpaper,
   onWallpaperFile,
+  titleSlot,
+  beforeRun,
+  hideWork = false,
+  onSharedProjects,
 }) {
   const fileInput = useRef(null);
   const addInput = useRef(null);
@@ -126,16 +131,20 @@ export default function Toolbar({
           <TandemMark size={18} />
         </span>
         <span className="app-name">Tandem</span>
-        <span className="toolbar-sep" aria-hidden="true">
-          /
-        </span>
-        <span className="project-name">{projectName}</span>
-        {modeBadge}
-        <SaveStatus state={saveState} onDisk={savesToDisk} />
+        {titleSlot ?? (
+          <>
+            <span className="toolbar-sep" aria-hidden="true">
+              /
+            </span>
+            <span className="project-name">{projectName}</span>
+            {modeBadge}
+            <SaveStatus state={saveState} onDisk={savesToDisk} />
+          </>
+        )}
       </div>
 
       <div className="toolbar-right">
-        {onWorkspace && (
+        {onWorkspace && !hideWork && (
           <div className="segmented workspace-switch" role="radiogroup" aria-label="Workspace">
             {[
               ['python', 'Python', Code2],
@@ -156,8 +165,10 @@ export default function Toolbar({
             ))}
           </div>
         )}
-        <RunControl {...run} />
+        {!hideWork && beforeRun}
+        {!hideWork && <RunControl {...run} />}
         <div className="toolbar-tools">
+          {!hideWork && (
           <div className="toolbar-group" role="group" aria-label="Panels">
             <IconButton
               icon={PanelLeft}
@@ -183,6 +194,7 @@ export default function Toolbar({
               ref={panels.assistant.toggleRef}
             />
           </div>
+          )}
           <Menu
             label="More options"
             renderTrigger={(props) => (
@@ -191,6 +203,15 @@ export default function Toolbar({
           >
             {(close) => (
               <>
+                {onSharedProjects && (
+                  <MenuItem
+                    close={close}
+                    icon={Users}
+                    label="Shared projects"
+                    description="Projects you work on with your team"
+                    onSelect={onSharedProjects}
+                  />
+                )}
                 {onOpenFolder && (
                   <MenuItem
                     close={close}

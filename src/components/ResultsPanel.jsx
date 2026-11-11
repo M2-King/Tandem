@@ -4,7 +4,7 @@ import IconButton from './IconButton.jsx';
 import FigureView from './FigureView.jsx';
 import { MetricsList, ModelHeading } from './MetricsTable.jsx';
 import { RunStatus, runTitle, formatTime, formatDuration } from './runFormat.jsx';
-import { IS_LOCAL } from '../runtime/config.js';
+import { useRunMode } from '../lib/runMode.js';
 
 const version = (run) => (run.versionLabel ? ` · ${run.versionLabel}` : '');
 
@@ -39,6 +39,7 @@ function RunFile({ run, actions }) {
 }
 
 function RunMeta({ run, actions }) {
+  const mode = useRunMode();
   return (
     <div className="run-meta">
       <span className="run-meta-title">
@@ -51,7 +52,8 @@ function RunMeta({ run, actions }) {
       <RunStatus status={run.status} />
       <span className="run-meta-detail">
         {formatDuration(run.durationMs)}
-        {IS_LOCAL ? (run.exitCode != null ? ` · exit code ${run.exitCode}` : '') : ' (simulated)'}
+        {mode.real ? (run.exitCode != null ? ` · exit code ${run.exitCode}` : '') : ' (simulated)'}
+        {mode.real && mode.sample}
       </span>
     </div>
   );
@@ -142,6 +144,7 @@ function NoticeCallout({ notice, onResetFile, onDismiss }) {
 }
 
 function OutputView({ session, traceView, notice, run, runTarget, actions }) {
+  const mode = useRunMode();
   if (session?.real && !session.finished) {
     const paused = session.paused && !session.running;
     const title = session.mode === 'run' ? `Running ${session.path}` : session.path;
@@ -180,7 +183,7 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
         <div className="run-meta">
           <span className="run-meta-title">Running {session.path}</span>
           <span className="run-state status-running">
-            <Loader2 size={16} className="spin" aria-hidden="true" /> {IS_LOCAL ? 'Running' : 'Running (simulated)'}
+            <Loader2 size={16} className="spin" aria-hidden="true" /> {mode.running}
           </span>
         </div>
         <OutputLines lines={session.output} />
@@ -298,6 +301,7 @@ function VariableTable({ variables, changed = [], stepKey }) {
 }
 
 function VariablesView({ traceView, run, actions }) {
+  const mode = useRunMode();
   // A finished real session: the run record has the final variables.
   if (traceView?.real && traceView.finished && run) traceView = null;
   if (traceView?.real && !traceView.line) {
@@ -353,7 +357,7 @@ function VariablesView({ traceView, run, actions }) {
         <span className="run-meta-title">Variables at the end of run #{run.number}</span>
         <span className="run-meta-detail">
           <RunFile run={run} actions={actions} />
-          {IS_LOCAL ? '' : ' · sample data'}
+          {mode.sample}
         </span>
       </div>
       {run.variables.length ? (
@@ -390,10 +394,11 @@ function ChartsView({ run, figure }) {
 }
 
 function ChartControls({ run, runs, figure, index, onIndex, actions }) {
+  const mode = useRunMode();
   const others = runs.filter((r) => r.id !== run.id && r.figures.length > 0);
   return (
     <div className="results-actions">
-      <span className="results-run-label" data-tooltip={IS_LOCAL ? figure.title : `${figure.title} · sample data`}>
+      <span className="results-run-label" data-tooltip={`${figure.title}${mode.sample}`}>
         Run #{run.number}
       </span>
       {run.figures.length > 1 && (
@@ -534,6 +539,7 @@ function missingModule(error) {
 }
 
 export default function ResultsPanel({ tab, onTab, session, traceView, notice, runs, run, runTarget, newCharts, actions, onClose }) {
+  const mode = useRunMode();
   const [figureIndex, setFigureIndex] = useState(null);
   useEffect(() => setFigureIndex(null), [run?.id]);
   const figures = run?.figures || [];
@@ -562,9 +568,9 @@ export default function ResultsPanel({ tab, onTab, session, traceView, notice, r
             </button>
           ))}
         </div>
-        {!IS_LOCAL && (
-          <span className="sim-tag" data-tooltip="Python execution is simulated with prepared sample results.">
-            Simulated
+        {mode.tag && (
+          <span className="sim-tag" data-tooltip={mode.tagTip}>
+            {mode.tag}
           </span>
         )}
         <div className="push-right results-header-end">

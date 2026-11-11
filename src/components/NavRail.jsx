@@ -1,4 +1,4 @@
-import { Files, ChartColumn, History } from 'lucide-react';
+import { Files, ChartColumn, History, Users } from 'lucide-react';
 
 // Slim navigation rail on the left edge of the shell. Files toggles the
 // explorer; Charts and Runs open the results area on that view (or close it
@@ -20,11 +20,19 @@ function RailButton({ icon: Icon, label, pressed, onClick, badge }) {
   );
 }
 
-export default function NavRail({ filesOpen, onToggleFiles, resultsOpen, resultsTab, onResultsView, newCharts }) {
+export default function NavRail({ filesOpen, onToggleFiles, resultsOpen, resultsTab, onResultsView, newCharts, shared, home = false }) {
   const showing = (tab) => resultsOpen && resultsTab === tab;
   return (
     <nav className="rail" aria-label="Views">
       <div className="rail-capsule">
+        {shared && (
+          <>
+            <RailButton icon={Users} label="Shared projects" pressed={shared.active} onClick={shared.onOpen} badge={shared.badge} />
+            {!home && <span className="rail-sep" aria-hidden="true" />}
+          </>
+        )}
+        {!home && (
+        <>
         <RailButton
           icon={Files}
           label={filesOpen ? 'Hide files' : 'Show files'}
@@ -45,6 +53,8 @@ export default function NavRail({ filesOpen, onToggleFiles, resultsOpen, results
           pressed={showing('Runs')}
           onClick={() => onResultsView('Runs')}
         />
+        </>
+        )}
       </div>
     </nav>
   );

@@ -21,6 +21,7 @@ import '../lib/monacoSetup.js';
 import { lineHeightFor } from './CodeEditor.jsx';
 import { bestMime, joinText, stripAnsi } from '../lib/notebook.js';
 import { setCompletionContext } from '../lib/pythonCompletion.js';
+import { createRemoteCursors } from '../cowork/remoteCursors.js';
 
 // A Jupyter notebook: code and Markdown cells, run in a real kernel.
 // Keyboard (like Jupyter): Shift+Enter runs and moves on, Ctrl/Cmd+Enter
@@ -102,10 +103,15 @@ function InputPrompt({ input, onSubmit }) {
 }
 
 // Monaco for one cell, as tall as its content.
-function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKeys, completionContext }) {
+function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKeys, completionContext, peers }) {
   const [height, setHeight] = useState(lineHeightFor(fontSize) + 16);
   const keys = useRef(onKeys);
   keys.current = onKeys;
+  const remote = useRef(null);
+  // Teammates' cursors in this cell (Cowork).
+  useEffect(() => {
+    remote.current?.set(peers || []);
+  }, [peers, value]);
   return (
     <div className="nb-editor" style={{ height }}>
       <Editor
@@ -117,6 +123,8 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
         onMount={(editor, monaco) => {
           // Completion knows the code of the cells above this one.
           if (completionContext) setCompletionContext(editor.getModel(), completionContext);
+          remote.current = createRemoteCursors(editor, monaco, { labels: false });
+          if (peers?.length) remote.current.set(peers);
           const fit = () => setHeight(Math.max(lineHeightFor(fontSize) + 16, editor.getContentHeight()));
           editor.onDidContentSizeChange(fit);
           fit();
@@ -169,7 +177,7 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
   );
 }
 
-const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, selected, editing, input, session }) {
+const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, selected, editing, input, session, peers }) {
   const code = cell.cell_type === 'code';
   const label = state === 'running' ? '[*]' : state === 'queued' ? '[…]' : `[${cell.execution_count ?? ' '}]`;
   const onKeys = (key) => {
@@ -183,12 +191,18 @@ const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, sel
   };
   return (
     <div
-      className={`nb-cell ${code ? 'is-code' : 'is-markdown'} ${selected ? 'is-selected' : ''} ${state ? 'is-running' : ''}`}
+      className={`nb-cell ${code ? 'is-code' : 'is-markdown'} ${selected ? 'is-selected' : ''} ${state ? 'is-running' : ''} ${peers?.length ? 'has-peer' : ''}`}
+      style={peers?.length ? { '--peer-hue': peers[0].hue } : undefined}
       onPointerDown={() => !selected && session.select(cell.id)}
       data-cell={index + 1}
-      aria-label={`Cell ${index + 1} of ${count}, ${code ? 'code' : 'Markdown'}`}
+      aria-label={`Cell ${index + 1} of ${count}, ${code ? 'code' : 'Markdown'}${peers?.length ? `, ${peers.map((p) => p.name).join(' and ')} editing` : ''}`}
       role="group"
     >
+      {peers?.length > 0 && (
+        <span className="nb-peer" aria-hidden="true">
+          {peers.map((p) => p.name.split(' ')[0]).join(', ')} {peers.length === 1 ? 'is' : 'are'} editing
+        </span>
+      )}
       <div className="nb-gutter">
         {code ? (
           <button type="button" className="nb-run" aria-label={`Run cell ${index + 1}`} data-tooltip="Run (Shift+Enter)" onClick={() => session.run(cell.id)} disabled={!!state}>
@@ -208,6 +222,7 @@ const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, sel
             onChange={(v) => session.setSource(cell.id, v)}
             onKeys={onKeys}
             completionContext={code ? () => ({ path, prefix: session.codeBefore(cell.id) }) : null}
+            peers={peers}
           />
         ) : (
           <div
@@ -264,7 +279,9 @@ function AddBar({ session, after }) {
   );
 }
 
-export default function NotebookView({ session, path, fontSize, onInstallPackage }) {
+const NO_PEERS = [];
+
+export default function NotebookView({ session, path, fontSize, onInstallPackage, presence, kernelNote }) {
   const snap = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const scroller = useRef(null);
   const busy = ['busy', 'starting', 'restarting'].includes(snap.kernelState) || Object.keys(snap.running).length > 0;
@@ -308,6 +325,7 @@ export default function NotebookView({ session, path, fontSize, onInstallPackage
         <span className={`nb-kernel is-${snap.kernelState}`} role="status" title={snap.python || undefined}>
           <span className="runtime-dot" aria-hidden="true" />
           {KERNEL_TEXT[snap.kernelState] || snap.kernelState}
+          {kernelNote && <span className="nb-kernel-note"> · {kernelNote}</span>}
         </span>
       </div>
 
@@ -341,6 +359,7 @@ export default function NotebookView({ session, path, fontSize, onInstallPackage
             editing={snap.editing === cell.id}
             input={snap.input?.cell === cell.id ? snap.input : null}
             session={session}
+            peers={presence?.[cell.id] || NO_PEERS}
           />
         ))}
         <AddBar session={session} after={snap.cells[snap.cells.length - 1]?.id} />

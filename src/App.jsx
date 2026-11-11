@@ -45,6 +45,16 @@ import { DEBUG_FILE, PROJECT_NAME } from './data/sampleProject.js';
 import { diffStats } from './lib/diff.js';
 import { buildRunAnalysis, proposalForRun } from './services/analysisService.js';
 import { shortHash } from './lib/text.js';
+import { RunModeContext, COWORK_RUN_MODE, DEMO_RUN_MODE } from './lib/runMode.js';
+import { useCowork } from './cowork/useCowork.js';
+import { createCoworkBackend } from './cowork/coworkBackend.js';
+import { AvatarStack, CoworkTitle, DeviceChip, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
+import ProjectSettingsDialog from './cowork/ProjectSettingsDialog.jsx';
+import { RemoveFileDialog, RenameFileDialog } from './cowork/FileDialogs.jsx';
+import SharedProjectsPage from './cowork/SharedProjectsPage.jsx';
+import SignInPage from './cowork/SignInPage.jsx';
+import ShareDialog from './cowork/ShareDialog.jsx';
+import NewSharedProjectDialog from './cowork/NewSharedProjectDialog.jsx';
 
 const DATA_FILE = 'data/housing.csv';
 
@@ -98,11 +108,64 @@ export default function App() {
   const backdropLuminance = desktop.active ? (desktop.luminance ?? 0.3) : wall.luminance;
   useEffect(() => applyGlass(prefs.glass, prefs.frost, backdropLuminance), [prefs.glass, prefs.frost, backdropLuminance]);
   // IS_LOCAL never changes while the page is open, so the hook order is stable.
-  const ws = IS_LOCAL ? useDiskWorkspace(onSave, backend, { notify }) : useWorkspace(onSave);
-  const exec = useExecution({ onSave, backend });
+  const deviceWs = IS_LOCAL ? useDiskWorkspace(onSave, backend, { notify }) : useWorkspace(onSave);
+  const deviceExec = useExecution({ onSave, backend });
   const runtime = useRuntimeStatus(backend);
-  const projectName = IS_LOCAL ? ws.project?.name || runtime.status?.project?.name || 'Project' : PROJECT_NAME;
-  const runBlocked = !IS_LOCAL
+  const deviceProjectName = IS_LOCAL ? deviceWs.project?.name || runtime.status?.project?.name || 'Project' : PROJECT_NAME;
+
+  // Cowork preview: shared projects (sample data). A shared project uses the
+  // same layout with its own files, and runs on "this device" (sample results).
+  const cowork = useCowork({ notify });
+  const inCowork = cowork.screen === 'project';
+  const onSharedHome = cowork.screen === 'home' || cowork.screen === 'signin';
+  const coworkRef = useRef(cowork);
+  coworkRef.current = cowork;
+  const coworkBackend = useMemo(
+    () =>
+      createCoworkBackend({
+        getProjectId: () => coworkRef.current.project?.id,
+        getFiles: () => coworkRef.current.workspace?.files || {},
+      }),
+    []
+  );
+  const coworkExec = useExecution({ onSave, backend: coworkBackend, real: true });
+  const ws = inCowork ? cowork.workspace : deviceWs;
+  const exec = inCowork ? coworkExec : deviceExec;
+  const projectName = inCowork ? cowork.project.name : deviceProjectName;
+  const [shareOpen, setShareOpen] = useState(false);
+  const [newSharedOpen, setNewSharedOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [renaming, setRenaming] = useState(null); // file path
+  const [removing, setRemoving] = useState(null); // file path
+  const notebookKey = (path) => (inCowork ? `cowork:${cowork.project.id}/${path}` : path);
+
+  // Opening a shared project fades its workspace in.
+  const [entering, setEntering] = useState(false);
+  useEffect(() => {
+    if (!cowork.project?.id) return undefined;
+    setEntering(true);
+    const timer = setTimeout(() => setEntering(false), 700);
+    return () => clearTimeout(timer);
+  }, [cowork.project?.id]);
+
+  // Leaving a shared project ends its notebooks' kernels and its runs.
+  const coworkProjectId = cowork.project?.id || null;
+  const lastShared = useRef(null);
+  useEffect(() => {
+    const left = lastShared.current;
+    lastShared.current = coworkProjectId ? { id: coworkProjectId, paths: Object.keys(cowork.workspace.files) } : null;
+    if (left && left.id !== coworkProjectId) {
+      left.paths.filter(isNotebook).forEach((path) => closeNotebookSession(`cowork:${left.id}/${path}`));
+      coworkExec.reset();
+      setShareOpen(false);
+      setSettingsOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coworkProjectId]);
+
+  const runBlocked = inCowork
+    ? null
+    : !IS_LOCAL
     ? null
     : runtime.connection !== 'connected'
       ? 'The Tandem runtime is disconnected'
@@ -186,6 +249,12 @@ export default function App() {
   const composerRef = useRef(null);
   const assistantToggleRef = useRef(null);
   const centerRef = useRef(null);
+
+  // Moving between shared projects and this device closes the drawers.
+  useEffect(() => {
+    setSidebarOverlay(false);
+    setAssistantOverlay(false);
+  }, [cowork.screen, cowork.project?.id]);
 
   const toggleFiles = () => (compact ? setSidebarOverlay((o) => !o) : update({ sidebarOpen: !prefs.sidebarOpen }));
   const toggleAssistant = () =>
@@ -371,18 +440,22 @@ export default function App() {
 
   /* ---------- execution ---------- */
 
-  const runTarget = runTargetFor(ws.activePath);
+  const runTarget = inCowork
+    ? ws.activePath?.endsWith('.py')
+      ? ws.activePath
+      : ws.fileOrder.find((p) => p.endsWith('.py')) || ws.activePath
+    : runTargetFor(ws.activePath);
   // The open notebook (a session per notebook tab keeps its kernel and outputs).
   const activeNotebook =
-    IS_LOCAL && isNotebook(ws.activePath) && ws.files[ws.activePath] !== undefined
-      ? notebookSession(ws.activePath, {
+    (IS_LOCAL || inCowork) && isNotebook(ws.activePath) && ws.files[ws.activePath] !== undefined
+      ? notebookSession(notebookKey(ws.activePath), {
           text: ws.files[ws.activePath],
-          backend,
+          backend: inCowork ? coworkBackend : backend,
           save: ((path) => (text) => ws.setFile(path, text))(ws.activePath),
         })
       : null;
   // SQL workspace (the Python | SQL switch in the toolbar).
-  const sqlMode = IS_LOCAL && prefs.workspace === 'sql';
+  const sqlMode = IS_LOCAL && !inCowork && prefs.workspace === 'sql';
   const sql = useSqlWorkspace({ backend, ws, notify, active: sqlMode });
   const caretRef = useRef({ path: null, text: null }); // the editor's last selection
   const runSql = (selected) => {
@@ -423,7 +496,7 @@ export default function App() {
   }, []);
 
   const closeTab = (path) => {
-    if (isNotebook(path)) closeNotebookSession(path);
+    if (isNotebook(path)) closeNotebookSession(notebookKey(path));
     ws.closeTab(path);
   };
   const debugBreakpoints = ws.breakpoints[DEBUG_FILE] || [];
@@ -582,7 +655,7 @@ export default function App() {
     onEndInput: exec.endInput,
     onRun: handleRun,
     onAskFix: askToFixRun,
-    onStop: IS_LOCAL ? () => exec.stop() : null,
+    onStop: IS_LOCAL || inCowork ? () => exec.stop() : null,
     onInstallModule: IS_LOCAL ? (module) => setEnvDialog({ tab: 'packages', focusModule: module }) : null,
     onGoToLine: (path, line) => {
       ws.openFile(path);
@@ -641,17 +714,71 @@ export default function App() {
   };
 
   const composerSuggestions = assistant.draftContext.some((c) => c.type === 'chart') ? [DEMO_PROMPTS.sameChart] : [];
+
+  // Cowork: who is here and where. Teammates aren't shown while reconnecting.
+  const offline = cowork.sync === 'reconnecting';
+  const peers = inCowork && !offline ? cowork.presence : [];
+  const cursorOf = (p) => ({ id: p.person, name: p.name, hue: p.hue, path: p.path, step: p.step });
+  const remoteCursors = peers.filter((p) => !p.cell).map(cursorOf);
+  const notebookPresence = {};
+  peers.filter((p) => p.cell && p.path === ws.activePath).forEach((p) => (notebookPresence[p.cell] ||= []).push(cursorOf(p)));
+  const filePresence = {};
+  peers.forEach((p) => (filePresence[p.path] ||= []).push(cursorOf(p)));
+  // You first, then everyone else in the project.
+  const peopleEntries = inCowork
+    ? [...cowork.project.members].sort((a, b) => (b.id === cowork.viewer.id) - (a.id === cowork.viewer.id)).map((m) => {
+        const here = cowork.presence.find((p) => p.person === m.id);
+        return { person: cowork.people[m.id], you: m.id === cowork.viewer.id, online: m.id === cowork.viewer.id || !!here, where: offline ? null : here?.path };
+      })
+    : [];
+  const openShare = () => setShareOpen(true);
+  // You, just joined: your avatar arrives in the people list.
+  const arrivingId = inCowork && cowork.arrival?.project === cowork.project.id ? cowork.arrival.person : null;
+  const coworkControls = inCowork && (
+    <>
+      <AvatarStack entries={peopleEntries} onClick={openShare} offline={offline} arrivingId={arrivingId} />
+      <SyncStatus sync={cowork.sync} />
+      <ShareButton onClick={openShare} />
+      <SettingsButton onClick={() => setSettingsOpen(true)} />
+    </>
+  );
+  // Files in a shared project: everyone renames; owners remove.
+  const fileActions = inCowork
+    ? {
+        canRemove: cowork.can(cowork.project, 'removeFiles'),
+        onRename: (path) => setRenaming(path),
+        onRemove: (path) => setRemoving(path),
+      }
+    : null;
   const inertProps = (hidden) => (hidden ? { inert: '', 'aria-hidden': true } : {});
 
   return (
-    <div className="app">
+    <RunModeContext.Provider value={inCowork ? COWORK_RUN_MODE : DEMO_RUN_MODE}>
+    <div className={`app ${inCowork || onSharedHome ? 'is-cowork' : ''}`}>
       <Toolbar
+        titleSlot={
+          inCowork || onSharedHome ? (
+            <CoworkTitle cowork={cowork}>{inCowork && <span className="cowork-inline">{coworkControls}</span>}</CoworkTitle>
+          ) : undefined
+        }
+        beforeRun={inCowork ? <span className="toolbar-device"><DeviceChip /></span> : null}
+        hideWork={onSharedHome}
+        onSharedProjects={onSharedHome ? null : () => cowork.go('home')}
         projectName={projectName}
         modeBadge={IS_LOCAL ? <RuntimeStatus {...runtime} onOpenEnv={(tab) => setEnvDialog({ tab })} /> : <DemoBadge />}
         savesToDisk={IS_LOCAL}
         saveState={saveState}
         run={
-          sqlMode
+          inCowork
+            ? {
+                session,
+                runTarget: activeNotebook ? ws.activePath : runTarget,
+                simple: true,
+                runTooltip: activeNotebook ? 'Run all cells on this device' : `Run ${runTarget} on this device`,
+                onRun: handleRun,
+                onStop: exec.stop,
+              }
+            : sqlMode
             ? {
                 session: sql.status === 'running' ? { mode: 'run', path: 'SQL', finished: false } : null,
                 runTarget: ws.activePath,
@@ -671,8 +798,8 @@ export default function App() {
                 onStop: exec.stop,
               }
         }
-        workspace={IS_LOCAL ? prefs.workspace || 'python' : null}
-        onWorkspace={IS_LOCAL ? setWorkspace : null}
+        workspace={IS_LOCAL && !inCowork ? prefs.workspace || 'python' : null}
+        onWorkspace={IS_LOCAL && !inCowork ? setWorkspace : null}
         panels={{
           files: { open: sidebarVisible, toggle: toggleFiles },
           results: { open: resultsOpen, toggle: () => setResultsOpen((o) => !o) },
@@ -682,12 +809,14 @@ export default function App() {
         onFontSize={changeFontSize}
         diffInline={prefs.diffInline}
         onDiffInline={(inline) => update({ diffInline: inline })}
-        onReset={IS_LOCAL ? null : () => setConfirmReset(true)}
+        onReset={IS_LOCAL || inCowork || onSharedHome ? null : () => setConfirmReset(true)}
         onAISettings={IS_LOCAL ? () => setAISettingsOpen(true) : null}
-        onAddFiles={IS_LOCAL ? handleAddFiles : null}
+        onAddFiles={IS_LOCAL && !inCowork ? handleAddFiles : null}
         desktop={{ ...desktop, setMaterial: (m) => desktop.setMaterial(m, { busy: !!exec.session }) }}
         onOpenFolder={
-          IS_IPAD
+          inCowork || onSharedHome
+            ? null
+            : IS_IPAD
             ? async () => {
                 await ws.flush?.();
                 setProjectsOpen(true);
@@ -708,8 +837,37 @@ export default function App() {
         onWallpaperFile={wall.pickImage}
       />
 
-      <div className="workspace">
+      {inCowork && (
+        // Narrow windows: the project's people, status and Share sit under the toolbar.
+        <div className="cowork-strip" role="region" aria-label={`${cowork.project.name}: people and status`}>
+          <AvatarStack entries={peopleEntries} onClick={openShare} offline={offline} arrivingId={arrivingId} />
+          <SyncStatus sync={cowork.sync} />
+          <PreviewMenu cowork={cowork} inProject />
+          <DeviceChip />
+          <ShareButton onClick={openShare} />
+          <SettingsButton onClick={() => setSettingsOpen(true)} />
+        </div>
+      )}
+      {onSharedHome ? (
+        <div className="workspace">
+          <NavRail shared={{ active: true, onOpen: () => {} }} home />
+          <main className="center shared-center">
+            {cowork.screen === 'signin' ? (
+              <SignInPage cowork={cowork} localName={deviceProjectName} notify={notify} />
+            ) : (
+              <SharedProjectsPage
+                cowork={cowork}
+                localName={deviceProjectName}
+                onOpenLocal={() => cowork.go('local')}
+                onNew={() => setNewSharedOpen(true)}
+              />
+            )}
+          </main>
+        </div>
+      ) : (
+      <div className={`workspace ${entering ? 'cw-enter' : ''}`}>
         <NavRail
+          shared={{ active: false, onOpen: () => cowork.go('home'), badge: cowork.invitations.length > 0 }}
           filesOpen={sidebarVisible}
           onToggleFiles={toggleFiles}
           resultsOpen={resultsOpen}
@@ -745,8 +903,13 @@ export default function App() {
             onOpen={openFile}
             projectName={projectName}
             runCount={exec.runs.length}
-            onNewFile={IS_LOCAL ? () => setNewFileOpen(sqlMode ? 'sql' : 'python') : null}
-            onAddFiles={IS_LOCAL ? handleAddFiles : null}
+            onNewFile={IS_LOCAL || inCowork ? () => setNewFileOpen(sqlMode ? 'sql' : 'python') : null}
+            onAddFiles={inCowork ? ws.uploadFiles : IS_LOCAL ? handleAddFiles : null}
+            addFilesLabel={inCowork ? 'Upload files…' : null}
+            fileActions={fileActions}
+            presence={filePresence}
+            projectNav={{ label: 'Shared projects', back: inCowork, onClick: () => cowork.go('home') }}
+            footerMeta={inCowork ? `${cowork.project.members.length} people` : null}
           />
           </div>
         </aside>
@@ -772,8 +935,11 @@ export default function App() {
             onCaret={(path, text) => {
               caretRef.current = { path, text };
             }}
+            remoteCursors={remoteCursors}
+            notebookPresence={notebookPresence}
+            kernelNote={inCowork ? 'this device · preview' : null}
             onOpenDatabase={
-              IS_LOCAL
+              IS_LOCAL && !inCowork
                 ? (path) => {
                     setWorkspace('sql');
                     sql.open(path);
@@ -920,7 +1086,7 @@ export default function App() {
             }}
             project={{
               name: projectName,
-              files: IS_LOCAL ? ws.fileOrder : null,
+              files: IS_LOCAL || inCowork ? ws.fileOrder : null,
               activePath: ws.activePath,
               activeLines: ws.activePath ? (ws.files[ws.activePath] || '').split('\n').length : 0,
               dataset: datasetStats(ws.files[DATA_FILE]),
@@ -940,6 +1106,7 @@ export default function App() {
           />
         )}
       </div>
+      )}
 
       <Toasts toasts={toasts} dismiss={dismiss} />
       <TooltipLayer />
@@ -983,6 +1150,10 @@ export default function App() {
           initialType={newFileOpen}
           onClose={() => setNewFileOpen(null)}
           onCreate={async (path, { text, type }) => {
+            if (type === 'database' && inCowork) {
+              notify('SQLite databases aren’t part of the Cowork preview yet.');
+              return;
+            }
             if (type === 'database') {
               // A SQLite database: a real (empty) database file, opened in the SQL workspace.
               await sql.create(path);
@@ -992,6 +1163,50 @@ export default function App() {
               notify(`Created ${path}`);
             }
             setNewFileOpen(null);
+          }}
+        />
+      )}
+
+      {shareOpen && inCowork && (
+        <ShareDialog cowork={cowork} project={cowork.project} presence={cowork.presence} onClose={() => setShareOpen(false)} notify={notify} />
+      )}
+      {settingsOpen && inCowork && (
+        <ProjectSettingsDialog cowork={cowork} project={cowork.project} onClose={() => setSettingsOpen(false)} notify={notify} />
+      )}
+      {renaming && inCowork && (
+        <RenameFileDialog
+          path={renaming}
+          onClose={() => setRenaming(null)}
+          onRename={(to) => {
+            const from = renaming;
+            const problem = ws.renameFile(from, to);
+            if (!problem && to.trim() !== from) {
+              if (isNotebook(from)) closeNotebookSession(notebookKey(from));
+              notify(`Renamed ${from} to ${to.trim()}.`);
+            }
+            return problem;
+          }}
+        />
+      )}
+      {removing && inCowork && (
+        <RemoveFileDialog
+          path={removing}
+          projectName={cowork.project.name}
+          onClose={() => setRemoving(null)}
+          onRemove={() => {
+            if (isNotebook(removing)) closeNotebookSession(notebookKey(removing));
+            ws.removeFile(removing);
+          }}
+        />
+      )}
+      {newSharedOpen && (
+        <NewSharedProjectDialog
+          existing={cowork.projects}
+          onClose={() => setNewSharedOpen(false)}
+          onCreate={(name) => {
+            setNewSharedOpen(false);
+            cowork.createProject(name);
+            notify(`Created ${name}. Invite people from Share.`);
           }}
         />
       )}
@@ -1014,5 +1229,6 @@ export default function App() {
         </Dialog>
       )}
     </div>
+    </RunModeContext.Provider>
   );
 }

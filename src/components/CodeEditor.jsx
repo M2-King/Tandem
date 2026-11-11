@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createRemoteCursors } from '../cowork/remoteCursors.js';
 import Editor from '@monaco-editor/react';
 import { monaco as monacoApi } from '../lib/monacoSetup.js';
 import { languageFor } from '../lib/fileTypes.js';
@@ -39,11 +40,13 @@ export default function CodeEditor({
   revealRequest,
   onRunShortcut,
   onCaret,
+  remoteCursors,
 }) {
   const editorRef = useRef(null);
   const decorations = useRef(null);
   const flashDecorations = useRef(null);
   const hoverDecorations = useRef(null);
+  const remote = useRef(null);
   const [mounted, setMounted] = useState(false);
 
   // Callbacks change every render; keep the latest in refs for Monaco listeners.
@@ -95,6 +98,7 @@ export default function CodeEditor({
     const initialModel = editor.getModel();
     if (initialModel) replaceModelText(initialModel, latest.current.files[latest.current.path] ?? '');
     decorations.current = editor.createDecorationsCollection();
+    remote.current = createRemoteCursors(editor, monaco);
     flashDecorations.current = editor.createDecorationsCollection();
     hoverDecorations.current = editor.createDecorationsCollection();
 
@@ -199,6 +203,13 @@ export default function CodeEditor({
     decorations.current.set(list);
     if (execLine) editorRef.current.revealLineInCenterIfOutsideViewport(execLine);
   }, [breakpoints, execLine, mounted, path]);
+
+  // Teammates' cursors and selections (Cowork), found again as the text changes.
+  const text = files[path];
+  useEffect(() => {
+    if (!mounted) return;
+    remote.current.set((remoteCursors || []).filter((c) => c.path === path));
+  }, [remoteCursors, mounted, path, text]);
 
   // Fading highlight after a change is applied (or when jumping to a line).
   useEffect(() => {

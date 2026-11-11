@@ -4647,3 +4647,1182 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   position: relative;
   z-index: 30;
 }
+
+/* ---------- Cowork preview: shared projects ---------- */
+
+/* People: initials on their own colour. */
+.avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: hsl(var(--peer-hue, 220), 42%, 36%);
+  color: hsl(var(--peer-hue, 220), 80%, 92%);
+  box-shadow: 0 0 0 2px rgba(17, 20, 26, 0.85);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+.avatar-sm {
+  width: 24px;
+  height: 24px;
+  font-size: 9.5px;
+  letter-spacing: 0;
+}
+.avatar.is-online::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 1.5px rgba(17, 20, 26, 0.95);
+}
+.avatar.is-dim {
+  opacity: 0.55;
+  filter: saturate(0.3);
+}
+.avatar-more {
+  background: var(--bg-pressed);
+  color: var(--text-secondary);
+}
+.avatar-stack {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px 2px 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+.avatar-stack .avatar + .avatar {
+  margin-left: -3px;
+}
+.avatar-stack.is-button {
+  cursor: pointer;
+}
+.avatar-stack.is-button:hover {
+  background: var(--bg-hover);
+}
+
+/* Toolbar: Shared projects / Data Study, people, status, Share. */
+.crumb-link {
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.crumb-link:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.crumb-back {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-secondary);
+}
+.crumb-back:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.cowork-project-name {
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.cowork-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+.preview-badge {
+  background: var(--warning-soft);
+  color: var(--warning);
+  flex: none;
+}
+.preview-badge:hover {
+  background: rgba(217, 178, 92, 0.18);
+  color: var(--warning);
+}
+.preview-menu-note {
+  width: 300px;
+  padding: 8px 10px 4px;
+  display: grid;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--text-secondary);
+}
+.preview-menu-note p {
+  margin: 0;
+}
+.sync-status.is-reconnecting {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+.sync-status.is-reconnecting svg {
+  color: var(--warning);
+}
+.device-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  box-shadow: var(--group-edge);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.device-chip svg {
+  color: var(--success);
+}
+.toolbar-device {
+  display: inline-flex;
+  margin-right: 4px;
+}
+.share-btn {
+  flex: none;
+}
+
+/* Narrow windows: people, status and Share move to a strip under the toolbar. */
+.cowork-strip {
+  display: none;
+}
+@media (max-width: 760px) {
+  .app.is-cowork .app-name,
+  .crumb-link,
+  .crumb-sep,
+  .cowork-inline,
+  .toolbar-device {
+    display: none;
+  }
+  .crumb-back {
+    display: inline-flex;
+  }
+  .cowork-strip .save-status {
+    display: inline-flex;
+  }
+  .cowork-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 0 var(--window-pad) 8px calc(var(--rail-width));
+  }
+  .cowork-strip .share-btn {
+    margin-left: auto;
+  }
+  .app .toolbar-preview.in-project {
+    display: none;
+  }
+}
+/* The preview stays marked on phones (the demo badge is hidden there). */
+@media (max-width: 520px) {
+  .app .preview-badge {
+    display: inline-flex;
+    align-items: center;
+  }
+  .app .toolbar-preview.in-project {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .app.is-cowork .app-mark {
+    display: none;
+  }
+  .cowork-strip {
+    padding: 0 var(--space-2) 6px;
+    gap: 6px;
+  }
+  .cowork-strip .device-chip-text {
+    display: none;
+  }
+  /* One row on phones: the status shows as an icon until something needs saying. */
+  .cowork-strip {
+    flex-wrap: nowrap;
+  }
+  .cowork-strip .sync-status:not(.is-reconnecting) .sync-text {
+    display: none;
+  }
+}
+
+/* The file drawer's way to Shared projects (phones, where there is no rail). */
+.sidebar-projects {
+  display: none;
+}
+@media (max-width: 600px) {
+  .sidebar-projects {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: calc(100% - 16px);
+    margin: 8px 8px 0;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: var(--radius);
+    background: var(--bg-surface);
+    box-shadow: var(--group-edge);
+    color: var(--text-primary);
+    text-align: left;
+  }
+  .sidebar-projects:hover {
+    background: var(--bg-hover);
+  }
+}
+
+/* Teammates in files, code and notebook cells. */
+.file-peers {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: auto;
+  padding-left: 6px;
+}
+.file-peer {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: hsl(var(--peer-hue), 75%, 66%);
+}
+.remote-sel {
+  border-radius: 2px;
+}
+.remote-caret::before {
+  content: '';
+  position: relative;
+  margin-right: -2px;
+  border-left: 2px solid;
+}
+.remote-label {
+  padding: 1px 5px;
+  border-radius: 4px 4px 4px 0;
+  background: hsl(var(--peer-hue), 62%, 44%);
+  color: #fff;
+  font: 600 10.5px/15px var(--font-ui);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateY(2px);
+}
+.nb-cell.has-peer {
+  box-shadow: inset 2px 0 0 hsl(var(--peer-hue), 70%, 62%);
+}
+.nb-cell.has-peer.is-selected {
+  box-shadow: inset 3px 0 0 var(--accent), inset -2px 0 0 hsl(var(--peer-hue), 70%, 62%);
+}
+.nb-peer {
+  position: absolute;
+  top: 5px;
+  left: 60px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: hsla(var(--peer-hue), 62%, 44%, 0.9);
+  color: #fff;
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  font-weight: var(--fw-medium);
+}
+.nb-kernel-note {
+  color: var(--text-muted);
+}
+
+/* Shared projects page. */
+.shared-center {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--pane-shadow);
+  overflow: hidden;
+}
+.shared-center::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--content-fill);
+  -webkit-backdrop-filter: var(--content-filter);
+  backdrop-filter: var(--content-filter);
+  pointer-events: none;
+}
+.shared-page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.shared-inner {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 28px 28px 40px;
+}
+.shared-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.shared-title {
+  margin: 0;
+  font-size: var(--fs-display);
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+}
+.shared-sub {
+  margin: 6px 0 0;
+  max-width: 520px;
+  color: var(--text-secondary);
+}
+.shared-section {
+  margin-top: 26px;
+}
+.shared-section-title {
+  margin: 0 0 8px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.shared-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.shared-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--group-fill);
+  box-shadow: var(--group-edge);
+  color: var(--text-primary);
+  text-align: left;
+}
+.shared-row:hover {
+  background: var(--bg-hover);
+}
+.shared-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--accent-tint);
+  color: var(--on-accent-tint);
+}
+.shared-row-icon.is-device {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+.shared-row-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.shared-row-name {
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shared-row-meta {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shared-row-chevron {
+  flex: none;
+  color: var(--text-muted);
+}
+.role-pill {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  line-height: 18px;
+  font-weight: var(--fw-medium);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  box-shadow: var(--group-edge);
+}
+.role-pill.is-owner {
+  background: var(--accent-soft);
+  color: var(--on-accent-tint);
+}
+.invite-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(128, 155, 220, 0.12), rgba(128, 155, 220, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(128, 155, 220, 0.28);
+}
+.invite-card + .invite-card {
+  margin-top: 8px;
+}
+.invite-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--accent-tint);
+  color: var(--on-accent-tint);
+}
+.invite-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.invite-text,
+.invite-meta {
+  margin: 0;
+}
+.invite-meta {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.invite-body .avatar-stack {
+  padding-left: 4px;
+  justify-self: start;
+}
+.invite-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+.shared-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 32px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-subtle);
+  box-shadow: var(--group-edge);
+  text-align: center;
+}
+.shared-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+.shared-empty-title {
+  margin: 6px 0 0;
+  font-weight: var(--fw-semibold);
+}
+.shared-empty-text {
+  margin: 0 0 8px;
+  max-width: 380px;
+  color: var(--text-secondary);
+}
+.shared-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 28px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+@media (max-width: 600px) {
+  .shared-inner {
+    padding: 20px 16px 32px;
+  }
+  .shared-head .btn {
+    width: 100%;
+  }
+  .shared-row-people {
+    display: none;
+  }
+  .invite-card {
+    flex-wrap: wrap;
+  }
+  .invite-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* Share dialog. */
+.dialog-share {
+  width: min(580px, 100%);
+  padding: 20px;
+  gap: 4px;
+  overflow: auto;
+}
+.share-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.share-intro {
+  margin: 4px 0 0;
+}
+.share-invite {
+  display: grid;
+  grid-template-columns: 1fr 120px auto;
+  align-items: end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.share-invite .field {
+  margin-top: 8px;
+}
+.share-msg {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+.share-member-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.share-lists {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+.share-section-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.share-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-radius: var(--radius-lg);
+  background: var(--group-fill);
+  box-shadow: var(--group-edge);
+}
+.share-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+}
+.share-row + .share-row {
+  box-shadow: var(--divider);
+}
+.share-person {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.share-name,
+.share-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.share-detail {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.share-you {
+  color: var(--text-muted);
+}
+.share-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.share-role {
+  height: 28px;
+  padding: 0 6px;
+  font-size: var(--fs-sm);
+}
+.share-role option,
+.share-invite-role option {
+  background: var(--surface-3-solid);
+  color: var(--text-primary);
+}
+.share-role-text {
+  flex: none;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.share-empty {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.share-actions {
+  align-items: center;
+}
+.share-leave {
+  margin-right: auto;
+}
+@media (max-width: 600px) {
+  .dialog-share {
+    padding: 16px;
+  }
+  .share-invite {
+    grid-template-columns: 1fr auto;
+  }
+  .share-email {
+    grid-column: 1 / -1;
+  }
+  .share-row.is-pending {
+    flex-wrap: wrap;
+  }
+  .share-row.is-pending .share-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* Sign in to Shared projects. */
+.signin-page {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px 32px;
+}
+.signin-card {
+  width: min(400px, 100%);
+  display: grid;
+  gap: 12px;
+}
+.signin-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  box-shadow: var(--group-edge);
+  color: var(--text-primary);
+}
+.signin-title {
+  margin: 4px 0 0;
+  font-size: var(--fs-display);
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.signin-sub,
+.signin-sent {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.signin-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.signin-form .field {
+  margin-top: 0;
+}
+.signin-form .field-error,
+.signin-form .field-hint {
+  margin-top: 0;
+}
+.signin-code {
+  font-size: 18px;
+  letter-spacing: 0.3em;
+}
+.signin-submit {
+  width: 100%;
+  margin-top: 4px;
+}
+.signin-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.signin-samples {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.signin-samples-title {
+  margin: 0 0 2px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.signin-sample {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--group-fill);
+  box-shadow: var(--group-edge);
+  color: var(--text-primary);
+  text-align: left;
+}
+.signin-sample:hover {
+  background: var(--bg-hover);
+}
+.signin-sample-text {
+  display: grid;
+}
+.signin-sample-note {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.signin-device {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.signin-device:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.shared-foot .btn {
+  margin-left: auto;
+}
+.shared-foot-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* File actions (shared projects): a ⋯ button on each file row. */
+.file-item {
+  position: relative;
+}
+.file-more {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  opacity: 0;
+}
+/* The button takes room only while it shows, so names stay readable. */
+.file-item:hover .file-row,
+.file-item:focus-within .file-row,
+.file-item:has(.file-more.is-open) .file-row {
+  padding-right: 34px;
+}
+.file-item:hover .file-more,
+.file-item:focus-within .file-more,
+.file-more.is-open {
+  opacity: 1;
+}
+@media (hover: none) {
+  .file-item.has-actions .file-row {
+    padding-right: 34px;
+  }
+  .file-more {
+    opacity: 1;
+  }
+}
+.file-actions-menu {
+  position: fixed;
+  min-width: 0;
+  z-index: 80;
+}
+.settings-btn {
+  flex: none;
+}
+
+/* Project settings. */
+.dialog-settings {
+  width: min(560px, 100%);
+}
+.settings-section {
+  margin-top: 16px;
+}
+.settings-rename {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+.settings-readonly {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+}
+.perm-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: var(--radius-lg);
+  background: var(--group-fill);
+  box-shadow: var(--group-edge);
+  font-size: var(--fs-sm);
+}
+.perm-table th,
+.perm-table td {
+  padding: 7px 10px;
+  text-align: left;
+  font-weight: normal;
+  color: var(--text-secondary);
+}
+.perm-table tbody tr + tr th,
+.perm-table tbody tr + tr td,
+.perm-table tbody tr:first-child th,
+.perm-table tbody tr:first-child td {
+  box-shadow: var(--divider);
+}
+.perm-table thead th {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.perm-table td,
+.perm-table thead th:not(:first-child) {
+  width: 92px;
+  text-align: center;
+}
+.perm-table tbody th {
+  color: var(--text-primary);
+}
+.perm-table .is-you {
+  background: var(--accent-soft);
+  color: var(--on-accent-tint);
+}
+.perm-yes {
+  color: var(--success);
+  vertical-align: middle;
+}
+.perm-no {
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.settings-row p {
+  flex: 1;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.settings-confirm {
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  background: rgba(229, 119, 111, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(229, 119, 111, 0.3);
+}
+.settings-confirm p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.settings-confirm strong {
+  color: var(--text-primary);
+}
+.settings-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+.shared-row.is-archived {
+  cursor: default;
+}
+.shared-row.is-archived:hover {
+  background: var(--group-fill);
+}
+.shared-row.is-archived .shared-row-name {
+  color: var(--text-secondary);
+}
+.dialog-file {
+  width: min(440px, 100%);
+}
+@media (max-width: 600px) {
+  .settings-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .perm-table td,
+  .perm-table thead th:not(:first-child) {
+    width: 64px;
+  }
+  .perm-table th,
+  .perm-table td {
+    padding: 7px 6px;
+  }
+}
+/* A long shared project name shortens with an ellipsis; the toolbar's buttons keep their size. */
+.app.is-cowork .toolbar-right {
+  flex-shrink: 0;
+}
+.app.is-cowork .toolbar-left {
+  overflow: hidden;
+}
+
+/* ---------- Cowork motion: sign in and joining ----------
+   Only with motion allowed; with "Reduce motion" everything appears at once. */
+.cw-check-ring {
+  stroke: var(--success);
+  opacity: 0.35;
+}
+.cw-check-mark {
+  stroke: var(--success);
+}
+.signin-done {
+  justify-items: center;
+  text-align: center;
+  padding-top: 40px;
+}
+.invite-wrap {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.invite-wrap + .invite-wrap {
+  margin-top: 8px;
+}
+.invite-wrap > .invite-card {
+  min-height: 0;
+  overflow: hidden;
+}
+.invite-wrap.is-leaving {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.invite-wrap.is-leaving + .invite-wrap {
+  margin-top: 0;
+}
+.invite-joined {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+.invite-card.is-joined {
+  background: linear-gradient(180deg, rgba(111, 191, 142, 0.14), rgba(111, 191, 142, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(111, 191, 142, 0.35);
+}
+.invite-join .spin {
+  margin-right: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes cw-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes cw-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes cw-slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(18px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes cw-shake {
+    0%,
+    100% {
+      transform: none;
+    }
+    20% {
+      transform: translateX(-7px);
+    }
+    40% {
+      transform: translateX(6px);
+    }
+    60% {
+      transform: translateX(-4px);
+    }
+    80% {
+      transform: translateX(2px);
+    }
+  }
+  @keyframes cw-draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes cw-pop {
+    0% {
+      opacity: 0;
+      transform: scale(0.3);
+    }
+    55% {
+      opacity: 1;
+      transform: scale(1.18);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  @keyframes cw-ring {
+    0% {
+      box-shadow: 0 0 0 2px rgba(17, 20, 26, 0.85), 0 0 0 2px hsla(var(--peer-hue), 80%, 65%, 0.75);
+    }
+    100% {
+      box-shadow: 0 0 0 2px rgba(17, 20, 26, 0.85), 0 0 0 12px hsla(var(--peer-hue), 80%, 65%, 0);
+    }
+  }
+
+  /* Sign in: the card rises in, its parts one after another. */
+  .signin-card > * {
+    animation: cw-rise 420ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)) both;
+  }
+  .signin-card > :nth-child(2) {
+    animation-delay: 50ms;
+  }
+  .signin-card > :nth-child(3) {
+    animation-delay: 100ms;
+  }
+  .signin-card > :nth-child(4) {
+    animation-delay: 150ms;
+  }
+  .signin-card > :nth-child(n + 5) {
+    animation-delay: 200ms;
+  }
+  /* Each step slides in from the side. */
+  .signin-card > .signin-step {
+    animation: cw-slide-in 320ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)) both;
+  }
+  .cw-shake {
+    animation: cw-shake 380ms ease-in-out;
+  }
+  /* Success: the ring and the tick draw themselves. */
+  .cw-check-ring {
+    stroke-dasharray: 126;
+    stroke-dashoffset: 126;
+    animation: cw-draw 520ms ease-out forwards;
+  }
+  .cw-check-mark {
+    stroke-dasharray: 30;
+    stroke-dashoffset: 30;
+    animation: cw-draw 300ms 380ms ease-out forwards;
+  }
+  .signin-done > * {
+    animation: cw-rise 360ms ease-out both;
+  }
+  .signin-done > :nth-child(2) {
+    animation-delay: 260ms;
+  }
+  .signin-done > :nth-child(3) {
+    animation-delay: 360ms;
+  }
+
+  /* Shared projects: sections settle in after signing in or going back. */
+  .shared-inner > * {
+    animation: cw-rise 380ms ease-out both;
+  }
+  .shared-inner > :nth-child(2) {
+    animation-delay: 60ms;
+  }
+  .shared-inner > :nth-child(3) {
+    animation-delay: 120ms;
+  }
+  .shared-inner > :nth-child(n + 4) {
+    animation-delay: 180ms;
+  }
+
+  /* Joining: the card turns into "You're in"; Decline folds it away. */
+  .invite-wrap {
+    transition: grid-template-rows 300ms ease, opacity 220ms ease, margin-top 300ms ease;
+  }
+  .invite-card {
+    transition: background 300ms ease, box-shadow 300ms ease;
+  }
+  .invite-joined {
+    animation: cw-fade 240ms ease-out both;
+  }
+
+  /* Opening a shared project: the panes fade in (opacity only, so the
+     editor's floating widgets stay where they belong). */
+  .workspace.cw-enter > * {
+    animation: cw-fade 420ms ease-out both;
+  }
+  .workspace.cw-enter > :nth-child(2),
+  .workspace.cw-enter > :nth-child(3) {
+    animation-delay: 60ms;
+  }
+  .workspace.cw-enter > :nth-child(n + 4) {
+    animation-delay: 120ms;
+  }
+  /* You, just joined: your avatar pops into the people list and pulses. */
+  .avatar.is-arriving {
+    z-index: 1;
+    animation: cw-pop 520ms 300ms cubic-bezier(0.3, 1.4, 0.5, 1) both, cw-ring 900ms 820ms ease-out 2;
+  }
+}
+.signin-form .field-input {
+  width: 100%;
+}

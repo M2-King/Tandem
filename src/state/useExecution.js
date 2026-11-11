@@ -11,10 +11,11 @@ const createStore = () => ({ runs: [], nextNumber: 1 });
 
 // Demo runs are saved in the browser. Real runs (with their figures) stay in
 // memory for now: they can be far larger than browser storage allows.
-const useRunStore = IS_LOCAL
-  ? () => useState(createStore)
-  : ({ onSave }) =>
-      usePersistedState(STORAGE_KEYS.runs, createStore, {
+// `real` never changes for a given caller, so the hook order is stable.
+const useRunStore = (real, { onSave }) =>
+  real
+    ? useState(createStore)
+    : usePersistedState(STORAGE_KEYS.runs, createStore, {
         onSave,
         restore: (saved) => (Array.isArray(saved?.runs) ? saved : null),
       });
@@ -44,8 +45,10 @@ function withLines(s, batch) {
   return over > 0 ? { ...s, output: output.slice(over), dropped: (s.dropped || 0) + over } : { ...s, output };
 }
 
-export function useExecution({ onSave, backend }) {
-  const [store, setStore] = useRunStore({ onSave });
+// real: runs go through `backend` (the local runtime, the iPad, or the
+// Cowork preview's "this device"); otherwise the demo's prepared runs.
+export function useExecution({ onSave, backend, real = IS_LOCAL }) {
+  const [store, setStore] = useRunStore(real, { onSave });
   const [session, setSession] = useState(null);
   const [notice, setNotice] = useState(null);
   const [selectedRunId, setSelectedRunId] = useState(() => store.runs.at(-1)?.id ?? null);
@@ -195,10 +198,10 @@ export function useExecution({ onSave, backend }) {
     [setStore]
   );
 
-  const run = IS_LOCAL ? runLocal : runDemo;
+  const run = real ? runLocal : runDemo;
 
   const startTrace = useCallback((mode, files, breakpoints, { path, flush, breakpointList } = {}) => {
-    if (IS_LOCAL) {
+    if (real) {
       // Real Step through / Debug: the script runs under Python's debugger.
       runLocal(path, files, flush, { mode, breakpoints: breakpointList || [] });
       return true;
@@ -227,7 +230,7 @@ export function useExecution({ onSave, backend }) {
   }, [runLocal]);
 
   const next = useCallback(() => {
-    if (IS_LOCAL) return handleRef.current?.command?.('next');
+    if (real) return handleRef.current?.command?.('next');
     setSession((s) => {
       if (!s || s.mode === 'run' || s.finished) return s;
       const index = s.index + 1;
@@ -237,7 +240,7 @@ export function useExecution({ onSave, backend }) {
   }, []);
 
   const continueTrace = useCallback((breakpoints) => {
-    if (IS_LOCAL) return handleRef.current?.command?.('continue');
+    if (real) return handleRef.current?.command?.('continue');
     setSession((s) => {
       if (!s || s.mode === 'run' || s.finished) return s;
       const index = nextBreakpointIndex(s.index, breakpoints);

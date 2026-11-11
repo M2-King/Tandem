@@ -384,6 +384,9 @@ export default function EditorPane(props) {
     onRunShortcut,
     onCaret,
     onOpenDatabase,
+    remoteCursors,
+    notebookPresence,
+    kernelNote,
   } = props;
   const [selection, setSelection] = useState(null);
   const [diffNav, setDiffNav] = useState(null);
@@ -465,7 +468,15 @@ export default function EditorPane(props) {
             )}
           </div>
         ) : notebook && !showDiff ? (
-          <NotebookView key={activePath} session={notebook} path={activePath} fontSize={fontSize} onInstallPackage={onInstallPackage} />
+          <NotebookView
+            key={activePath}
+            session={notebook}
+            path={activePath}
+            fontSize={fontSize}
+            onInstallPackage={onInstallPackage}
+            presence={notebookPresence}
+            kernelNote={kernelNote}
+          />
         ) : showDiff ? (
           <DiffReview proposal={review.proposal} inline={diffInline} fontSize={fontSize} onChanges={setDiffNav} />
         ) : (
@@ -473,6 +484,7 @@ export default function EditorPane(props) {
             <CodeEditor
               path={activePath}
               files={files}
+              remoteCursors={remoteCursors}
               onChange={onChange}
               readOnly={!!readOnlyMessage}
               readOnlyMessage={readOnlyMessage}
