@@ -93,6 +93,7 @@ function fakeAnthropic() {
     nbformat: 4,
     nbformat_minor: 5,
   }));
+  await put('complete.py', "clean = ' Python '.strip()\n");
   await put('q.sql', "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);\nINSERT INTO notes (body) VALUES ('hi'), ('there');\nSELECT count(*) AS n FROM notes;\n");
   await put('readdb.py', "import sqlite3\nc = sqlite3.connect('practice.db')\nprint('students', c.execute('select count(*) from students').fetchone()[0], 'notes', c.execute('select count(*) from notes').fetchone()[0])\n");
   await put('readcsv.py', "import csv\nrows = list(csv.reader(open('data.csv')))\nprint('rows', len(rows), rows[1])\n");
@@ -300,18 +301,16 @@ function fakeAnthropic() {
 
   // Code completion (Jedi inside Python on iPad): what can follow "clean.", with notes.
   if (FULL) {
-    await page.getByRole('treeitem', { name: 'ask.py' }).click();
+    // Its own file: typing here doesn't change files other checks use.
+    await page.getByRole('treeitem', { name: 'complete.py' }).click();
     await page.locator('.monaco-editor .view-lines').first().click();
     await page.keyboard.press('Control+End');
-    await page.keyboard.type("\nclean = ' Python '.strip()\nclean.");
+    await page.keyboard.type('clean.');
     await page.locator('.suggest-widget.visible .monaco-list-row').first().waitFor({ timeout: 120000 });
     const rows = (await page.locator('.suggest-widget.visible .monaco-list-row').allInnerTexts()).join(' | ');
     // The list is alphabetical and only the visible rows exist on the page.
     check(/capitalize|casefold|center|count/.test(rows), `completion: str methods after "clean." (${rows.slice(0, 160)})`);
     await page.keyboard.press('Escape');
-    await page.keyboard.press('Control+Z');
-    await page.keyboard.press('Control+Z');
-    await page.keyboard.press('Control+Z');
   }
 
   // SQL workspace: real SQLite in the page; the database is a file in the project.
