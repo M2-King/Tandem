@@ -93,6 +93,8 @@ function fakeAnthropic() {
     nbformat: 4,
     nbformat_minor: 5,
   }));
+  await put('q.sql', "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);\nINSERT INTO notes (body) VALUES ('hi'), ('there');\nSELECT count(*) AS n FROM notes;\n");
+  await put('readdb.py', "import sqlite3\nc = sqlite3.connect('practice.db')\nprint('students', c.execute('select count(*) from students').fetchone()[0], 'notes', c.execute('select count(*) from notes').fetchone()[0])\n");
   await put('readcsv.py', "import csv\nrows = list(csv.reader(open('data.csv')))\nprint('rows', len(rows), rows[1])\n");
   if (FULL) await put('chart.py', 'import numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\ndata = pd.DataFrame({"x": np.arange(1, 6), "y": [2, 4, 6, 8, 10]})\nprint(data)\nplt.plot(data["x"], data["y"])\nplt.title("Runtime Test")\nplt.show()\n');
   await page.reload();
@@ -295,6 +297,29 @@ function fakeAnthropic() {
   } else {
     await page.locator('.dialog-env [aria-label=Close]').click();
   }
+
+  // SQL workspace: real SQLite in the page; the database is a file in the project.
+  await page.getByRole('radio', { name: 'SQL' }).click();
+  await page.getByRole('button', { name: 'Create the practice database' }).click();
+  await page.locator('.db-table-name', { hasText: 'students' }).waitFor({ timeout: 60000 });
+  await page.locator('.db-table-name', { hasText: 'students' }).click();
+  await page.locator('.sql-grid tbody tr').first().waitFor({ timeout: 20000 });
+  check((await page.locator('.sql-grid tbody tr').count()) === 12, 'SQL: practice database created; students table shows its 12 rows');
+  await page.getByRole('treeitem', { name: 'q.sql' }).click();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.locator('.db-table-name', { hasText: 'notes' }).waitFor({ timeout: 20000 });
+  const metas = await page.locator('.sql-meta').allInnerTexts();
+  check(metas.length === 3 && metas[1].startsWith('2 rows changed') && metas[2].startsWith('1 row'), `SQL: CREATE, INSERT and SELECT ran (${metas.join(' ; ')})`);
+  await page.getByRole('radio', { name: 'Python' }).click();
+  await page.getByRole('treeitem', { name: 'readdb.py' }).click();
+  await run.click();
+  await run.waitFor({ timeout: 60000 });
+  let dbOut = '';
+  for (let i = 0; i < 40 && !dbOut.includes('students'); i++) {
+    dbOut = await output();
+    await page.waitForTimeout(250);
+  }
+  check(dbOut.includes('students 12 notes 2'), `SQL: Python's sqlite3 reads the saved database (output: ${JSON.stringify(dbOut)})`);
 
   // AI: the app adds the key; the page never sees it.
   await api('/api/ai/settings', 'PUT', { provider: 'anthropic', base_url: 'http://127.0.0.1:18092', api_key: KEY, model: 'claude-opus-5-5', activate: true });
