@@ -1,7 +1,7 @@
 {
   "name": "tandem-desktop",
   "productName": "Tandem",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Tandem desktop app: real Python with an AI assistant, in a native window.",
   "author": "Tandem",
   "private": true,
