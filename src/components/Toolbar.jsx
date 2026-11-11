@@ -16,6 +16,8 @@ import {
   Sparkles,
   FolderOpen,
   Upload,
+  Code2,
+  Database,
 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import TandemMark from './TandemMark.jsx';
@@ -103,6 +105,8 @@ export default function Toolbar({
   desktop,
   onOpenFolder,
   onAddFiles,
+  workspace,
+  onWorkspace,
   glass,
   onGlass,
   frost,
@@ -130,6 +134,27 @@ export default function Toolbar({
       </div>
 
       <div className="toolbar-right">
+        {onWorkspace && (
+          <div className="segmented workspace-switch" role="radiogroup" aria-label="Workspace">
+            {[
+              ['python', 'Python', Code2],
+              ['sql', 'SQL', Database],
+            ].map(([id, label, Icon]) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={workspace === id}
+                className={workspace === id ? 'is-active' : ''}
+                onClick={() => onWorkspace(id)}
+                data-tooltip={id === 'sql' ? 'SQL workspace: query SQLite databases' : 'Python workspace: scripts and notebooks'}
+              >
+                <Icon size={14} aria-hidden="true" />
+                <span className="workspace-label">{label}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <RunControl {...run} />
         <div className="toolbar-tools">
           <div className="toolbar-group" role="group" aria-label="Panels">

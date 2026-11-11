@@ -1,8 +1,19 @@
 import { useRef, useState } from 'react';
-import { FileCode2, FileSpreadsheet, FileText, Folder, FolderOpen, ChevronRight, ChevronsDownUp, Layers, Plus, Upload, NotebookText } from 'lucide-react';
+import { FileCode2, FileSpreadsheet, FileText, Folder, FolderOpen, ChevronRight, ChevronsDownUp, Layers, Plus, Upload, NotebookText, FileDatabase, FileBraces, FileImage } from 'lucide-react';
 import IconButton from './IconButton.jsx';
+import { typeOf } from '../lib/fileTypes.js';
 
-const iconFor = (path) => (path.endsWith('.ipynb') ? NotebookText : path.endsWith('.csv') ? FileSpreadsheet : /\.(py|ipynb|js|json|toml|cfg)$/.test(path) ? FileCode2 : FileText);
+const CODE = new Set(['python', 'javascript', 'typescript', 'shell', 'r', 'java', 'c', 'cpp', 'html', 'css', 'sql']);
+const iconFor = (path) => {
+  const type = typeOf(path)?.id;
+  if (type === 'notebook') return NotebookText;
+  if (type === 'database') return FileDatabase;
+  if (type === 'csv') return FileSpreadsheet;
+  if (type === 'json' || type === 'yaml' || type === 'toml' || type === 'xml') return FileBraces;
+  if (CODE.has(type)) return FileCode2;
+  if (/\.(png|jpe?g|gif|svg|webp)$/i.test(path)) return FileImage;
+  return FileText;
+};
 
 // Builds a one-level tree: top-level files, then folders with their files.
 function buildTree(paths) {

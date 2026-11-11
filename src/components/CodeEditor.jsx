@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { monaco as monacoApi } from '../lib/monacoSetup.js';
-
-const languageFor = (path) => (path.endsWith('.py') ? 'python' : 'plaintext');
+import { languageFor } from '../lib/fileTypes.js';
 
 // Replace a model's text as one undoable edit (Ctrl+Z still works after
 // accepting an AI change or undoing it).
@@ -37,6 +36,8 @@ export default function CodeEditor({
   onSelection,
   onAskAI,
   revealRequest,
+  onRunShortcut,
+  onCaret,
 }) {
   const editorRef = useRef(null);
   const decorations = useRef(null);
@@ -46,10 +47,27 @@ export default function CodeEditor({
 
   // Callbacks change every render; keep the latest in refs for Monaco listeners.
   const latest = useRef({});
-  latest.current = { path, files, onChange, onGlyphClick, onSelection, onAskAI, glyphEnabled, breakpoints };
+  latest.current = { path, files, onChange, onGlyphClick, onSelection, onAskAI, glyphEnabled, breakpoints, onRunShortcut, onCaret };
 
   const handleMount = (editor, monaco) => {
     editorRef.current = editor;
+
+    // The selected text, kept when focus moves to a button (Run in the SQL workspace).
+    editor.onDidChangeCursorSelection(() => {
+      const sel = editor.getSelection();
+      const model = editor.getModel();
+      latest.current.onCaret?.(latest.current.path, sel && model && !sel.isEmpty() ? model.getValueInRange(sel) : null);
+    });
+
+    // Ctrl/Cmd+Enter: run (the selection, or everything) where a run handler
+    // is given (SQL); otherwise Monaco's usual "insert line below".
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      const run = latest.current.onRunShortcut;
+      if (!run) return editor.trigger('keyboard', 'editor.action.insertLineAfter', null);
+      const sel = editor.getSelection();
+      const model = editor.getModel();
+      return run(sel && model && !sel.isEmpty() ? model.getValueInRange(sel) : null);
+    });
 
     // Report edits for the file the *model* belongs to. (Relying on the
     // current `path` prop is unsafe: during a tab switch the library can

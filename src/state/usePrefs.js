@@ -20,6 +20,7 @@ const createPrefs = () => ({
   diffInline: true,
   glass: DEFAULT_GLASS,
   frost: DEFAULT_FROST,
+  workspace: 'python', // 'python' | 'sql'
 });
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));

@@ -164,6 +164,22 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
         except FileError as exc:
             file_error(exc)
 
+    @app.get("/api/raw")
+    def get_raw(path: str):
+        try:
+            data = files.read_bytes(path)
+        except FileError as exc:
+            raise HTTPException(status_code=404 if "doesn't exist" in str(exc) else 400, detail=str(exc)) from None
+        return Response(data, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
+
+    @app.put("/api/raw")
+    async def put_raw(path: str, request: Request):
+        data = await request.body()
+        try:
+            return files.put_bytes(path, data)
+        except FileError as exc:
+            file_error(exc)
+
     @app.post("/api/upload")
     async def upload_file(path: str, request: Request):
         # Files added from elsewhere (Add files…, drag and drop), as raw bytes.

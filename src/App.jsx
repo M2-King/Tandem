@@ -23,7 +23,11 @@ import { createLocalBackend } from './runtime/localBackend.js';
 import { RuntimeStatus, DemoBadge } from './components/RuntimeStatus.jsx';
 import NewFileDialog from './components/NewFileDialog.jsx';
 import EnvironmentDialog from './components/EnvironmentDialog.jsx';
-import { isNotebook, newNotebookText } from './lib/notebook.js';
+import DatabasePanel from './components/DatabasePanel.jsx';
+import SqlResults from './components/SqlResults.jsx';
+import { useSqlWorkspace } from './state/useSqlWorkspace.js';
+import { isSqlFile } from './lib/fileTypes.js';
+import { isNotebook } from './lib/notebook.js';
 import { closeNotebookSession, notebookSession } from './state/notebookSession.js';
 import AISettingsDialog from './components/AISettingsDialog.jsx';
 import { createRealAssistant } from './services/realAI.js';
@@ -100,7 +104,7 @@ export default function App() {
       : runtime.status && !runtime.status.python?.ok
         ? 'No Python interpreter found for this project'
         : null;
-  const [newFileOpen, setNewFileOpen] = useState(false);
+  const [newFileOpen, setNewFileOpen] = useState(null); // null, or the kind of file to start with
   const [envDialog, setEnvDialog] = useState(null); // { tab, focusModule }
   // Add files…: copy files from elsewhere (any kind) into the project.
   const addFiles = ws.addFiles;
@@ -371,6 +375,22 @@ export default function App() {
           save: ((path) => (text) => ws.setFile(path, text))(ws.activePath),
         })
       : null;
+  // SQL workspace (the Python | SQL switch in the toolbar).
+  const sqlMode = IS_LOCAL && prefs.workspace === 'sql';
+  const sql = useSqlWorkspace({ backend, ws, notify, active: sqlMode });
+  const caretRef = useRef({ path: null, text: null }); // the editor's last selection
+  const runSql = (selected) => {
+    const path = ws.activePath;
+    if (!isSqlFile(path)) {
+      notify('Open a .sql file to run SQL, or create one with + (choose SQL).');
+      return;
+    }
+    const chosen = selected ?? (caretRef.current.path === path ? caretRef.current.text : null);
+    sql.run(chosen || ws.files[path] || '', { label: chosen ? `Selection in ${path}` : null });
+    setResultsOpen(true);
+  };
+  const setWorkspace = (workspace) => update({ workspace });
+
   const closeTab = (path) => {
     if (isNotebook(path)) closeNotebookSession(path);
     ws.closeTab(path);
@@ -378,6 +398,7 @@ export default function App() {
   const debugBreakpoints = ws.breakpoints[DEBUG_FILE] || [];
 
   const handleRun = () => {
+    if (sqlMode) return runSql();
     if (activeNotebook) return activeNotebook.runAll(); // Run on a notebook: run all its cells
     if (exec.session || runBlocked) return;
     exec.run(runTarget, ws.files, ws.flush);
@@ -597,16 +618,29 @@ export default function App() {
         modeBadge={IS_LOCAL ? <RuntimeStatus {...runtime} onOpenEnv={(tab) => setEnvDialog({ tab })} /> : <DemoBadge />}
         savesToDisk={IS_LOCAL}
         saveState={saveState}
-        run={{
-          session,
-          runTarget,
-          blockedReason: runBlocked,
-          traceNote: null,
-          onRun: handleRun,
-          onStep: () => handleTrace('step'),
-          onDebug: () => handleTrace('debug'),
-          onStop: exec.stop,
-        }}
+        run={
+          sqlMode
+            ? {
+                session: sql.status === 'running' ? { mode: 'run', path: 'SQL', finished: false } : null,
+                runTarget: ws.activePath,
+                simple: true,
+                runTooltip: 'Run the SQL file, or only the selected part (Ctrl/Cmd+Enter)',
+                onRun: handleRun,
+                onStop: sql.stop,
+              }
+            : {
+                session,
+                runTarget,
+                blockedReason: runBlocked,
+                traceNote: null,
+                onRun: handleRun,
+                onStep: () => handleTrace('step'),
+                onDebug: () => handleTrace('debug'),
+                onStop: exec.stop,
+              }
+        }
+        workspace={IS_LOCAL ? prefs.workspace || 'python' : null}
+        onWorkspace={IS_LOCAL ? setWorkspace : null}
         panels={{
           files: { open: sidebarVisible, toggle: toggleFiles },
           results: { open: resultsOpen, toggle: () => setResultsOpen((o) => !o) },
@@ -657,15 +691,27 @@ export default function App() {
           style={{ '--w': `${prefs.sidebarWidth}px` }}
           {...inertProps(!sidebarVisible)}
         >
+          <div className="sidebar-stack" style={{ '--w': `${prefs.sidebarWidth}px` }}>
+          {sqlMode && (
+            <DatabasePanel
+              sql={sql}
+              onNewDatabase={() => setNewFileOpen('database')}
+              onPreview={(table) => {
+                sql.preview(table);
+                setResultsOpen(true);
+              }}
+            />
+          )}
           <FileSidebar
             paths={ws.fileOrder}
             activePath={ws.activePath}
             onOpen={openFile}
             projectName={projectName}
             runCount={exec.runs.length}
-            onNewFile={IS_LOCAL ? () => setNewFileOpen(true) : null}
+            onNewFile={IS_LOCAL ? () => setNewFileOpen(sqlMode ? 'sql' : 'python') : null}
             onAddFiles={IS_LOCAL ? handleAddFiles : null}
           />
+          </div>
         </aside>
         {!compact && sidebarVisible && (
           <Resizer
@@ -685,6 +731,18 @@ export default function App() {
             onCloseTab={closeTab}
             notebook={activeNotebook}
             onInstallPackage={(name) => setEnvDialog({ tab: 'packages', focusModule: name })}
+            onRunShortcut={sqlMode && isSqlFile(ws.activePath) ? (selected) => runSql(selected) : undefined}
+            onCaret={(path, text) => {
+              caretRef.current = { path, text };
+            }}
+            onOpenDatabase={
+              IS_LOCAL
+                ? (path) => {
+                    setWorkspace('sql');
+                    sql.open(path);
+                  }
+                : null
+            }
             onChange={ws.setFile}
             onOpenFile={openFile}
             fontSize={prefs.fontSize}
@@ -759,6 +817,9 @@ export default function App() {
                 }
               />
             )}
+            {sqlMode ? (
+              <SqlResults sql={sql} onClose={() => setResultsOpen(false)} onRerun={(text) => sql.run(text)} notify={notify} />
+            ) : (
             <ResultsPanel
               tab={resultsTab}
               onTab={setResultsTab}
@@ -772,6 +833,7 @@ export default function App() {
               actions={resultsActions}
               onClose={() => setResultsOpen(false)}
             />
+            )}
           </div>
         </main>
 
@@ -879,11 +941,18 @@ export default function App() {
       {newFileOpen && (
         <NewFileDialog
           existing={ws.fileOrder}
-          onClose={() => setNewFileOpen(false)}
-          onCreate={async (path) => {
-            await ws.createFile(path, isNotebook(path) ? newNotebookText() : '');
-            setNewFileOpen(false);
-            notify(`Created ${path}`);
+          initialType={newFileOpen}
+          onClose={() => setNewFileOpen(null)}
+          onCreate={async (path, { text, type }) => {
+            if (type === 'database') {
+              // A SQLite database: a real (empty) database file, opened in the SQL workspace.
+              await sql.create(path);
+              setWorkspace('sql');
+            } else {
+              await ws.createFile(path, text);
+              notify(`Created ${path}`);
+            }
+            setNewFileOpen(null);
           }}
         />
       )}

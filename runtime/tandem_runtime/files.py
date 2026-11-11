@@ -12,6 +12,7 @@ SKIP_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "__pycache__", "node
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 MAX_FILES = 2000
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_RAW_BYTES = 50 * 1024 * 1024  # SQLite databases
 MAX_NOTEBOOK_BYTES = 25 * 1024 * 1024  # notebooks carry their outputs (images)
 
 
@@ -106,6 +107,28 @@ class ProjectFiles:
             raise FileError(f"{rel} already exists.")
         if len(data) > MAX_UPLOAD_BYTES:
             raise FileError(f"{rel} is larger than 25 MB.")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{path.name}.tandem-tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+        return {"path": rel, "size": len(data)}
+
+    def read_bytes(self, rel: str) -> bytes:
+        """A project file as bytes (SQLite databases, images, …)."""
+        path = self.resolve(rel)
+        if not path.is_file():
+            raise FileError(f"{rel} doesn't exist.")
+        if path.stat().st_size > MAX_RAW_BYTES:
+            raise FileError(f"{rel} is larger than {MAX_RAW_BYTES // (1024 * 1024)} MB.")
+        return path.read_bytes()
+
+    def put_bytes(self, rel: str, data: bytes) -> dict:
+        """Create or replace a project file with these bytes (a database the SQL workspace saved)."""
+        path = self.resolve(rel)
+        if path.exists() and not path.is_file():
+            raise FileError(f"{rel} is a folder.")
+        if len(data) > MAX_RAW_BYTES:
+            raise FileError(f"{rel} would be larger than {MAX_RAW_BYTES // (1024 * 1024)} MB.")
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{path.name}.tandem-tmp")
         tmp.write_bytes(data)

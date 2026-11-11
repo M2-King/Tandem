@@ -45,6 +45,23 @@ export function createLocalBackend(config) {
     readFile: (path) => client.api(`/api/file?path=${encodeURIComponent(path)}`),
     writeFile: (path, text, baseHash) => client.api('/api/file', { method: 'PUT', body: { path, text, base_hash: baseHash } }),
     createFile: (path, text = '') => client.api('/api/file', { method: 'POST', body: { path, text } }),
+    // A project file as bytes (SQLite databases): null if it doesn't exist.
+    async readRaw(path) {
+      let response;
+      try {
+        response = await fetch(`/api/raw?path=${encodeURIComponent(path)}`, { headers: { 'x-tandem-token': config.token }, cache: 'no-store' });
+      } catch {
+        throw new Error('The Tandem runtime is not reachable. Is it still running?');
+      }
+      if (response.status === 404) return null;
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || `Couldn't read ${path} (${response.status}).`);
+      }
+      return response.arrayBuffer();
+    },
+    // Create or replace a project file with these bytes.
+    writeRaw: (path, bytes) => client.api(`/api/raw?path=${encodeURIComponent(path)}`, { method: 'PUT', body: bytes }),
     // A file brought in from elsewhere, as bytes. Never overwrites.
     uploadFile: (path, data) => client.api(`/api/upload?path=${encodeURIComponent(path)}`, { method: 'POST', body: data }),
 

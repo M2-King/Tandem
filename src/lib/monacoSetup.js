@@ -1,12 +1,21 @@
-// Bundle Monaco locally (instead of loading it from a CDN) so the prototype
-// works offline. Python highlighting doesn't need a language worker, so only
-// the base editor worker is registered.
+// Bundle Monaco locally (instead of loading it from a CDN) so Tandem works
+// offline. Most languages (Python, SQL, Markdown, …) only need the base
+// editor worker; JSON, CSS, HTML and JavaScript/TypeScript have their own
+// language workers (validation, completion), loaded when such a file opens.
 import * as monaco from 'monaco-editor';
 import { loader } from '@monaco-editor/react';
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
+import JsonWorker from 'monaco-editor/language/json/json.worker?worker';
+import CssWorker from 'monaco-editor/language/css/css.worker?worker';
+import HtmlWorker from 'monaco-editor/language/html/html.worker?worker';
+import TsWorker from 'monaco-editor/language/typescript/ts.worker?worker';
 
 self.MonacoEnvironment = {
-  getWorker() {
+  getWorker(_, label) {
+    if (label === 'json') return new JsonWorker();
+    if (label === 'css' || label === 'scss' || label === 'less') return new CssWorker();
+    if (label === 'html' || label === 'handlebars' || label === 'razor') return new HtmlWorker();
+    if (label === 'typescript' || label === 'javascript') return new TsWorker();
     return new EditorWorker();
   },
 };

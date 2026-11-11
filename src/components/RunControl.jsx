@@ -6,7 +6,7 @@ import { DEBUG_FILE } from '../data/sampleProject.js';
 // session is active it turns into a Stop button with a status label.
 // blockedReason: why Run can't start right now (runtime disconnected, no Python).
 // traceNote: when Step through / Debug aren't available, the reason shown instead.
-export default function RunControl({ session, runTarget, onRun, onStep, onDebug, onStop, blockedReason, traceNote }) {
+export default function RunControl({ session, runTarget, onRun, onStep, onDebug, onStop, blockedReason, traceNote, simple, runTooltip }) {
   if (session) {
     const label = session.finished
       ? `Finished ${session.path}`
@@ -32,6 +32,18 @@ export default function RunControl({ session, runTarget, onRun, onStep, onDebug,
               Stop
             </>
           )}
+        </button>
+      </div>
+    );
+  }
+
+  // SQL workspace: one way to run.
+  if (simple) {
+    return (
+      <div className="run-control">
+        <button type="button" className="btn btn-primary run-simple" onClick={onRun} disabled={!!blockedReason} data-tooltip={blockedReason || runTooltip}>
+          <Play size={14} fill="currentColor" aria-hidden="true" />
+          Run
         </button>
       </div>
     );
