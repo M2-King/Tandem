@@ -7,6 +7,9 @@ import { RuntimeClient } from './client.js';
 
 // Turns streamed text into lines, per stream. A partial line is held until
 // its newline arrives (or the run ends).
+// Lines kept in a run's record (the last ones; earlier ones are counted).
+export const OUTPUT_KEEP = 5000;
+
 export function lineCollector(onLine, onPartial) {
   const partial = { out: '', err: '' };
   return {
@@ -45,6 +48,10 @@ export function createLocalBackend(config, { socket = true } = {}) {
     readFile: (path) => client.api(`/api/file?path=${encodeURIComponent(path)}`),
     writeFile: (path, text, baseHash) => client.api('/api/file', { method: 'PUT', body: { path, text, base_hash: baseHash } }),
     createFile: (path, text = '') => client.api('/api/file', { method: 'POST', body: { path, text } }),
+    // Code completion (Jedi in the runtime, with the project's Python).
+    complete: (request) => client.api('/api/complete', { method: 'POST', body: request }),
+    completionDetail: (request) => client.api('/api/complete/detail', { method: 'POST', body: request }),
+
     // A project file as bytes (SQLite databases): null if it doesn't exist.
     async readRaw(path) {
       let response;
@@ -154,9 +161,15 @@ export function createLocalBackend(config, { socket = true } = {}) {
       let python = null;
       let done = false;
       const startedAt = Date.now();
+      let droppedLines = 0;
       const lines = lineCollector(
         (line) => {
           output.push(line);
+          // Keep the run's record bounded (a loop can print forever).
+          if (output.length > OUTPUT_KEEP * 2) {
+            droppedLines += output.length - OUTPUT_KEEP;
+            output.splice(0, output.length - OUTPUT_KEEP);
+          }
           onOutput(line);
         },
         (out) => onPartial?.(out)
@@ -168,7 +181,7 @@ export function createLocalBackend(config, { socket = true } = {}) {
         offEvents();
         offState();
         lines.flush();
-        onFinish({ output, figures, variables, metrics, python, ...result });
+        onFinish({ output, droppedLines, figures, variables, metrics, python, ...result });
       };
 
       const offEvents = client.on((event) => {
@@ -247,8 +260,9 @@ export function createLocalBackend(config, { socket = true } = {}) {
       }
       return {
         id,
-        stop() {
-          client.send({ type: 'run.stop', id });
+        // force: end it at once, without asking the program to stop first.
+        stop(force = false) {
+          client.send({ type: 'run.stop', id, force });
         },
         // A line typed for input(); shown in the output like a terminal echo.
         input(text) {

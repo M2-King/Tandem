@@ -73,6 +73,14 @@ export class NotebookSession {
     this.nb = { ...this.nb, cells: this.nb.cells.map((c) => (c.id === id ? fn(c) : c)) };
   }
 
+  // The code of the code cells above this one (for completion).
+  codeBefore(id) {
+    const cells = this.nb?.cells || [];
+    const index = cells.findIndex((c) => c.id === id);
+    const before = cells.slice(0, Math.max(0, index)).filter((c) => c.cell_type === 'code');
+    return before.length ? `${before.map((c) => c.source.replace(/^\s*[%!].*$/gm, '')).join('\n')}\n` : '';
+  }
+
   // ---------------------------------------------------------------- editing
   select(id) {
     this.selected = id;

@@ -20,6 +20,7 @@ import {
 import '../lib/monacoSetup.js';
 import { lineHeightFor } from './CodeEditor.jsx';
 import { bestMime, joinText, stripAnsi } from '../lib/notebook.js';
+import { setCompletionContext } from '../lib/pythonCompletion.js';
 
 // A Jupyter notebook: code and Markdown cells, run in a real kernel.
 // Keyboard (like Jupyter): Shift+Enter runs and moves on, Ctrl/Cmd+Enter
@@ -101,7 +102,7 @@ function InputPrompt({ input, onSubmit }) {
 }
 
 // Monaco for one cell, as tall as its content.
-function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKeys }) {
+function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKeys, completionContext }) {
   const [height, setHeight] = useState(lineHeightFor(fontSize) + 16);
   const keys = useRef(onKeys);
   keys.current = onKeys;
@@ -114,6 +115,8 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
         theme="tandem-dusk"
         onChange={(v) => onChange(v ?? '')}
         onMount={(editor, monaco) => {
+          // Completion knows the code of the cells above this one.
+          if (completionContext) setCompletionContext(editor.getModel(), completionContext);
           const fit = () => setHeight(Math.max(lineHeightFor(fontSize) + 16, editor.getContentHeight()));
           editor.onDidContentSizeChange(fit);
           fit();
@@ -151,11 +154,15 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
           automaticLayout: true,
           tabSize: 4,
           insertSpaces: true,
-          wordWrap: language === 'markdown' ? 'on' : 'off',
+          // Long lines wrap, so nothing in a cell is hidden off to the side.
+          wordWrap: 'on',
+          wrappingIndent: 'indent',
           stickyScroll: { enabled: false },
           fixedOverflowWidgets: true,
           scrollbar: { vertical: 'hidden', horizontalScrollbarSize: 6, useShadows: false, alwaysConsumeMouseWheel: false },
           contextmenu: true,
+          wordBasedSuggestions: language === 'python' ? 'off' : 'currentDocument',
+          suggest: { showStatusBar: true, preview: false },
         }}
       />
     </div>
@@ -200,6 +207,7 @@ const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, sel
             autoFocus={selected && (editing || !cell.source)}
             onChange={(v) => session.setSource(cell.id, v)}
             onKeys={onKeys}
+            completionContext={code ? () => ({ path, prefix: session.codeBefore(cell.id) }) : null}
           />
         ) : (
           <div

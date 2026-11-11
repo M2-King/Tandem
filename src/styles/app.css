@@ -3825,7 +3825,9 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
   gap: 4px;
-  padding: 6px 8px 6px 0;
+  /* The top strip holds the cell's toolbar when it is selected, so the
+     toolbar never covers the cell's code. */
+  padding: 28px 8px 6px 0;
   margin-bottom: 6px;
   border-radius: var(--radius);
   box-shadow: inset 3px 0 0 transparent;
@@ -4010,8 +4012,9 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
 }
 .nb-cell-tools {
   position: absolute;
-  top: 4px;
-  right: 10px;
+  top: 1px;
+  right: 8px;
+  height: 26px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -4381,4 +4384,31 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
 }
 .sql-history-dot.is-error {
   background: var(--error);
+}
+.line-dropped {
+  color: var(--text-muted);
+  font-style: italic;
+  margin-bottom: 4px;
+}
+
+/* Code completion: the list and its notes are solid panels above everything
+   (the glass behind would make the notes unreadable). */
+.monaco-editor .suggest-widget,
+.monaco-editor .suggest-details-container,
+.monaco-editor .suggest-details {
+  background-color: #242831 !important;
+}
+.monaco-editor .suggest-details-container {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.monaco-editor .suggest-details .docs {
+  font-family: var(--font-ui);
+  line-height: 1.5;
+}
+/* While suggestions are open, the editor pane sits above the panels next to it. */
+.editor-pane:has(.suggest-widget.visible) {
+  position: relative;
+  z-index: 30;
 }

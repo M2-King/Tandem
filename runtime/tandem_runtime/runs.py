@@ -28,6 +28,11 @@ _FRAME = re.compile(r'^\s*File "(?P<file>.+)", line (?P<line>\d+)(?:, in (?P<fun
 _EXC = re.compile(r"^(?P<type>[A-Za-z_][\w.]*(?:Error|Exception|Interrupt|Exit|Warning)|[A-Z]\w*Error)(?::\s?(?P<msg>.*))?$")
 
 
+OUTPUT_RATE = 400_000  # characters a second forwarded per stream, at most
+OUTPUT_WINDOW = 0.25  # seconds
+TAIL_CHARS = 4000  # the end of skipped output, shown when the program finishes
+
+
 class RunError(Exception):
     """A run that couldn't start; the message is safe to show."""
 
@@ -219,15 +224,39 @@ class RunManager:
     async def _pump(self, run: Run, stream: asyncio.StreamReader, kind: str, send: Send) -> None:
         # The incremental decoder keeps a UTF-8 character split across reads intact.
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        # A program printing in a tight loop makes far more output than anyone
+        # can read: forward at most OUTPUT_RATE characters a second and say how
+        # much was skipped, so the window stays responsive and Stop is quick.
+        window_start, budget, skipped, tail = time.monotonic(), int(OUTPUT_RATE * OUTPUT_WINDOW), 0, ""
         while True:
-            chunk = await stream.read(4096)
+            chunk = await stream.read(65536)  # big reads: fewer messages when a program prints a lot
             text = decoder.decode(chunk, final=not chunk)
             if kind == "err":
                 run.stderr_tail = (run.stderr_tail + text)[-STDERR_TAIL:]
+            if text and run.stopping:
+                text = ""  # stopping: the rest is not shown
             if text:
-                await send({"type": "run.output", "id": run.id, "stream": kind, "text": text})
+                now = time.monotonic()
+                if now - window_start >= OUTPUT_WINDOW:
+                    window_start, budget = now, int(OUTPUT_RATE * OUTPUT_WINDOW)
+                if len(text) > budget:
+                    cut = max(budget, 0)
+                    skipped += len(text) - cut
+                    tail = (tail + text[cut:])[-TAIL_CHARS:]  # the end is always shown
+                    text = text[:cut]
+                budget -= len(text)
+                if skipped and text and budget > 0:
+                    text = f"\n… {skipped:,} characters of output skipped (the program prints faster than it can be shown) …\n" + text
+                    skipped, tail = 0, ""
+                if text:
+                    await send({"type": "run.output", "id": run.id, "stream": kind, "text": text})
             if not chunk:
                 break
+        if skipped and not run.stopping:
+            # The program ended while output was being skipped: show how it ended.
+            last = tail[tail.find("\n") + 1:] if "\n" in tail[:-1] else tail
+            await send({"type": "run.output", "id": run.id, "stream": kind,
+                        "text": f"\n… {skipped - len(last):,} characters of output skipped …\n{last}"})
 
     async def _finish(self, run: Run, send: Send) -> None:
         code = await run.proc.wait()
@@ -244,13 +273,15 @@ class RunManager:
         await send({"type": "run.exit", "id": run.id, "status": status, "exit_code": code,
                     "duration_ms": duration, "error": error})
 
-    async def stop(self, run_id: str) -> None:
-        """Interrupt, then terminate, the run's whole process tree."""
+    async def stop(self, run_id: str, force: bool = False) -> None:
+        """Interrupt, then terminate, the run's whole process tree. force: end it
+        at once (the last, unconditional step), without asking it to stop."""
         run = self.current
         if run is None or run.id != run_id or run.proc.returncode is not None:
             return
         run.stopping = True
-        for action, wait in run.tree.steps():
+        steps = run.tree.steps()
+        for action, wait in steps[-1:] if force else steps:
             if not action():
                 return
             try:

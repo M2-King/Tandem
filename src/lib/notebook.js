@@ -116,10 +116,16 @@ export const stripAnsi = (text) => text.replace(ANSI, '');
 
 // Add one output to a cell's list, merging consecutive stream text the way
 // Jupyter does (and honouring \r for progress bars).
+// A cell keeps at most this much printed text (the end of it), so a loop that
+// prints forever can't make the notebook huge or slow.
+const MAX_STREAM_CHARS = 200000;
+const keepEnd = (text) =>
+  text.length > MAX_STREAM_CHARS ? `… (earlier output not kept)\n${text.slice(text.length - MAX_STREAM_CHARS)}` : text;
+
 export function appendOutput(outputs, output) {
   const last = outputs[outputs.length - 1];
   if (output.output_type === 'stream' && last?.output_type === 'stream' && last.name === output.name) {
-    const merged = { ...last, text: applyCarriageReturns(joinText(last.text) + joinText(output.text)) };
+    const merged = { ...last, text: keepEnd(applyCarriageReturns(joinText(last.text) + joinText(output.text))) };
     return [...outputs.slice(0, -1), merged];
   }
   if (output.output_type === 'stream') return [...outputs, { ...output, text: applyCarriageReturns(joinText(output.text)) }];

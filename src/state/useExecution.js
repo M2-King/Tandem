@@ -32,6 +32,18 @@ const useRunStore = IS_LOCAL
 //
 // Each finished run is stored as a record with its own copy of the code
 // snapshot hash and results, so later edits never change older runs.
+// A program that prints in a tight loop can produce tens of thousands of
+// lines a second. Lines are shown in batches (a few times a second) and only
+// the last MAX_LINES are kept, so the window stays responsive (Stop works).
+export const MAX_LINES = 5000;
+const BATCH_MS = 80;
+
+function withLines(s, batch) {
+  const output = s.output.concat(batch);
+  const over = output.length - MAX_LINES;
+  return over > 0 ? { ...s, output: output.slice(over), dropped: (s.dropped || 0) + over } : { ...s, output };
+}
+
 export function useExecution({ onSave, backend }) {
   const [store, setStore] = useRunStore({ onSave });
   const [session, setSession] = useState(null);
@@ -50,21 +62,50 @@ export function useExecution({ onSave, backend }) {
       setNotice(null);
       const snapshot = files[path] ?? '';
       let pauses = 0;
+      stoppingRef.current = false;
       setSession({ mode, path, output: [], partial: '', real: true, running: true, paused: null, prevPaused: null, finished: false });
+      let pending = [];
+      let partialNow = null;
+      let timer = null;
+      const flushOutput = () => {
+        clearTimeout(timer);
+        timer = null;
+        const batch = pending;
+        const partial = partialNow;
+        pending = [];
+        partialNow = null;
+        if (!batch.length && partial === null) return;
+        setSession((s) => {
+          if (!s || !s.real) return s;
+          const next = batch.length ? withLines(s, batch) : s;
+          return partial === null ? next : { ...next, partial };
+        });
+      };
+      const soon = () => {
+        if (!timer) timer = setTimeout(flushOutput, BATCH_MS);
+      };
       try {
         await flush?.();
         handleRef.current = backend.startRun({
           path,
           mode,
           breakpoints,
-          onOutput: (line) => setSession((s) => (s && s.real ? { ...s, output: [...s.output, line] } : s)),
-          onPartial: (partial) => setSession((s) => (s && s.real ? { ...s, partial } : s)),
+          onOutput: (line) => {
+            pending.push(line);
+            soon();
+          },
+          onPartial: (partial) => {
+            partialNow = partial;
+            soon();
+          },
           onPaused: (pause) => {
+            flushOutput(); // the pause shows the output before it
             pauses += 1;
             setSession((s) => (s && s.real ? { ...s, running: false, prevPaused: s.paused, paused: pause } : s));
           },
           onResumed: () => setSession((s) => (s && s.real ? { ...s, running: true } : s)),
           onFinish: (result) => {
+            flushOutput();
             handleRef.current = null;
             // Step through and Debug keep their panel open on "Finished" until closed.
             setSession((s) =>
@@ -90,6 +131,7 @@ export function useExecution({ onSave, backend }) {
               python: result.python,
               lostConnection: !!result.lostConnection,
               output: result.output,
+              droppedLines: result.droppedLines || 0,
               variables: result.variables,
               figures: result.figures,
               metrics: result.metrics,
@@ -204,9 +246,22 @@ export function useExecution({ onSave, backend }) {
     });
   }, []);
 
-  const stop = useCallback(() => {
-    if (handleRef.current) handleRef.current.stop(); // onFinish records a "stopped" run
-    else setSession(null);
+  // Stop asks the program to stop (KeyboardInterrupt, then it is ended).
+  // Pressing it again, or force, ends it at once: the "Force stop".
+  const stoppingRef = useRef(false);
+  const stop = useCallback((force = false) => {
+    const handle = handleRef.current;
+    if (!handle) {
+      setSession(null);
+      return;
+    }
+    if (force === true || stoppingRef.current) {
+      handle.stop(true);
+      return;
+    }
+    stoppingRef.current = true;
+    setSession((s) => (s ? { ...s, stopping: true } : s));
+    handle.stop(); // onFinish records a "stopped" run
   }, []);
 
   // Real runs only: debugger steps, typed input, breakpoint changes mid-run.
