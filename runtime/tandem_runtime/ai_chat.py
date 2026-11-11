@@ -21,6 +21,7 @@ from .files import FileError, ProjectFiles
 
 MAX_FILE_CHARS = 120_000  # per file sent to the model
 MAX_OUTPUT_CHARS = 6_000  # tail of the last run's output
+MAX_SELECTION_CHARS = 8_000  # selected notebook code sent with the request
 MAX_HISTORY = 12  # earlier messages kept for follow-ups
 MAX_TOKENS = 16_000
 # Models that take the server-side refusal fallback ("default" form).
@@ -81,7 +82,13 @@ def _context_message(request: dict, files: ProjectFiles) -> str:
     if active:
         parts.append(f"The developer has {active} open.")
     for chip in request.get("context") or []:
-        if chip.get("type") == "selection":
+        if chip.get("type") == "selection" and chip.get("cell"):
+            # Notebook cells: the file is JSON, so its line numbers don't match; send the code itself.
+            code = str(chip.get("text") or "")[:MAX_SELECTION_CHARS]
+            start, end = chip.get("cellStartLine"), chip.get("cellEndLine")
+            lines = f"line {start}" if start == end else f"lines {start}–{end}"
+            parts.append(f"They selected {lines} of cell {chip.get('cell')} in {chip.get('path')}:\n```\n{code}\n```")
+        elif chip.get("type") == "selection":
             parts.append(f"They selected lines {chip.get('startLine')}–{chip.get('endLine')} of {chip.get('path')}.")
         elif chip.get("type") == "error":
             parts.append(f"They are asking about the error in {chip.get('path')} at line {chip.get('line')}.")

@@ -127,3 +127,19 @@ def test_provider_errors_are_reported(client, project):
     client.put("/api/ai/settings", json={"provider": "ollama", "base_url": "http://127.0.0.1:9", "model": "x", "activate": True})
     result = client.post("/api/ai/assist", json=request_for(project)).json()
     assert result["kind"] == "error" and "Couldn't reach" in result["text"]
+
+
+def test_a_notebook_selection_sends_the_selected_cell_code(client, project, fake):
+    client.put("/api/ai/settings", json={"provider": "openai", "base_url": fake + "/openai/v1", "api_key": KEY,
+                                         "model": "model-a", "activate": True})
+    Fake.reply = "It reads the Message column into X."
+    chip = {"type": "selection", "path": "W6.ipynb", "label": "W6.ipynb · Cell 3 · Line 2",
+            "text": "X = df['Message']", "cell": 3, "cellStartLine": 2, "cellEndLine": 2}
+    result = client.post("/api/ai/assist", json={**request_for(project), "intent": "explain",
+                                                  "prompt": "Explain line 2 of cell 3 in W6.ipynb.",
+                                                  "context": [chip]}).json()
+    assert result["kind"] == "answer"
+    sent = json.dumps(Fake.seen[-1][2])
+    # The notebook file is JSON, so the selected code itself goes with the request.
+    assert "line 2 of cell 3 in W6.ipynb" in json.loads(sent)["messages"][-1]["content"]
+    assert "X = df['Message']" in json.loads(sent)["messages"][-1]["content"]

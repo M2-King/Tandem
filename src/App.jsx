@@ -73,6 +73,11 @@ function datasetStats(text) {
 const MIN_EDITOR_WIDTH = 480;
 
 const lineLabel = (start, end) => (start === end ? `Line ${start}` : `Lines ${start}–${end}`);
+// Where a selection is, in words: "lines 3–5 of main.py" or "line 2 of cell 4 in W6.ipynb".
+const selectionWhere = (sel) =>
+  sel.cell
+    ? `${lineLabel(sel.startLine, sel.endLine).toLowerCase()} of cell ${sel.cell} in ${sel.path}`
+    : `${lineLabel(sel.startLine, sel.endLine).toLowerCase()} of ${sel.path}`;
 
 // Names of variables whose value differs from the previous step.
 function changedVariables(step, prev) {
@@ -330,14 +335,26 @@ export default function App() {
   const reviewProposal = reviewingId ? assistant.proposals[reviewingId] : null;
   const review = reviewProposal && reviewProposal.status === 'pending' ? proposalView(reviewingId) : null;
 
-  const selectionChip = (sel) => ({
-    type: 'selection',
-    path: sel.path,
-    label: `${sel.path} · ${lineLabel(sel.startLine, sel.endLine)}`,
-    text: sel.text,
-    startLine: sel.startLine,
-    endLine: sel.endLine,
-  });
+  const selectionChip = (sel) =>
+    sel.cell
+      ? {
+          // Notebook: lines count from the top of the cell, so the chip isn't a "go to line" link.
+          type: 'selection',
+          path: sel.path,
+          label: `${sel.path} · Cell ${sel.cell} · ${lineLabel(sel.startLine, sel.endLine)}`,
+          text: sel.text,
+          cell: sel.cell,
+          cellStartLine: sel.startLine,
+          cellEndLine: sel.endLine,
+        }
+      : {
+          type: 'selection',
+          path: sel.path,
+          label: `${sel.path} · ${lineLabel(sel.startLine, sel.endLine)}`,
+          text: sel.text,
+          startLine: sel.startLine,
+          endLine: sel.endLine,
+        };
 
   const askAboutSelection = (sel) => {
     if (!sel) return;
@@ -799,14 +816,14 @@ export default function App() {
             onAskAI={askAboutSelection}
             onExplain={(sel) =>
               sel &&
-              sendPrompt(`Explain ${lineLabel(sel.startLine, sel.endLine).toLowerCase()} of ${sel.path}.`, {
+              sendPrompt(`Explain ${selectionWhere(sel)}.`, {
                 intent: 'explain',
                 context: [selectionChip(sel)],
               })
             }
             onFix={(sel) =>
               sel &&
-              sendPrompt(`Fix ${lineLabel(sel.startLine, sel.endLine).toLowerCase()} of ${sel.path}.`, {
+              sendPrompt(`Fix ${selectionWhere(sel)}.`, {
                 intent: 'fix',
                 context: [selectionChip(sel)],
               })

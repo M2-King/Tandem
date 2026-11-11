@@ -100,11 +100,55 @@ function InputPrompt({ input, onSubmit }) {
   );
 }
 
+// Where a cell's selection sits, for the floating Ask AI / Explain / Fix bar.
+// Positions are relative to the editor area (.editor-body), which holds the bar.
+function selectionInfo(editor, cell) {
+  const selection = editor.getSelection();
+  const model = editor.getModel();
+  if (!selection || !model || selection.isEmpty()) return null;
+  const text = model.getValueInRange(selection);
+  if (!text.trim()) return null;
+  // A selection ending at column 1 doesn't really include that line.
+  const endLine =
+    selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber
+      ? selection.endLineNumber - 1
+      : selection.endLineNumber;
+  const node = editor.getDomNode();
+  const body = node?.closest('.editor-body');
+  const scroller = node?.closest('.nb-cells');
+  const anchor = editor.getScrolledVisiblePosition({ lineNumber: selection.endLineNumber, column: selection.endColumn });
+  let top = 0;
+  let left = 0;
+  let visible = false;
+  if (node && body && anchor) {
+    const box = node.getBoundingClientRect();
+    const area = body.getBoundingClientRect();
+    const view = (scroller || body).getBoundingClientRect();
+    const y = box.top + anchor.top;
+    top = y - area.top + anchor.height + 6;
+    left = box.left - area.left + anchor.left;
+    visible = y >= view.top && y < view.bottom - 40;
+  }
+  return {
+    path: cell.path,
+    cellId: cell.id,
+    cell: cell.number,
+    startLine: selection.startLineNumber,
+    endLine,
+    text,
+    top,
+    left,
+    visible,
+  };
+}
+
 // Monaco for one cell, as tall as its content.
-function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKeys }) {
+function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKeys, cell, selectionApi }) {
   const [height, setHeight] = useState(lineHeightFor(fontSize) + 16);
   const keys = useRef(onKeys);
   keys.current = onKeys;
+  const cellRef = useRef(cell);
+  cellRef.current = cell;
   return (
     <div className="nb-editor" style={{ height }}>
       <Editor
@@ -125,6 +169,37 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
           editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => keys.current('run'));
           editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => keys.current('insert'));
           editor.onDidFocusEditorText(() => keys.current('focus'));
+
+          // Selection → the floating Ask AI / Explain / Fix bar.
+          const api = selectionApi?.current;
+          if (api) {
+            const report = () => api.setSelection(selectionInfo(editor, cellRef.current));
+            editor.onDidChangeCursorSelection(() => {
+              if (!editor.hasTextFocus()) return; // e.g. text replaced in a cell you're not in
+              api.reporter = report;
+              report();
+            });
+            editor.onDidBlurEditorWidget(() => {
+              // Let clicks on the bar land first; only clear this cell's own selection.
+              setTimeout(() => {
+                if (document.activeElement?.closest('.selection-actions')) return;
+                const id = cellRef.current.id;
+                api.setSelection((prev) => (prev?.cellId === id ? null : prev));
+                if (api.reporter === report) api.reporter = null;
+              }, 0);
+            });
+            editor.addAction({
+              id: 'tandem.askAI',
+              label: 'Ask AI about selection',
+              keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyL],
+              contextMenuGroupId: 'navigation',
+              contextMenuOrder: 0,
+              run: () => {
+                const sel = selectionInfo(editor, cellRef.current);
+                if (sel) api.onAskAI(sel);
+              },
+            });
+          }
           // After the click that added the cell has finished, so focus stays here.
           if (autoFocus) {
             editor.focus();
@@ -162,7 +237,7 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
   );
 }
 
-const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, selected, editing, input, session }) {
+const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, selected, editing, input, session, selectionApi }) {
   const code = cell.cell_type === 'code';
   const label = state === 'running' ? '[*]' : state === 'queued' ? '[…]' : `[${cell.execution_count ?? ' '}]`;
   const onKeys = (key) => {
@@ -200,6 +275,8 @@ const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, sel
             autoFocus={selected && (editing || !cell.source)}
             onChange={(v) => session.setSource(cell.id, v)}
             onKeys={onKeys}
+            cell={{ id: cell.id, number: index + 1, path }}
+            selectionApi={selectionApi}
           />
         ) : (
           <div
@@ -256,9 +333,25 @@ function AddBar({ session, after }) {
   );
 }
 
-export default function NotebookView({ session, path, fontSize, onInstallPackage }) {
+// setSelection: a state setter for the editor's selection bar (takes a value or an updater).
+// onAskAI: Ctrl/Cmd+L in a cell, with that cell's selection.
+export default function NotebookView({ session, path, fontSize, onInstallPackage, setSelection, onAskAI }) {
   const snap = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const scroller = useRef(null);
+  // One stable object for every cell (cells are memoised), holding the latest callbacks.
+  const selectionApi = useRef({ reporter: null });
+  selectionApi.current.setSelection = setSelection || (() => {});
+  selectionApi.current.onAskAI = onAskAI || (() => {});
+  const hasSelectionBar = !!setSelection;
+
+  // Keep the selection bar under the selection while the cells scroll.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || !hasSelectionBar) return undefined;
+    const onScroll = () => selectionApi.current.reporter?.();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [hasSelectionBar, snap.error]);
   const busy = ['busy', 'starting', 'restarting'].includes(snap.kernelState) || Object.keys(snap.running).length > 0;
 
   // Keep the selected cell in view when the selection moves by keyboard
@@ -333,6 +426,7 @@ export default function NotebookView({ session, path, fontSize, onInstallPackage
             editing={snap.editing === cell.id}
             input={snap.input?.cell === cell.id ? snap.input : null}
             session={session}
+            selectionApi={hasSelectionBar ? selectionApi : null}
           />
         ))}
         <AddBar session={session} after={snap.cells[snap.cells.length - 1]?.id} />

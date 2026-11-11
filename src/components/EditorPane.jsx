@@ -465,7 +465,23 @@ export default function EditorPane(props) {
             )}
           </div>
         ) : notebook && !showDiff ? (
-          <NotebookView key={activePath} session={notebook} path={activePath} fontSize={fontSize} onInstallPackage={onInstallPackage} />
+          <>
+            <NotebookView
+              key={activePath}
+              session={notebook}
+              path={activePath}
+              fontSize={fontSize}
+              onInstallPackage={onInstallPackage}
+              setSelection={setSelection}
+              onAskAI={onAskAI}
+            />
+            <SelectionActions
+              selection={currentSelection}
+              onAskAI={() => onAskAI(currentSelection)}
+              onExplain={() => onExplain(currentSelection)}
+              onFix={() => onFix(currentSelection)}
+            />
+          </>
         ) : showDiff ? (
           <DiffReview proposal={review.proposal} inline={diffInline} fontSize={fontSize} onChanges={setDiffNav} />
         ) : (

@@ -263,6 +263,16 @@ function fakeAnthropic() {
   await page.waitForTimeout(1500);
   const savedNb = JSON.parse((await api('/api/file?path=nb.ipynb')).text);
   check(savedNb.nbformat === 4 && savedNb.cells[1].outputs.some((o) => String(o.text).includes('20.0')), 'notebook: saved as .ipynb with its outputs');
+  // Selecting code in a cell shows Ask AI / Explain / Fix, as in a .py file.
+  await page.locator('.nb-cell').nth(1).locator('.view-lines').click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Shift+Home');
+  await page.locator('.selection-actions').waitFor({ timeout: 10000 });
+  await page.locator('.selection-actions').getByRole('button', { name: /Ask AI/ }).click();
+  const nbChip = page.locator('.context-chip', { hasText: 'nb.ipynb · Cell 2 · Line 1' });
+  await nbChip.waitFor({ timeout: 10000 });
+  check(true, 'notebook: select code in a cell → Ask AI adds "nb.ipynb · Cell 2 · Line 1"');
+  await nbChip.getByRole('button', { name: /Remove/ }).click();
   await page.getByRole('treeitem', { name: 'stats.py' }).click();
 
   // Packages: what the code imports, what Pyodide provides, and pure-Python

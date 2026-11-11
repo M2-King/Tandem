@@ -8,6 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 const PLACEHOLDER_KEY = 'tandem-proxy-key'; // replaced by the app with the real key
 const MAX_FILE_CHARS = 120_000;
 const MAX_OUTPUT_CHARS = 6_000;
+const MAX_SELECTION_CHARS = 8_000;
 const MAX_HISTORY = 12;
 const MAX_TOKENS = 16_000;
 const FALLBACK_MODELS = new Set(['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
@@ -43,7 +44,12 @@ function contextMessage(request, projectFiles) {
   }
   if (request.active_path) parts.push(`The developer has ${request.active_path} open.`);
   for (const chip of request.context || []) {
-    if (chip.type === 'selection') parts.push(`They selected lines ${chip.startLine}–${chip.endLine} of ${chip.path}.`);
+    if (chip.type === 'selection' && chip.cell) {
+      // Notebook cells: the file is JSON, so its line numbers don't match; send the code itself.
+      const code = String(chip.text || '').slice(0, MAX_SELECTION_CHARS);
+      const lines = chip.cellStartLine === chip.cellEndLine ? `line ${chip.cellStartLine}` : `lines ${chip.cellStartLine}–${chip.cellEndLine}`;
+      parts.push(`They selected ${lines} of cell ${chip.cell} in ${chip.path}:\n\`\`\`\n${code}\n\`\`\``);
+    } else if (chip.type === 'selection') parts.push(`They selected lines ${chip.startLine}–${chip.endLine} of ${chip.path}.`);
     else if (chip.type === 'error') parts.push(`They are asking about the error in ${chip.path} at line ${chip.line}.`);
     else if (chip.type === 'chart') parts.push(`They are asking about a chart: ${chip.label}.`);
   }
