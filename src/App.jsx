@@ -26,6 +26,7 @@ import EnvironmentDialog from './components/EnvironmentDialog.jsx';
 import DatabasePanel from './components/DatabasePanel.jsx';
 import SqlResults from './components/SqlResults.jsx';
 import { useSqlWorkspace } from './state/useSqlWorkspace.js';
+import { registerPythonCompletion } from './lib/pythonCompletion.js';
 import { isSqlFile } from './lib/fileTypes.js';
 import { isNotebook } from './lib/notebook.js';
 import { closeNotebookSession, notebookSession } from './state/notebookSession.js';
@@ -390,6 +391,31 @@ export default function App() {
     setResultsOpen(true);
   };
   const setWorkspace = (workspace) => update({ workspace });
+  // Python completion in the editor (Jedi via the runtime, or inside Python on iPad).
+  useEffect(() => {
+    if (IS_LOCAL) registerPythonCompletion(backend);
+  }, []);
+
+  // Stop from anywhere: Ctrl/Cmd+F2 (as in PyCharm) or Ctrl/Cmd+. — press
+  // again to end the run at once.
+  const stopKeys = useRef(null);
+  stopKeys.current = () => {
+    if (sqlMode && sql.status === 'running') return sql.stop();
+    if (exec.session && !exec.session.finished) exec.stop();
+    return undefined;
+  };
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && (e.key === 'F2' || e.key === '.')) {
+        e.preventDefault();
+        e.stopPropagation();
+        stopKeys.current?.();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
 
   const closeTab = (path) => {
     if (isNotebook(path)) closeNotebookSession(path);
@@ -551,6 +577,7 @@ export default function App() {
     onEndInput: exec.endInput,
     onRun: handleRun,
     onAskFix: askToFixRun,
+    onStop: IS_LOCAL ? () => exec.stop() : null,
     onInstallModule: IS_LOCAL ? (module) => setEnvDialog({ tab: 'packages', focusModule: module }) : null,
     onGoToLine: (path, line) => {
       ws.openFile(path);

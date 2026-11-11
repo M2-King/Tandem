@@ -146,6 +146,18 @@ def main():
             check(done["status"] == "error" and errors == ["NameError"], "Restart clears the kernel's state")
             ws.send(json.dumps({"type": "kernel.shutdown", "id": "k"}))
             until(lambda e: e["type"] == "kernel.status" and e["state"] == "shutdown")
+        # Code completion (Jedi in the bundled runtime, asking the project's Python).
+        text = "text = ' Python '\nclean = text.strip()\nclean."
+        done = json.loads(get(url + "api/complete", token, "POST", {"path": "c.py", "text": text, "line": 3, "column": 6}))
+        names = {i["name"] for i in done["items"]}
+        check({"upper", "split", "strip"} <= names, f"completion after a dot ({len(names)} suggestions)")
+        notes = json.loads(get(url + "api/complete/detail", token, "POST",
+                               {"path": "c.py", "text": text, "line": 3, "column": 6, "name": "split"}))
+        check(bool(notes.get("doc")) and "split(" in (notes.get("signature") or ""), "completion notes (signature and documentation)")
+        np_done = json.loads(get(url + "api/complete", token, "POST",
+                                 {"path": "c.py", "text": "import numpy as np\nnp.ar", "line": 2, "column": 5}))
+        check("arange" in {i["name"] for i in np_done["items"]}, "completion knows the project's installed packages (numpy)")
+
         key = "sk-smoke-0123456789abcdef"
         saved = get(url + "api/ai/settings", token, "PUT",
                     {"provider": "anthropic", "api_key": key, "base_url": "http://127.0.0.1:9"})

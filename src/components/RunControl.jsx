@@ -23,13 +23,18 @@ export default function RunControl({ session, runTarget, onRun, onStep, onDebug,
           {session.mode === 'debug' && <Bug size={16} aria-hidden="true" />}
           <span className="run-status-text">{label}</span>
         </span>
-        <button type="button" className="btn btn-secondary btn-sm btn-stop" onClick={onStop}>
+        <button
+          type="button"
+          className={`btn btn-sm btn-stop ${session.stopping && !session.finished ? 'btn-danger' : 'btn-secondary'}`}
+          onClick={onStop}
+          data-tooltip={session.finished ? undefined : session.stopping ? 'End it now (Ctrl+F2 or Ctrl+.)' : 'Stop (Ctrl+F2 or Ctrl+.); press again to force'}
+        >
           {session.finished ? (
             'Close'
           ) : (
             <>
               <Square size={12} fill="currentColor" aria-hidden="true" />
-              Stop
+              {session.stopping ? 'Force stop' : 'Stop'}
             </>
           )}
         </button>

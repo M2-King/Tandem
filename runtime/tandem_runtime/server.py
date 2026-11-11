@@ -18,7 +18,7 @@ from . import __version__
 from .ai_chat import AssistError, active_provider, assist
 from .ai_settings import AISettings, SettingsError, test_connection
 from .files import MAX_UPLOAD_BYTES, FileError, ProjectFiles
-from . import envs
+from . import completion, envs
 from .interpreters import describe, resolve_interpreter
 from .jobs import JobError, JobManager
 from .kernels import KernelError, KernelHub
@@ -79,6 +79,14 @@ class AISettingsBody(BaseModel):
     api_key: str | None = None
     clear_key: bool = False
     activate: bool | None = None
+
+
+class CompleteBody(BaseModel):
+    path: str = ""
+    text: str
+    line: int
+    column: int
+    name: str | None = None
 
 
 class SelectEnvBody(BaseModel):
@@ -163,6 +171,21 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
             return files.write(body.path, body.text, create=True)
         except FileError as exc:
             file_error(exc)
+
+    # ---------------- Code completion ----------------
+    # Read-only: Jedi reads the code and asks the project's Python about packages.
+
+    @app.post("/api/complete")
+    def post_complete(body: CompleteBody):
+        if len(body.text) > 2_000_000:
+            return {"items": []}
+        return completion.complete(files.root, interpreter(), body.path, body.text, body.line, body.column)
+
+    @app.post("/api/complete/detail")
+    def post_complete_detail(body: CompleteBody):
+        if len(body.text) > 2_000_000 or not body.name:
+            return {"signature": None, "doc": None}
+        return completion.detail(files.root, interpreter(), body.path, body.text, body.line, body.column, body.name)
 
     @app.get("/api/raw")
     def get_raw(path: str):
@@ -368,7 +391,7 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
                     except (RunError, FileError) as exc:
                         await send({"type": "run.rejected", "id": run_id, "message": str(exc)})
                 elif kind == "run.stop":
-                    await runs.stop(str(message.get("id")))
+                    await runs.stop(str(message.get("id")), force=bool(message.get("force")))
                 elif kind == "run.input" and str(message.get("id")) in mine:
                     await runs.send_input(str(message.get("id")), str(message.get("text", ""))[:100_000])
                 elif kind == "run.input-end" and str(message.get("id")) in mine:

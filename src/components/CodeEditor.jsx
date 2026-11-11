@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { monaco as monacoApi } from '../lib/monacoSetup.js';
 import { languageFor } from '../lib/fileTypes.js';
+import { setCompletionContext } from '../lib/pythonCompletion.js';
 
 // Replace a model's text as one undoable edit (Ctrl+Z still works after
 // accepting an AI change or undoing it).
@@ -51,6 +52,15 @@ export default function CodeEditor({
 
   const handleMount = (editor, monaco) => {
     editorRef.current = editor;
+
+    // Code completion: each file's model completes as that file.
+    const registerModel = () => {
+      const model = editor.getModel();
+      const filePath = latest.current.path;
+      if (model && filePath) setCompletionContext(model, () => ({ path: filePath }));
+    };
+    registerModel();
+    editor.onDidChangeModel(registerModel);
 
     // The selected text, kept when focus moves to a button (Run in the SQL workspace).
     editor.onDidChangeCursorSelection(() => {
@@ -247,6 +257,9 @@ export default function CodeEditor({
         fixedOverflowWidgets: true,
         scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8, useShadows: false },
         bracketPairColorization: { enabled: false },
+        // Python suggestions come from Jedi (real members, signatures, notes), not from words in the file.
+        wordBasedSuggestions: languageFor(path) === 'python' ? 'off' : 'currentDocument',
+        suggest: { showStatusBar: true, preview: false },
         guides: { indentation: true },
       }}
     />

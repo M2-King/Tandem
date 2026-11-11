@@ -9,6 +9,7 @@ dependencies = [
   "websockets>=12",
   "anthropic>=2.4",
   "jupyter_client>=8",
+  "jedi>=0.19",
 ]
 
 [project.optional-dependencies]

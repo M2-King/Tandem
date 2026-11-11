@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Play, Loader2, AlertCircle, RotateCcw, MessageSquarePlus, Wrench, Maximize2, ArrowRight, Info, GitCompare, Code2, ChevronRight, Package } from 'lucide-react';
+import { X, Play, Loader2, AlertCircle, RotateCcw, MessageSquarePlus, Wrench, Maximize2, ArrowRight, Info, GitCompare, Code2, ChevronRight, Package, Square } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import FigureView from './FigureView.jsx';
 import { MetricsList, ModelHeading } from './MetricsTable.jsx';
@@ -58,10 +58,15 @@ function RunMeta({ run, actions }) {
 }
 
 // A traceback is mostly context; only its last line (the error itself) is red.
-function OutputLines({ lines, partial = '' }) {
+function OutputLines({ lines, partial = '', dropped = 0 }) {
   const lastErr = lines.map((l) => l.kind).lastIndexOf('err');
   return (
     <pre className="output-lines">
+      {dropped > 0 && (
+        <div className="line-dropped">
+          … {dropped.toLocaleString()} earlier line{dropped === 1 ? '' : 's'} not shown (the last {lines.length.toLocaleString()} are kept)
+        </div>
+      )}
       {lines.map((l, i) => (
         <div key={i} className={l.kind === 'err' ? (i === lastErr ? 'line-err line-err-final' : 'line-err') : undefined}>
           {l.typed != null ? (
@@ -153,8 +158,18 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
               <Loader2 size={16} className="spin" aria-hidden="true" /> Running
             </span>
           )}
+          {actions.onStop && (
+            <button
+              type="button"
+              className={`btn btn-sm push-right ${session.stopping ? 'btn-danger' : 'btn-secondary'}`}
+              onClick={() => actions.onStop()}
+              data-tooltip={session.stopping ? 'End it now' : 'Stop (Ctrl+F2 or Ctrl+.); press again to force'}
+            >
+              <Square size={12} fill="currentColor" aria-hidden="true" /> {session.stopping ? 'Force stop' : 'Stop'}
+            </button>
+          )}
         </div>
-        <OutputLines lines={session.output} partial={session.partial} />
+        <OutputLines lines={session.output} partial={session.partial} dropped={session.dropped} />
         {!paused && <InputBox prompt={session.partial} onInput={actions.onInput} onEndInput={actions.onEndInput} />}
       </div>
     );
@@ -240,7 +255,7 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
           {run.status === 'stopped' && (
             <p className="muted-text pad">Stopped before finishing. Output above is partial.</p>
           )}
-          <OutputLines lines={run.output} />
+          <OutputLines lines={run.output} dropped={run.droppedLines} />
         </>
       ) : (
         <Empty title="No output yet" text={`Run ${runTarget} to see its output here.`}>

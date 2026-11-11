@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -33,6 +34,8 @@ from .interpreters import child_env
 
 Send = Callable[[dict], Awaitable[None]]
 MAX_KERNELS = 8
+STREAM_RATE = 400_000  # characters a second of printed output, at most
+STREAM_WINDOW = 0.25
 
 
 class KernelError(Exception):
@@ -91,6 +94,9 @@ class Kernel:
     tasks: list = field(default_factory=list)
     closing: bool = False
     restarting: bool = False
+    window_start: float = 0.0
+    budget: int = 0
+    skipped: int = 0
     ready: asyncio.Event = field(default_factory=asyncio.Event)
     heard: asyncio.Event = field(default_factory=asyncio.Event)  # an iopub message arrived
 
@@ -174,9 +180,11 @@ class KernelHub:
             if kind == "execute_input":
                 await k.send({"type": "kernel.count", "id": k.id, "cell": cell, "count": content.get("execution_count")})
             elif kind == "stream":
-                await k.send({"type": "kernel.output", "id": k.id, "cell": cell,
-                              "output": {"output_type": "stream", "name": content.get("name", "stdout"),
-                                         "text": content.get("text", "")}})
+                text = self._throttle(k, content.get("text", ""))
+                if text:
+                    await k.send({"type": "kernel.output", "id": k.id, "cell": cell,
+                                  "output": {"output_type": "stream", "name": content.get("name", "stdout"),
+                                             "text": text}})
             elif kind in ("display_data", "execute_result"):
                 output = {"output_type": kind, "data": content.get("data", {}), "metadata": content.get("metadata", {})}
                 if kind == "execute_result":
@@ -189,6 +197,22 @@ class KernelHub:
                                          "traceback": content.get("traceback", [])}})
             elif kind == "clear_output":
                 await k.send({"type": "kernel.clear", "id": k.id, "cell": cell, "wait": bool(content.get("wait"))})
+
+    @staticmethod
+    def _throttle(k: Kernel, text: str) -> str:
+        # A cell printing in a tight loop: forward at most STREAM_RATE characters
+        # a second and say how much was skipped, so the notebook stays usable.
+        now = time.monotonic()
+        if now - k.window_start >= STREAM_WINDOW:
+            k.window_start, k.budget = now, int(STREAM_RATE * STREAM_WINDOW)
+        if len(text) > k.budget:
+            k.skipped += len(text) - max(k.budget, 0)
+            text = text[: max(k.budget, 0)]
+        k.budget -= len(text)
+        if k.skipped and text and k.budget > 0:
+            text = f"\n… {k.skipped:,} characters of output skipped (printed faster than they can be shown) …\n" + text
+            k.skipped = 0
+        return text
 
     async def _shell(self, k: Kernel) -> None:
         while True:
