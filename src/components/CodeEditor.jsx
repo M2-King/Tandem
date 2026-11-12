@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRemoteCursors } from '../cowork/remoteCursors.js';
 import Editor from '@monaco-editor/react';
 import { monaco as monacoApi } from '../lib/monacoSetup.js';
@@ -6,11 +6,22 @@ import { languageFor } from '../lib/fileTypes.js';
 import { setCompletionContext } from '../lib/pythonCompletion.js';
 
 // Replace a model's text as one undoable edit (Ctrl+Z still works after
-// accepting an AI change or undoing it).
+// accepting an AI change or undoing it). Only the part that differs is
+// replaced, so a cursor outside it stays where it was (a teammate's save
+// arriving in Cowork, for instance).
 function replaceModelText(model, text) {
-  if (model.getValue() === text) return;
+  const old = model.getValue();
+  if (old === text) return;
+  let start = 0;
+  const max = Math.min(old.length, text.length);
+  while (start < max && old.charCodeAt(start) === text.charCodeAt(start)) start++;
+  let end = 0;
+  while (end < max - start && old.charCodeAt(old.length - 1 - end) === text.charCodeAt(text.length - 1 - end)) end++;
+  const from = model.getPositionAt(start);
+  const to = model.getPositionAt(old.length - end);
+  const range = { startLineNumber: from.lineNumber, startColumn: from.column, endLineNumber: to.lineNumber, endColumn: to.column };
   model.pushStackElement();
-  model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);
+  model.pushEditOperations([], [{ range, text: text.slice(start, text.length - end) }], () => null);
   model.pushStackElement();
 }
 export const lineHeightFor = (fontSize) => Math.round((fontSize * 22) / 14);
@@ -180,6 +191,16 @@ export default function CodeEditor({
       const model = monacoApi.editor.getModel(monacoApi.Uri.parse(filePath));
       if (model) replaceModelText(model, content);
     }
+  }, [files, path, mounted]);
+
+  // The open file changed from outside the editor (a teammate's save, an
+  // accepted change): apply just the difference before the editor library
+  // would replace the whole text, so the cursor keeps its place.
+  useLayoutEffect(() => {
+    if (!mounted) return;
+    const model = editorRef.current?.getModel();
+    const text = files[path];
+    if (model && text !== undefined && model.uri.toString() === monacoApi.Uri.parse(path).toString()) replaceModelText(model, text);
   }, [files, path, mounted]);
 
   // Breakpoints and the current execution line.

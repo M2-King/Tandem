@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:cowork-db": "node --test supabase/tests/cowork.test.mjs",
+    "test:cowork-merge": "node --test src/cowork/live/merge.test.mjs",
     "cowork:local": "node supabase/tests/local-supabase.mjs"
   },
   "dependencies": {

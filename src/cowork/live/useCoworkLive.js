@@ -3,14 +3,26 @@ import * as api from './api.js';
 import { PERMISSIONS, useCoworkRoute } from '../useCowork.js';
 import { normalizeUsername, passwordProblem, personForUsername, usernameProblem } from '../accounts.js';
 import { safeFileName, uniqueFileName } from '../../state/useDiskWorkspace.js';
+import { describeEvents, hasEdit, mergeProject, retab } from './merge.js';
 
 // Cowork live mode: the same interface as the preview (useCowork), backed by
 // Supabase. Shared projects, people and invitations come from the server;
 // each file is saved on its own a moment after typing stops, over the
-// revision it was opened at. A save that fails keeps the edit here and the
-// status shows Unsaved.
+// revision this device last had.
+//
+// Staying in step: while a project is open and the app is visible, it is
+// reloaded every 10 seconds, when the window gets focus or becomes visible
+// again (iPad resume), and when the network comes back; each file is merged
+// by revision (merge.js). A teammate's newer save replaces a file with no
+// edit here, and marks a Conflict on one with an edit (Use theirs / Keep
+// mine). A save refused because someone saved first becomes that Conflict;
+// a save that fails for lack of network is kept and retried.
 
 const SAVE_DELAY = 700;
+const PROJECT_POLL = 10 * 1000;
+const OVERVIEW_POLL = 30 * 1000;
+const visible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
+const online = () => typeof navigator === 'undefined' || navigator.onLine !== false;
 const MAX_UPLOAD = 1024 * 1024;
 const at = (iso) => (iso ? Date.parse(iso) : Date.now());
 
@@ -20,18 +32,23 @@ export function useCoworkLive({ notify }) {
   const [overview, setOverview] = useState(null); // from cowork_overview
   const [loading, setLoading] = useState(false);
   const [opened, setOpened] = useState(null); // the open project
-  const [sync, setSync] = useState('saved'); // saved | saving | unsaved
+  const [sync, setSync] = useState('saved'); // saved | saving | offline | unsaved | conflict
+  const [conflicts, setConflicts] = useState({}); // path -> conflict (merge.js)
   const [arrival, setArrival] = useState(null);
 
-  // Saving: per file, the revision it was opened at, a pending timer, and
-  // whether its last save failed.
+  // Saving: per file, the server copy this device is in step with
+  // ({ content, revision }), a pending timer, and whether its last save
+  // failed (network or otherwise).
   const filesRef = useRef({});
-  const revisions = useRef({});
+  const base = useRef({});
+  const conflictsRef = useRef({});
   const timers = useRef(new Map());
   const inflight = useRef(new Set());
-  const failed = useRef(new Map()); // path -> message
+  const failed = useRef(new Map()); // path -> { message, offline }
   const openedRef = useRef(null);
   openedRef.current = opened;
+  const meRef = useRef(null);
+  meRef.current = me;
 
   // ------------------------------------------------------------ people
   // Everyone is known by username; members also by their user id.
@@ -56,16 +73,17 @@ export function useCoworkLive({ notify }) {
   const viewer = me ? people[me.id] : null;
 
   // ------------------------------------------------------------ loading
-  const refresh = useCallback(async ({ quiet = false } = {}) => {
-    setLoading(true);
+  // `background`: a periodic reload; no spinner, no message.
+  const refresh = useCallback(async ({ quiet = false, background = false } = {}) => {
+    if (!background) setLoading(true);
     try {
       setOverview(await api.overview());
       return true;
     } catch (e) {
-      if (!quiet) notify(e.message);
+      if (!quiet && !background) notify(e.message);
       return false;
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [notify]);
 
@@ -97,8 +115,10 @@ export function useCoworkLive({ notify }) {
       (p) => {
         if (!live) return;
         filesRef.current = Object.fromEntries(p.files.map((f) => [f.path, f.content]));
-        revisions.current = Object.fromEntries(p.files.map((f) => [f.path, f.revision]));
+        base.current = Object.fromEntries(p.files.map((f) => [f.path, { content: f.content, revision: f.revision }]));
         failed.current.clear();
+        conflictsRef.current = {};
+        setConflicts({});
         setSync('saved');
         const first = p.files.map((f) => f.path).find((x) => /\.(py|ipynb)$/.test(x)) || p.files[0]?.path;
         setOpened({ ...p, files: filesRef.current, open: first ? [first] : [], active: first || null });
@@ -169,10 +189,17 @@ export function useCoworkLive({ notify }) {
 
   // ------------------------------------------------------------ saving
   const settle = useCallback(() => {
-    if (failed.current.size) setSync('unsaved');
+    const failures = [...failed.current.values()];
+    if (Object.keys(conflictsRef.current).length) setSync('conflict');
+    else if (failures.length) setSync(!online() || failures.some((f) => f.offline) ? 'offline' : 'unsaved');
     else if (timers.current.size || inflight.current.size) setSync('saving');
     else setSync('saved');
   }, []);
+
+  const setConflictsNow = (next) => {
+    conflictsRef.current = next;
+    setConflicts(next);
+  };
 
   const copyDraft = (path) => {
     const text = filesRef.current[path] ?? '';
@@ -188,32 +215,247 @@ export function useCoworkLive({ notify }) {
       const id = openedRef.current?.id;
       if (!id || inflight.current.has(path)) return;
       const content = filesRef.current[path];
-      if (content === undefined) return;
+      if (content === undefined || conflictsRef.current[path] || !base.current[path]) return;
+      if (content === base.current[path].content) {
+        failed.current.delete(path);
+        settle();
+        return;
+      }
       inflight.current.add(path);
       settle();
       try {
-        const r = await api.saveFile(id, path, content, revisions.current[path]);
-        revisions.current[path] = r.revision;
+        const r = await api.saveFile(id, path, content, base.current[path].revision);
+        base.current[path] = { content, revision: r.revision };
         failed.current.delete(path);
       } catch (e) {
         if (lostAccess(e)) return;
-        const first = !failed.current.has(path);
-        failed.current.set(path, e.message);
-        if (first) {
-          const stale = e.code === 'PT409' || e.code === 'PT404';
-          notify(`Unsaved: ${e.message} Copy the draft before closing the app if it still fails.`, stale
-            ? { label: 'Copy draft', onClick: () => copyDraft(path) }
-            : { label: 'Retry', onClick: () => save(path) });
+        if (e.code === 'PT409' || e.code === 'PT404') {
+          // Someone saved first (or renamed or removed the file): a Conflict,
+          // settled once the newer copy is here.
+          failed.current.delete(path);
+          setConflictsNow({ ...conflictsRef.current, [path]: { kind: 'pending' } });
+          pullRef.current?.();
+        } else {
+          const network = e.code === 'offline' || !online();
+          const first = !failed.current.has(path);
+          failed.current.set(path, { message: e.message, offline: network });
+          if (first) {
+            if (network) notify(`Offline: ${path} is kept on this device and saved when the connection is back.`, { label: 'Retry', onClick: () => save(path) });
+            else notify(`Unsaved: ${e.message} Copy the draft before closing the app if it still fails.`, { label: 'Copy draft', onClick: () => copyDraft(path) });
+          }
         }
       } finally {
         inflight.current.delete(path);
         // Typed again while saving: save the newer text too.
-        if (filesRef.current[path] !== content && !failed.current.has(path)) save(path);
+        if (filesRef.current[path] !== content && !failed.current.has(path) && !conflictsRef.current[path]) save(path);
         settle();
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [settle, lostAccess, notify]
+  );
+
+  // Saves that failed for lack of network: try again (back online, or on the
+  // next reload).
+  const retryFailed = useCallback(() => {
+    for (const [path, f] of failed.current) if (f.offline && !inflight.current.has(path)) save(path);
+  }, [save]);
+
+  // ------------------------------------------------------------ staying in step
+  const pulling = useRef(false);
+  const pullAgain = useRef(false);
+  const pullRef = useRef(null);
+  const pull = useCallback(async () => {
+    const id = openedRef.current?.id;
+    if (!id || openedRef.current.loading) return;
+    if (pulling.current) {
+      pullAgain.current = true;
+      return;
+    }
+    pulling.current = true;
+    try {
+      const p = await api.openProject(id);
+      if (openedRef.current?.id !== id) return;
+      const merged = mergeProject(
+        { files: filesRef.current, base: base.current, conflicts: conflictsRef.current },
+        p.files,
+        { busy: new Set(inflight.current) }
+      );
+      const before = filesRef.current;
+      filesRef.current = merged.files;
+      base.current = merged.base;
+      // Edits that moved with a renamed file are saved under the new name.
+      for (const e of merged.events) {
+        if (e.type === 'renamed') {
+          clearTimeout(timers.current.get(e.from));
+          timers.current.delete(e.from);
+          failed.current.delete(e.from);
+          if (hasEdit(merged.files, merged.base, e.path) && !merged.conflicts[e.path]) {
+            timers.current.set(e.path, setTimeout(() => save(e.path), SAVE_DELAY));
+          }
+        }
+        if (e.type === 'removed') failed.current.delete(e.path);
+      }
+      // A conflicted file waits for a choice; a pending save would only be refused.
+      for (const path of Object.keys(merged.conflicts)) {
+        clearTimeout(timers.current.get(path));
+        timers.current.delete(path);
+        failed.current.delete(path);
+      }
+      setConflictsNow(merged.conflicts);
+      setOpened((o) => {
+        if (!o || o.id !== id) return o;
+        const tabs = retab(o, merged.files, merged.events);
+        return {
+          ...o,
+          name: p.name,
+          role: p.role,
+          members: p.members,
+          invitations: p.invitations,
+          updated_at: p.updated_at,
+          updated_by: p.updated_by,
+          files: merged.files === before ? o.files : merged.files,
+          ...tabs,
+        };
+      });
+      const me = meRef.current?.username;
+      const note = describeEvents(merged.events, me);
+      if (note) notify(`${note}.`);
+      for (const e of merged.events) {
+        if (e.type === 'conflict') {
+          notify(e.by ? `${e.by} saved a newer version of ${e.path}. Choose which to keep.` : `${e.path} was removed by a teammate, but you have unsaved edits in it.`);
+        }
+      }
+      retryFailed();
+    } catch (e) {
+      if (e.code !== 'offline') lostAccess(e);
+    } finally {
+      pulling.current = false;
+      settle();
+      if (pullAgain.current) {
+        pullAgain.current = false;
+        pullRef.current?.();
+      }
+    }
+  }, [lostAccess, notify, save, settle, retryFailed]);
+  pullRef.current = pull;
+
+  // Reload the open project: every 10 s while visible, on focus or becoming
+  // visible (iPad resume), and when the network comes back.
+  // (Through refs, so the timer only restarts when the project or visibility changes.)
+  const projectReady = !!(opened && !opened.loading && opened.id === projectId);
+  const settleRef = useRef(settle);
+  settleRef.current = settle;
+  const retryRef = useRef(retryFailed);
+  retryRef.current = retryFailed;
+  useEffect(() => {
+    if (!me || !projectReady) return undefined;
+    let timer = null;
+    const pullNow = () => pullRef.current?.();
+    const start = () => {
+      clearInterval(timer);
+      timer = visible() ? setInterval(() => visible() && pullNow(), PROJECT_POLL) : null;
+    };
+    const onFocus = () => pullNow();
+    const onVisibility = () => {
+      if (visible()) pullNow();
+      start();
+    };
+    const onOnline = () => {
+      settleRef.current();
+      retryRef.current();
+      pullNow();
+    };
+    const onOffline = () => settleRef.current();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    start();
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, [me, projectReady]);
+
+  // Shared projects: reload the list on focus and every 30 s while visible,
+  // so invitations and changes appear without pressing Refresh.
+  const onHome = !!me && route.screen !== 'project' && route.screen !== 'local';
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    if (!onHome) return undefined;
+    let timer = null;
+    const reload = () => visible() && refreshRef.current({ background: true });
+    const start = () => {
+      clearInterval(timer);
+      timer = visible() ? setInterval(reload, OVERVIEW_POLL) : null;
+    };
+    const onVisibility = () => {
+      reload();
+      start();
+    };
+    window.addEventListener('focus', reload);
+    window.addEventListener('online', reload);
+    document.addEventListener('visibilitychange', onVisibility);
+    start();
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', reload);
+      window.removeEventListener('online', reload);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [onHome]);
+
+  // A conflict: take the newer server copy, or save this device's text over it.
+  const resolveConflict = useCallback(
+    async (path, choice) => {
+      const c = conflictsRef.current[path];
+      if (!c || c.kind === 'pending') return;
+      const rest = { ...conflictsRef.current };
+      delete rest[path];
+      if (c.kind === 'newer') {
+        base.current[path] = { content: c.content, revision: c.revision };
+        setConflictsNow(rest);
+        if (choice === 'theirs') {
+          filesRef.current = { ...filesRef.current, [path]: c.content };
+          failed.current.delete(path);
+          setOpened((o) => (o ? { ...o, files: filesRef.current } : o));
+          settle();
+        } else {
+          await save(path); // over the newer revision
+        }
+        return;
+      }
+      // Removed by a teammate.
+      setConflictsNow(rest);
+      if (choice === 'theirs') {
+        const files = { ...filesRef.current };
+        delete files[path];
+        filesRef.current = files;
+        delete base.current[path];
+        failed.current.delete(path);
+        setOpened((o) => (o ? { ...o, files, ...retab(o, files, []) } : o));
+        settle();
+      } else {
+        const id = openedRef.current?.id;
+        const text = filesRef.current[path];
+        try {
+          const r = await api.createFile(id, path, text);
+          base.current[path] = { content: text, revision: r.revision };
+        } catch (e) {
+          if (!lostAccess(e)) {
+            notify(e.message);
+            setConflictsNow({ ...conflictsRef.current, [path]: c });
+          }
+        }
+        settle();
+      }
+    },
+    [save, settle, lostAccess, notify]
   );
 
   const setFile = useCallback(
@@ -222,7 +464,9 @@ export function useCoworkLive({ notify }) {
       filesRef.current = { ...filesRef.current, [path]: text };
       setOpened((o) => (o ? { ...o, files: filesRef.current } : o));
       clearTimeout(timers.current.get(path));
-      timers.current.set(path, setTimeout(() => save(path), SAVE_DELAY));
+      timers.current.delete(path);
+      // In a conflict the edit is kept here until Use theirs / Keep mine.
+      if (!conflictsRef.current[path]) timers.current.set(path, setTimeout(() => save(path), SAVE_DELAY));
       settle();
     },
     [save, settle]
@@ -253,7 +497,7 @@ export function useCoworkLive({ notify }) {
   );
   const addLocal = (path, content, revision, { open = true } = {}) => {
     filesRef.current = { ...filesRef.current, [path]: content };
-    revisions.current[path] = revision;
+    base.current[path] = { content, revision };
     showFiles((o) => ({ ...o, files: filesRef.current, ...(open ? { open: o.open.includes(path) ? o.open : [...o.open, path], active: path } : {}) }));
   };
 
@@ -324,9 +568,14 @@ export function useCoworkLive({ notify }) {
         const files = {};
         for (const [k, v] of Object.entries(filesRef.current)) files[k === from ? path : k] = v;
         filesRef.current = files;
-        revisions.current[path] = r.revision;
-        delete revisions.current[from];
+        base.current[path] = { content: base.current[from]?.content ?? files[path], revision: r.revision };
+        delete base.current[from];
         failed.current.delete(from);
+        if (conflictsRef.current[from]) {
+          const next = { ...conflictsRef.current };
+          delete next[from];
+          setConflictsNow(next);
+        }
         showFiles((o) => ({ ...o, files, open: o.open.map((x) => (x === from ? path : x)), active: o.active === from ? path : o.active }));
         return null;
       } catch (e) {
@@ -352,8 +601,13 @@ export function useCoworkLive({ notify }) {
       const files = { ...filesRef.current };
       delete files[path];
       filesRef.current = files;
-      delete revisions.current[path];
+      delete base.current[path];
       failed.current.delete(path);
+      if (conflictsRef.current[path]) {
+        const next = { ...conflictsRef.current };
+        delete next[path];
+        setConflictsNow(next);
+      }
       settle();
       showFiles((o) => {
         const open = o.open.filter((x) => x !== path);
@@ -564,6 +818,9 @@ export function useCoworkLive({ notify }) {
     roleIn,
     can,
     sync,
+    conflicts,
+    resolveConflict,
+    reloadProject: pull,
     presence: [],
     workspace,
     go,

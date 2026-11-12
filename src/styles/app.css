@@ -5968,3 +5968,28 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
     animation: none;
   }
 }
+
+/* Cowork: staying in step (Offline, Conflict) */
+.sync-status.is-offline {
+  color: var(--warning);
+  background: rgba(217, 178, 92, 0.12);
+}
+.sync-status.is-offline svg {
+  color: var(--warning);
+}
+.sync-status.is-conflict {
+  color: var(--warning);
+  background: rgba(217, 178, 92, 0.16);
+}
+.sync-status.is-conflict svg {
+  color: var(--warning);
+}
+@media (max-width: 600px) {
+  .cowork-strip .sync-status.is-offline .sync-text,
+  .cowork-strip .sync-status.is-conflict .sync-text {
+    display: inline;
+  }
+}
+.file-bar .banner-text {
+  min-width: 0;
+}

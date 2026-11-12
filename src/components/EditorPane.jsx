@@ -300,6 +300,28 @@ function SessionBar(props) {
   );
 }
 
+// A shared file's bar (Cowork): e.g. a teammate saved a newer version.
+function FileBar({ bar }) {
+  return (
+    <div className={`editor-banner ${bar.tone === 'warning' ? 'banner-warning' : 'banner-review'} file-bar`} role="status" aria-live="polite">
+      <AlertTriangle size={16} aria-hidden="true" />
+      <span className="banner-text">
+        <strong>{bar.title}</strong>
+        {bar.text ? ` ${bar.text}` : ''}
+      </span>
+      {bar.actions?.length > 0 && (
+        <div className="banner-actions">
+          {bar.actions.map((a) => (
+            <button key={a.label} type="button" className={`btn btn-sm ${a.primary ? 'btn-primary' : 'btn-secondary'}`} onClick={a.onClick} disabled={a.disabled}>
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NoticeBar({ notice, onReset, onDismiss }) {
   return (
     <div className="editor-banner banner-warning" role="status">
@@ -387,6 +409,7 @@ export default function EditorPane(props) {
     remoteCursors,
     notebookPresence,
     kernelNote,
+    fileBar,
   } = props;
   const [selection, setSelection] = useState(null);
   const [diffNav, setDiffNav] = useState(null);
@@ -443,6 +466,7 @@ export default function EditorPane(props) {
       {showReviewBar && <ReviewBar review={review} nav={showDiff ? diffNav : null} {...reviewHandlers} />}
       {showSession && <SessionBar session={session} {...sessionHandlers} />}
       {showNotice && <NoticeBar notice={notice} onReset={onResetFile} onDismiss={onDismissNotice} />}
+      {fileBar && fileBar.path === activePath && <FileBar bar={fileBar} />}
       <div className="editor-body">
         {!activePath ? (
           <div className="empty-state">

@@ -101,6 +101,38 @@ function datasetStats(text) {
 
 const MIN_EDITOR_WIDTH = 480;
 
+// Cowork live: the bar on a file a teammate changed while it had an edit here.
+function conflictBar(cowork, path) {
+  const c = path && cowork.conflicts?.[path];
+  if (!c) return null;
+  const choose = (choice) => () => cowork.resolveConflict(path, choice);
+  if (c.kind === 'pending') {
+    return { path, tone: 'warning', title: 'Someone else saved this file first.', text: 'Getting their version…' };
+  }
+  if (c.kind === 'removed') {
+    return {
+      path,
+      tone: 'warning',
+      title: 'A teammate removed this file.',
+      text: 'Your edits are only on this device.',
+      actions: [
+        { label: 'Use theirs', onClick: choose('theirs') },
+        { label: 'Keep mine', onClick: choose('mine'), primary: true },
+      ],
+    };
+  }
+  return {
+    path,
+    tone: 'warning',
+    title: `${c.by || 'A teammate'} saved a newer version.`,
+    text: 'Your edits here aren’t saved yet. Use theirs replaces your edits; Keep mine saves your text over theirs.',
+    actions: [
+      { label: 'Use theirs', onClick: choose('theirs') },
+      { label: 'Keep mine', onClick: choose('mine'), primary: true },
+    ],
+  };
+}
+
 const lineLabel = (start, end) => (start === end ? `Line ${start}` : `Lines ${start}–${end}`);
 
 // Names of variables whose value differs from the previous step.
@@ -277,7 +309,7 @@ export default function App() {
     const reasons = [];
     if (exec.session && !exec.session.finished) reasons.push('The code that is running will stop.');
     if (saveState === 'failed') reasons.push('A file couldn’t be saved to disk, so its latest changes will be lost.');
-    if (cowork.sync === 'unsaved' || cowork.sync === 'saving') reasons.push('A shared file has changes that aren’t saved yet. Copy them first if the save keeps failing.');
+    if (['unsaved', 'saving', 'offline', 'conflict'].includes(cowork.sync)) reasons.push('A shared file has changes that aren’t saved yet. Copy them first if the save keeps failing.');
     if (!confirmed && reasons.length) {
       setUpdateConfirm(reasons);
       return;
@@ -997,6 +1029,7 @@ export default function App() {
             remoteCursors={remoteCursors}
             notebookPresence={notebookPresence}
             kernelNote={inCowork ? (cowork.live ? 'shared projects don’t run yet' : 'this device · preview') : null}
+            fileBar={inCowork ? conflictBar(cowork, ws.activePath) : null}
             onOpenDatabase={
               IS_LOCAL && !inCowork
                 ? (path) => {

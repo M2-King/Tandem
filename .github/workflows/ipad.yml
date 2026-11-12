@@ -51,6 +51,9 @@ jobs:
           npm ci
           npm run build
           python ipad/fetch_pyodide.py build/pyodide
+      - name: Cowork sync unit tests (merge by revision)
+        run: npm run -s test:cowork-merge
+
       - name: Browsers
         run: |
           npm install --no-save playwright@1.64.1

@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, CloudOff, Laptop, Loader2, LogOut, RefreshCw, RotateCcw, Settings, Share2, UserRound, WifiOff } from 'lucide-react';
+import { Check, ChevronLeft, CloudOff, Laptop, Loader2, LogOut, RefreshCw, RotateCcw, Settings, Share2, UserRound, WifiOff, GitCompareArrows } from 'lucide-react';
 import Menu, { MenuItem } from '../components/Menu.jsx';
 import { addressOf, initialsOf } from './accounts.js';
 
@@ -58,6 +58,16 @@ const SYNC = {
     Icon: CloudOff,
     text: 'Unsaved',
     tip: 'An edit couldn’t be saved and is kept only in this app. Copy the draft before closing the app if it still fails.',
+  },
+  offline: {
+    Icon: CloudOff,
+    text: 'Offline',
+    tip: 'No connection. Your edits stay on this device and are saved when the connection is back.',
+  },
+  conflict: {
+    Icon: GitCompareArrows,
+    text: 'Conflict',
+    tip: 'A teammate saved a newer version of a file you were editing. Open it to choose Use theirs or Keep mine.',
   },
   reconnecting: {
     Icon: RefreshCw,
