@@ -159,7 +159,7 @@ jobs:
         env:
           VERSION: ${{ steps.staging.outputs.version }}
         run: |
-          $setup = (Resolve-Path "desktop/release/Tandem-Staging-Setup-$env:VERSION.exe").Path
+          $setup = (Resolve-Path "desktop/release/Tandem-Setup-$env:VERSION.exe").Path
           node packaging/staging-update-smoke.cjs $setup $env:VERSION (Resolve-Path smoke-project-env/Scripts/python.exe).Path
 
       # main and tags: one zip with both exes (the release job downloads it by name).
@@ -174,12 +174,12 @@ jobs:
           if-no-files-found: error
 
       # cowork (Tandem Staging): just the installer, not zipped, so the
-      # artifact link downloads Tandem-Staging-Setup-<version>.exe itself.
+      # artifact link downloads Tandem-Setup-<version>.exe itself.
       - name: Upload the staging installer (.exe, not zipped)
         if: github.ref == 'refs/heads/cowork'
         uses: actions/upload-artifact@v7
         with:
-          path: desktop/release/Tandem-Staging-Setup-*.exe
+          path: desktop/release/Tandem-Setup-*.exe
           archive: false
           retention-days: 30
           if-no-files-found: error
@@ -191,8 +191,8 @@ jobs:
         with:
           name: windows-staging-feed
           path: |
-            desktop/release/Tandem-Staging-Setup-${{ steps.staging.outputs.version }}.exe
-            desktop/release/Tandem-Staging-Setup-${{ steps.staging.outputs.version }}.exe.blockmap
+            desktop/release/Tandem-Setup-${{ steps.staging.outputs.version }}.exe
+            desktop/release/Tandem-Setup-${{ steps.staging.outputs.version }}.exe.blockmap
             desktop/release/staging.yml
           retention-days: 7
           if-no-files-found: error
@@ -271,14 +271,14 @@ jobs:
         id: publish
         run: |
           set -euo pipefail
-          EXE="Tandem-Staging-Setup-${VERSION}.exe"
+          EXE="Tandem-Setup-${VERSION}.exe"
           NOTES="Tandem Staging for Windows ${VERSION} (cowork ${GITHUB_SHA::7}, run ${GITHUB_RUN_NUMBER}): the update feed for installed copies of Tandem Staging, replaced after every cowork build. Testers install it once from ${EXE}; later builds arrive inside the app. Not a release."
           prev=""
           if gh release view "$TAG" >/dev/null 2>&1; then
             prev=$(gh release download "$TAG" -p staging.yml -O - 2>/dev/null | sed -n 's/^version: *//p' | tr -d "'\"" || true)
           else
             gh release create "$TAG" --prerelease --latest=false --target "$GITHUB_SHA" \
-              --title "Tandem Staging (Windows, rolling)" --notes "$NOTES"
+              --title "Tandem (Windows, staging feed)" --notes "$NOTES"
           fi
           echo "Feed now: ${prev:-empty}; this build: $VERSION"
           # A late run never replaces a newer build.
@@ -291,7 +291,7 @@ jobs:
           gh release upload "$TAG" "feed/$EXE" "feed/$EXE.blockmap" --clobber
           gh release upload "$TAG" feed/staging.yml --clobber
           keep=("$EXE" "$EXE.blockmap" "staging.yml")
-          [ -n "$prev" ] && [ "$prev" != "$VERSION" ] && keep+=("Tandem-Staging-Setup-${prev}.exe.blockmap")
+          [ -n "$prev" ] && [ "$prev" != "$VERSION" ] && keep+=("Tandem-Setup-${prev}.exe.blockmap")
           gh release view "$TAG" --json assets -q '.assets[].name' | while read -r name; do
             if ! printf '%s\n' "${keep[@]}" | grep -qxF "$name"; then
               echo "Removing $name"

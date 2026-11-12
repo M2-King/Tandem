@@ -134,12 +134,12 @@ jobs:
         id: dmg
         run: |
           version=$(node -p "require('./desktop/package.json').version")
-          base=$(echo "${{ steps.app.outputs.name }}" | tr ' ' '-')
+          base=Tandem
           dmg="$base-$version-arm64.dmg"
           mkdir dmg-root
-          cp -R "${{ steps.app.outputs.path }}" dmg-root/
+          cp -R "${{ steps.app.outputs.path }}" dmg-root/Tandem.app
           ln -s /Applications dmg-root/Applications
-          hdiutil create -volname "${{ steps.app.outputs.name }}" -srcfolder dmg-root -ov -format UDZO "$dmg"
+          hdiutil create -volname "Tandem" -srcfolder dmg-root -ov -format UDZO "$dmg"
           ls -la "$dmg"
           echo "file=$dmg" >> "$GITHUB_OUTPUT"
 

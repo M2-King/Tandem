@@ -296,7 +296,7 @@ handle('desktop:info', () => ({
   materials: MATERIALS,
   maximized: win?.isMaximized() ?? false,
   folder: runtime?.folder ?? null,
-  name: app.getName(),
+  name: require('./package.json').tandemDisplayName || app.getName(),
   version: app.getVersion(),
   wallpaperLuminance: wallpaperLuminance(),
 }));

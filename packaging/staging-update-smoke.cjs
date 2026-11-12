@@ -87,8 +87,9 @@ function check(ok, message) {
   // The ⋯ menu: version, Check for updates, status line.
   await win.getByRole('button', { name: 'More options' }).click();
   const menu = win.locator('.menu');
-  await menu.getByText(version, { exact: false }).first().waitFor({ timeout: 5000 });
-  check(await menu.getByText('Tandem Staging', { exact: false }).first().isVisible(), 'the menu shows Tandem Staging and its version');
+  const shown = version.replace(/-staging\.(\d+)$/, ' (build $1)');
+  await menu.getByText(shown, { exact: false }).first().waitFor({ timeout: 5000 });
+  check(/Tandem/.test(await menu.innerText()) && !/Staging/.test(await menu.innerText()), `the menu shows Tandem ${shown}, not “Staging”`);
   const action = menu.getByRole('menuitem', { name: /Check for updates|Restart to update/ });
   check((await action.count()) === 1, `the menu offers “${(await action.innerText()).trim()}”`);
   check((await menu.locator('.menu-update-status').innerText()).trim().length > 0, `status line: ${(await menu.locator('.menu-update-status').innerText()).trim()}`);

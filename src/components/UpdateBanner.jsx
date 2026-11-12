@@ -1,3 +1,4 @@
+import { shownVersion } from '../state/useUpdates.js';
 import { AlertCircle, Check, Download, Loader2, RefreshCw, X } from 'lucide-react';
 
 // In-app updates (Tandem Staging): a small card that doesn't block anything.
@@ -8,7 +9,7 @@ import { AlertCircle, Check, Download, Loader2, RefreshCw, X } from 'lucide-reac
 //   error         what went wrong
 export default function UpdateBanner({ kind, state, onRestart, onLater, onDismiss }) {
   const name = state?.name || 'Tandem';
-  const version = state?.available;
+  const version = state?.available ? shownVersion(state.available) : '';
   const percent = Math.max(0, Math.min(100, state?.percent ?? 0));
   return (
     <div className={`update-banner is-${kind}`} role="status" aria-live="polite">
@@ -24,7 +25,7 @@ export default function UpdateBanner({ kind, state, onRestart, onLater, onDismis
             <Check size={12} strokeWidth={3} />
           </span>
           <span className="update-banner-text">
-            You’re up to date <span className="mono">{state?.version}</span>
+            You’re up to date <span className="mono">{shownVersion(state?.version)}</span>
           </span>
         </>
       )}

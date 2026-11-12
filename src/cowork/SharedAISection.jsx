@@ -13,7 +13,7 @@ const MODELS = {
     "claude-opus-5-5",
     "claude-fable-5-2",
   ],
-  openai: [],
+  openai: ['deepseek-chat', 'deepseek-reasoner'],
 };
 const DEFAULTS = { anthropic: "claude-sonnet-5-5", openai: "" };
 const PROVIDER_NAME = {
@@ -128,7 +128,7 @@ function ShareForm({ sharedAI, share, onDone, notify }) {
             className="field-input mono"
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder="https://api.openai.com/v1"
+            placeholder="https://api.openai.com/v1 (DeepSeek: https://api.deepseek.com)"
             spellCheck={false}
           />
         </label>

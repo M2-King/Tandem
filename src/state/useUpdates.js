@@ -6,6 +6,9 @@ import { DESKTOP } from '../runtime/desktop.js';
 // an update that is already downloaded. Elsewhere this is inert.
 const BRIDGE = DESKTOP?.updates || null;
 
+// A staging version as people read it: 0.3.1-staging.58 → 0.3.1 (build 58).
+export const shownVersion = (v) => String(v ?? '').replace(/-staging\.(\d+)$/, ' (build $1)');
+
 function timeOf(ms) {
   try {
     return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -25,9 +28,9 @@ export function updateStatusText(s) {
     case 'up-to-date':
       return s.checkedAt ? `Up to date (checked at ${timeOf(s.checkedAt)}).` : 'Up to date.';
     case 'downloading':
-      return `Downloading ${s.available || 'the update'}… ${s.percent ?? 0}%`;
+      return `Downloading ${s.available ? shownVersion(s.available) : 'the update'}… ${s.percent ?? 0}%`;
     case 'ready':
-      return `${s.available || 'An update'} is ready. Restart to update.`;
+      return `${s.available ? shownVersion(s.available) : 'An update'} is ready. Restart to update.`;
     case 'error':
       return s.message || 'Couldn’t check for updates.';
     default:
@@ -60,7 +63,7 @@ export function useUpdates({ notify } = {}) {
       .then((s) => {
         if (!live) return;
         setState(s);
-        if (s?.version && versionChange(s.version)) notify?.(`${s.name || 'Tandem'} was updated to ${s.version}.`);
+        if (s?.version && versionChange(s.version)) notify?.(`${s.name || 'Tandem'} was updated to ${shownVersion(s.version)}.`);
       })
       .catch(() => {});
     const off = BRIDGE.onState((s) => setState(s));
@@ -88,7 +91,7 @@ export function useUpdates({ notify } = {}) {
   // Show "Updating…" first, then quit into the installer.
   const install = useCallback(async () => {
     if (!BRIDGE) return false;
-    setInstalling(state?.available || 'the update');
+    setInstalling(state?.available ? shownVersion(state.available) : 'the update');
     await new Promise((r) => setTimeout(r, 1400));
     const ok = await BRIDGE.install().catch(() => false);
     if (!ok) setInstalling(null);

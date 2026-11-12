@@ -3,7 +3,7 @@
 //   node packaging/check-staging-feed.mjs <dir> <version>          the build's files, before publishing
 //   node packaging/check-staging-feed.mjs <dir> <version> <feed>   the published feed, after publishing
 //
-// <dir> holds Tandem-Staging-Setup-<version>.exe, its .blockmap and
+// <dir> holds Tandem-Setup-<version>.exe, its .blockmap and
 // staging.yml as electron-builder wrote them. Before publishing: staging.yml
 // names this version and installer, and its sha512 and size match the exe.
 // After publishing: staging.yml fetched from the feed URL says the same, and
@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const [dir, version, feed] = process.argv.slice(2);
-const exeName = `Tandem-Staging-Setup-${version}.exe`;
+const exeName = `Tandem-Setup-${version}.exe`;
 
 function fail(message) {
   console.error(`FAILED: ${message}`);

@@ -38,7 +38,13 @@ test('staging package: name, id, feed, channel; the source is untouched', () => 
   assert.equal(p.version, '0.3.1-staging.57');
   assert.equal(p.productName, 'Tandem Staging');
   assert.equal(p.build.appId, 'app.tandem.staging');
-  assert.equal(p.build.nsis.artifactName, 'Tandem-Staging-Setup-${version}.exe');
+  assert.equal(p.build.nsis.artifactName, 'Tandem-Setup-${version}.exe');
+  // Shown as Tandem; the folders and app id stay "Tandem Staging" so updates land in place.
+  assert.equal(p.tandemDisplayName, 'Tandem');
+  assert.equal(p.build.nsis.shortcutName, 'Tandem');
+  assert.equal(p.build.nsis.uninstallDisplayName, 'Tandem');
+  assert.equal(p.build.productName, 'Tandem Staging');
+  assert.equal(p.build.mac.extendInfo.CFBundleDisplayName, 'Tandem');
   assert.deepEqual(p.build.publish, [{ provider: 'generic', url: FEED_URL, channel: 'staging' }]);
   assert.deepEqual(p.tandemUpdates, { channel: 'staging', url: FEED_URL });
   assert.match(FEED_URL, /^https:\/\/github\.com\/M2-King\/Tandem\/releases\/download\/windows-staging$/);

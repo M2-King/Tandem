@@ -39,18 +39,18 @@ function feedConfig(pkg) {
 // Whether this copy of the app may update itself, and if not, why.
 function updateGate({ pkg, isPackaged, platform, env = {}, execPath, resourcesPath, exists = fs.existsSync }) {
   const config = feedConfig(pkg);
-  if (!config) return { enabled: false, config: null, reason: 'Updates come with the Tandem Staging installer only.' };
+  if (!config) return { enabled: false, config: null, reason: 'Updates come with the installer only.' };
   if (!isPackaged) return { enabled: false, config, reason: 'Updates are off when Tandem runs from source.' };
   if (platform !== 'win32') return { enabled: false, config, reason: 'Updates are for the Windows installer only.' };
   if (env.PORTABLE_EXECUTABLE_FILE || env.PORTABLE_EXECUTABLE_DIR) {
-    return { enabled: false, config, reason: 'The portable app doesn’t update itself. Install Tandem Staging to get updates.' };
+    return { enabled: false, config, reason: 'The portable app doesn’t update itself. Use the installer to get updates.' };
   }
   const productName = pkg.productName || 'Tandem Staging';
   const installedByNsis =
     exists(path.join(resourcesPath, 'app-update.yml')) &&
     exists(path.join(path.dirname(execPath), `Uninstall ${productName}.exe`));
   if (!installedByNsis) {
-    return { enabled: false, config, reason: 'This copy wasn’t installed by the Tandem Staging installer, so it doesn’t update itself.' };
+    return { enabled: false, config, reason: 'This copy wasn’t installed by the installer, so it doesn’t update itself.' };
   }
   return { enabled: true, config, reason: null };
 }
@@ -98,7 +98,7 @@ function setupUpdates({
     enabled: gate.enabled,
     reason: gate.reason,
     staging: !!gate.config,
-    name: app.getName(),
+    name: pkg.tandemDisplayName || app.getName(),
     version: app.getVersion(),
     status: gate.enabled ? 'idle' : 'off', // off | idle | checking | up-to-date | downloading | ready | error
     available: null,

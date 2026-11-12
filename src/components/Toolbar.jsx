@@ -29,7 +29,7 @@ import Menu, { MenuItem } from './Menu.jsx';
 import RunControl from './RunControl.jsx';
 import WindowControls from './WindowControls.jsx';
 import { MATERIAL_LABELS } from '../state/useDesktop.js';
-import { updateStatusText } from '../state/useUpdates.js';
+import { shownVersion, updateStatusText } from '../state/useUpdates.js';
 import { IS_IPAD } from '../runtime/config.js';
 
 function SaveStatus({ state, onDisk }) {
@@ -63,7 +63,7 @@ function SaveStatus({ state, onDisk }) {
   );
 }
 
-// The installed version and, in Tandem Staging, its updates.
+// The installed version and, in the staging build, its updates.
 function AppVersion({ desktop, updates, close, onRestartToUpdate }) {
   const s = updates?.state;
   const name = s?.name || desktop.info?.name || 'Tandem';
@@ -74,7 +74,7 @@ function AppVersion({ desktop, updates, close, onRestartToUpdate }) {
     <>
       <div className="menu-sep" role="separator" />
       <div className="menu-label">
-        {name} <span className="mono">{version}</span>
+        {name} <span className="mono">{shownVersion(version)}</span>
       </div>
       {s?.staging && (
         <>
