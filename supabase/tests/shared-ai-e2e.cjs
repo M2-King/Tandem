@@ -157,7 +157,7 @@ let pa, pb;
   const choice = pb.locator('.dialog-ai-choice');
   await choice.waitFor({ timeout: 5000 });
   const choiceText = (await choice.innerText()).replace(/\s+/g, ' ');
-  check(choiceText.includes('Use the shared AI in this project?') && choiceText.includes(`${A} shares gpt-shared-test`), `AI settings asks: “${choiceText.slice(0, 110)}…”`);
+  check(choiceText.includes('Your leader has already shared an AI setup. Do you want to use it in this project?') && choiceText.includes(`${A} shares gpt-shared-test`), `AI settings asks: “${choiceText.slice(0, 110)}…”`);
   check(!(await pb.locator('.dialog-ai-settings, .dialog-ai').count()), '…before the AI settings themselves');
   await pb.waitForTimeout(500); // the dialog eases in
   await pb.screenshot({ path: `${out}/3a-member-choice.png` });

@@ -5,13 +5,17 @@ import Dialog from '../components/Dialog.jsx';
 // assistant uses here, on this device (useSharedAI keeps the answer per
 // project). The own AI's settings stay as they are for other projects.
 export default function AIChoiceDialog({ share, projectName, usingShared, ownAI, onUseShared, onUseOwn, onClose }) {
+  // The person who shared it is the project's leader (an owner).
+  const question = share.shared_by_me
+    ? 'You already shared your AI with this project. Do you want to use it here?'
+    : 'Your leader has already shared an AI setup. Do you want to use it in this project?';
   const who = share.shared_by_me ? 'You share' : `${share.shared_by} shares`;
   const left = share.shared_by_me
     ? 'Your own requests have no limit.'
     : `You’ve used ${share.used_today} of ${share.daily_limit} requests today.`;
   return (
-    <Dialog title="Use the shared AI in this project?" onClose={onClose} className="dialog-confirm dialog-ai-choice">
-      <h2 className="dialog-title">Use the shared AI in this project?</h2>
+    <Dialog title={question} onClose={onClose} className="dialog-confirm dialog-ai-choice">
+      <h2 className="dialog-title">{question}</h2>
       <p className="dialog-text">
         {who} <span className="mono">{share.model}</span> with {projectName}. {left}
       </p>
