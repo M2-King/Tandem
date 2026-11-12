@@ -41,6 +41,7 @@ function check(ok, message) {
       /channel: staging/.test(updateYml),
     'app-update.yml: generic https feed, staging channel'
   );
+  check(/^useMultipleRangeRequest: false$/m.test(updateYml), 'app-update.yml: updates download only the changed parts, one range per request');
 
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-staging-'));
   fs.mkdirSync(path.join(project, '.tandem'));

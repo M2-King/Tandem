@@ -50,7 +50,11 @@ function toStaging(p, run) {
   // publisherName here (electron-updater would then require a signature that
   // matches it). Add win.signtoolOptions/azureSignOptions and publisherName
   // once Tandem has a certificate.
-  b.publish = [{ provider: 'generic', url: FEED_URL, channel: CHANNEL }];
+  // An update downloads only the parts of the installer that changed (about
+  // 8 MB of 148 between two builds), one range per request: GitHub's file
+  // servers refuse several ranges in one request (HTTP 501), and electron-updater
+  // would then fall back to downloading the whole installer every time.
+  b.publish = [{ provider: 'generic', url: FEED_URL, channel: CHANNEL, useMultipleRangeRequest: false }];
   // electron-updater ships with the app (a runtime dependency).
   if (!next.dependencies?.['electron-updater']) throw new Error('desktop/package.json needs electron-updater in dependencies');
   return next;

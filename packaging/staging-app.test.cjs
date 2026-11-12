@@ -45,7 +45,8 @@ test('staging package: name, id, feed, channel; the source is untouched', () => 
   assert.equal(p.build.nsis.uninstallDisplayName, 'Tandem');
   assert.equal(p.build.productName, 'Tandem Staging');
   assert.equal(p.build.mac.extendInfo.CFBundleDisplayName, 'Tandem');
-  assert.deepEqual(p.build.publish, [{ provider: 'generic', url: FEED_URL, channel: 'staging' }]);
+  // One range per request (GitHub refuses several in one): small differential updates.
+  assert.deepEqual(p.build.publish, [{ provider: 'generic', url: FEED_URL, channel: 'staging', useMultipleRangeRequest: false }]);
   assert.deepEqual(p.tandemUpdates, { channel: 'staging', url: FEED_URL });
   assert.match(FEED_URL, /^https:\/\/github\.com\/M2-King\/Tandem\/releases\/download\/windows-staging$/);
   assert.equal(p.build.win.publisherName, undefined); // unsigned for now
