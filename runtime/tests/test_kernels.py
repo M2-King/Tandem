@@ -195,3 +195,36 @@ def test_kernel_runs_in_the_environment(session, python):
     without the venv launcher, and must still be inside the environment)."""
     outputs, _ = session.run("env", "import sys\nprint(sys.prefix)")
     assert Path(text_of(outputs).strip()).resolve() == python.parent.parent.resolve()
+
+
+def test_an_interrupted_shutdown_still_leaves_the_kernel_to_be_stopped(project, python):
+    """A window's cleanup cancelled part way (the server may cancel the
+    connection's task as the window goes) must not lose track of the kernel:
+    stopping all kernels, as the runtime does when it exits, still stops it."""
+    import asyncio
+
+    from conftest import pid_alive
+    from tandem_runtime.kernels import KernelHub
+
+    async def scenario():
+        hub = KernelHub(project, lambda: python)
+        events = []
+
+        async def send(event):
+            events.append(event)
+
+        await hub.start("k", "nb.ipynb", send)
+        pid = hub.kernels["k"].km.provisioner.process.pid
+        task = asyncio.create_task(hub.shutdown("k"))
+        await asyncio.sleep(0)  # the shutdown has begun: its tasks are being cancelled
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        assert "k" in hub.kernels or not pid_alive(pid), "an interrupted shutdown lost track of a running kernel"
+        await hub.shutdown_all()
+        return pid
+
+    pid = asyncio.run(scenario())
+    deadline = time.monotonic() + 15
+    while pid_alive(pid) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    assert not pid_alive(pid), "the kernel should stop when the runtime stops all kernels"

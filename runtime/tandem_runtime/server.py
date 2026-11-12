@@ -10,6 +10,7 @@ import shutil
 from pathlib import Path
 from urllib.parse import parse_qs
 
+import anyio
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
@@ -513,13 +514,17 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
         except (WebSocketDisconnect, RuntimeError, ValueError):
             pass
         finally:
-            # A run belongs to the window that started it: don't leave it orphaned.
-            for manager in {runs, *run_owner.values()}:
-                if manager.current is not None and manager.current.id in mine:
-                    await manager.stop(manager.current.id)
-            # So do its notebooks' kernels.
-            for hub in {kernels, *kernel_owner.values()}:
-                await hub.shutdown_all(my_kernels)
+            # Shielded: the server may cancel this connection's task as the
+            # window goes; the cleanup must still finish, or a run or kernel
+            # would be left running with nobody to stop it.
+            with anyio.CancelScope(shield=True):
+                # A run belongs to the window that started it: don't leave it orphaned.
+                for manager in {runs, *run_owner.values()}:
+                    if manager.current is not None and manager.current.id in mine:
+                        await manager.stop(manager.current.id)
+                # So do its notebooks' kernels.
+                for hub in {kernels, *kernel_owner.values()}:
+                    await hub.shutdown_all(my_kernels)
 
     # ---------------- UI ----------------
 

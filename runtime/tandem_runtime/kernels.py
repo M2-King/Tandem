@@ -332,7 +332,7 @@ class KernelHub:
         await k.send({"type": "kernel.status", "id": k.id, "state": "idle", "restarted": True})
 
     async def shutdown(self, kernel_id: str) -> None:
-        k = self.kernels.pop(kernel_id, None)
+        k = self.kernels.get(kernel_id)
         if k is None:
             return
         k.closing = True
@@ -343,6 +343,9 @@ class KernelHub:
             k.kc.stop_channels()
         with contextlib.suppress(Exception):
             await k.km.shutdown_kernel(now=True)
+        # Forgotten only once stopped: if this is interrupted, shutting down
+        # the runtime still finds the kernel and stops it.
+        self.kernels.pop(kernel_id, None)
         shutil.rmtree(k.folder, ignore_errors=True)
 
     async def shutdown_all(self, ids: set[str] | None = None) -> None:
