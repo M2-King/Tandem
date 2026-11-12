@@ -4,10 +4,14 @@ name: Windows app
 # portable exe) with the Python runtime inside, and checks it end to end.
 # Pushing a tag like v0.1.0, or running the workflow by hand with a release tag,
 # also publishes the exe as a GitHub release.
+#
+# The cowork branch builds "Tandem Staging": Cowork in live mode against the
+# staging Supabase project, installed beside the regular Tandem, kept as a
+# workflow artifact (no release).
 
 on:
   push:
-    branches: [main, dusk-glass-style]
+    branches: [main, dusk-glass-style, cowork]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -19,6 +23,14 @@ on:
 
 permissions:
   contents: read
+
+# Cowork staging (docs/cowork-backend.md): repository variables for the app
+# build. On the cowork branch the build stops unless all three are set; the
+# key must be the Supabase publishable key, never a secret one.
+env:
+  VITE_COWORK_MODE: ${{ vars.VITE_COWORK_MODE }}
+  VITE_TANDEM_SUPABASE_URL: ${{ vars.VITE_TANDEM_SUPABASE_URL }}
+  VITE_TANDEM_SUPABASE_KEY: ${{ vars.VITE_TANDEM_SUPABASE_KEY }}
 
 jobs:
   test:
@@ -63,6 +75,9 @@ jobs:
         with:
           node-version: "20"
           cache: npm
+      - name: Cowork staging settings
+        if: github.ref == 'refs/heads/cowork'
+        run: node packaging/check-cowork-staging.mjs
       - name: Build the UI
         run: |
           npm ci
@@ -82,6 +97,10 @@ jobs:
           python -m venv smoke-project-env
           smoke-project-env/Scripts/python.exe -m pip install --quiet numpy pandas matplotlib ipykernel
           python packaging/windows/smoke.py out/tandem-runtime/tandem-runtime.exe (Resolve-Path smoke-project-env/Scripts/python.exe).Path
+
+      - name: Name the staging app (installs beside Tandem)
+        if: github.ref == 'refs/heads/cowork'
+        run: node packaging/staging-app.cjs desktop/package.json
 
       - name: Build the installer
         working-directory: desktop
@@ -115,14 +134,17 @@ jobs:
           Write-Output ("Windows build: " + [Environment]::OSVersion.Version)
           Start-Sleep -Seconds 2
           npm install --no-save "playwright@1.64.1"
-          node packaging/desktop-smoke.cjs (Resolve-Path desktop/release/win-unpacked/Tandem.exe).Path (Resolve-Path smoke-project-env/Scripts/python.exe).Path desktop-screen.jpg
+          $exe = (Get-ChildItem desktop/release/win-unpacked/*.exe | Where-Object { $_.Name -like 'Tandem*.exe' } | Select-Object -First 1).FullName
+          Write-Output "App: $exe"
+          node packaging/desktop-smoke.cjs $exe (Resolve-Path smoke-project-env/Scripts/python.exe).Path desktop-screen.jpg
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Tandem-windows-x64
+          name: ${{ github.ref == 'refs/heads/cowork' && 'Tandem-Staging-windows-x64' || 'Tandem-windows-x64' }}
           path: |
-            desktop/release/Tandem-Setup-*.exe
+            desktop/release/Tandem*-Setup-*.exe
             desktop/release/Tandem-*-portable.exe
+          retention-days: 30
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4

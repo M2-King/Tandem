@@ -8,7 +8,7 @@ name: iPad app
 
 on:
   push:
-    branches: [ipad]
+    branches: [ipad, cowork]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -19,9 +19,11 @@ on:
 permissions:
   contents: read
 
-# Cowork staging for the app build (docs/cowork-backend.md). Set these as
-# repository variables; leave them unset for the sample preview. The key is
-# the Supabase publishable key, never a secret one.
+# Cowork staging (docs/cowork-backend.md): repository variables for the app
+# build. On the cowork branch the build stops unless all three are set (the
+# staging .ipa is kept as a workflow artifact, no release); elsewhere unset
+# means the sample preview. The key is the Supabase publishable key, never a
+# secret one.
 env:
   VITE_COWORK_MODE: ${{ vars.VITE_COWORK_MODE }}
   VITE_TANDEM_SUPABASE_URL: ${{ vars.VITE_TANDEM_SUPABASE_URL }}
@@ -37,6 +39,9 @@ jobs:
         with:
           node-version: "20"
           cache: npm
+      - name: Cowork staging settings
+        if: github.ref == 'refs/heads/cowork'
+        run: node packaging/check-cowork-staging.mjs
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -123,8 +128,9 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Tandem-iPad
+          name: ${{ github.ref == 'refs/heads/cowork' && 'Tandem-Staging-iPad' || 'Tandem-iPad' }}
           path: Tandem-iPad.ipa
+          retention-days: 30
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
