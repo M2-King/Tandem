@@ -6,12 +6,12 @@ const path = require('node:path');
 const { feedConfig, updateGate, describeError, setupUpdates } = require('./updater.js');
 
 const FEED = 'https://github.com/M2-King/Tandem/releases/download/windows-staging';
-const staging = { productName: 'Tandem Staging', version: '0.3.1-staging.57', tandemUpdates: { channel: 'staging', url: FEED } };
+const staging = { productName: 'Tandem', version: '0.3.1-staging.57', tandemUpdates: { channel: 'staging', url: FEED } };
 const regular = { productName: 'Tandem', version: '0.3.0' };
 const installDir = 'C:\\Users\\t\\AppData\\Local\\Programs\\tandem-desktop';
-const exePath = path.join(installDir, 'Tandem Staging.exe');
+const exePath = path.join(installDir, 'Tandem.exe');
 const resources = path.join(installDir, 'resources');
-const nsisFiles = new Set([path.join(resources, 'app-update.yml'), path.join(installDir, 'Uninstall Tandem Staging.exe')]);
+const nsisFiles = new Set([path.join(resources, 'app-update.yml'), path.join(installDir, 'Uninstall Tandem.exe')]);
 const installed = (f) => nsisFiles.has(f);
 const base = { pkg: staging, isPackaged: true, platform: 'win32', env: {}, execPath: exePath, resourcesPath: resources, exists: installed };
 

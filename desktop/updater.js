@@ -45,10 +45,11 @@ function updateGate({ pkg, isPackaged, platform, env = {}, execPath, resourcesPa
   if (env.PORTABLE_EXECUTABLE_FILE || env.PORTABLE_EXECUTABLE_DIR) {
     return { enabled: false, config, reason: 'The portable app doesn’t update itself. Use the installer to get updates.' };
   }
-  const productName = pkg.productName || 'Tandem Staging';
+  // (Builds before the rename to "Tandem" were "Tandem Staging".)
+  const names = [...new Set([pkg.productName || 'Tandem', 'Tandem Staging'])];
   const installedByNsis =
     exists(path.join(resourcesPath, 'app-update.yml')) &&
-    exists(path.join(path.dirname(execPath), `Uninstall ${productName}.exe`));
+    names.some((n) => exists(path.join(path.dirname(execPath), `Uninstall ${n}.exe`)));
   if (!installedByNsis) {
     return { enabled: false, config, reason: 'This copy wasn’t installed by the installer, so it doesn’t update itself.' };
   }

@@ -132,10 +132,19 @@ function Start-Measure {
   $script:measureHandle = $script:measure.BeginInvoke()
 }
 
+# The new version runs: a program in the app's folder started after this
+# window (its .exe may have a new name, e.g. "Tandem Staging.exe" -> "Tandem.exe").
 function Test-NewAppRunning {
-  $name = [System.IO.Path]::GetFileNameWithoutExtension($ExeName)
-  foreach ($p in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
-    try { if ($p.Path -eq $exePath -and $p.StartTime -gt $start) { return $true } } catch {}
+  if (-not $InstallDir) { return $false }
+  $dir = $InstallDir.TrimEnd('\')
+  foreach ($p in @(Get-Process -ErrorAction SilentlyContinue)) {
+    try {
+      $file = $p.Path
+      if ($file -and $file.EndsWith('.exe', 'OrdinalIgnoreCase') -and
+          [System.IO.Path]::GetDirectoryName($file).Equals($dir, 'OrdinalIgnoreCase') -and
+          -not [System.IO.Path]::GetFileName($file).StartsWith('Uninstall', 'OrdinalIgnoreCase') -and
+          $p.StartTime -gt $start) { return $true }
+    } catch {}
   }
   return $false
 }

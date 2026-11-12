@@ -16,6 +16,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { setupUpdates } = require('./updater.js');
+
+// The staging build is named "Tandem" but keeps its settings, kept sign-in and
+// shared projects' working copies in the folder it always had ("Tandem
+// Staging"), apart from a regular Tandem's. Not when a folder is given
+// (--user-data-dir, the tests).
+const DATA_FOLDER = require('./package.json').tandemDataFolder;
+if (DATA_FOLDER && !app.commandLine.hasSwitch('user-data-dir')) {
+  app.setPath('userData', path.join(app.getPath('appData'), DATA_FOLDER));
+}
 const { showUpdatingWindow } = require('./updatingWindow.js');
 const { createSecureStore } = require('./secureStore.js');
 

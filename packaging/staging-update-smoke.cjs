@@ -27,12 +27,13 @@ function check(ok, message) {
 }
 
 (async () => {
-  // Where a tester's install goes: per user, %LOCALAPPDATA%\Programs\Tandem Staging.
+  // Where a tester's install goes: per user, %LOCALAPPDATA%\Programs\Tandem Staging
+  // (named Tandem, in its own folder: desktop/build/staging-installer.nsh).
   const dir = path.join(process.env.LOCALAPPDATA, 'Programs', 'Tandem Staging');
   execFileSync(installer, ['/S'], { stdio: 'inherit', timeout: 300000 });
-  const exe = path.join(dir, 'Tandem Staging.exe');
+  const exe = path.join(dir, 'Tandem.exe');
   check(fs.existsSync(exe), `installed ${exe}`);
-  check(fs.existsSync(path.join(dir, 'Uninstall Tandem Staging.exe')), 'the installer added its uninstaller');
+  check(fs.existsSync(path.join(dir, 'Uninstall Tandem.exe')), 'the installer added its uninstaller (Uninstall Tandem.exe)');
   const updateYml = fs.readFileSync(path.join(dir, 'resources', 'app-update.yml'), 'utf8');
   console.log(updateYml.replace(/^/gm, '     '));
   check(
@@ -97,7 +98,7 @@ function check(ok, message) {
   await win.keyboard.press('Escape');
 
   await app.close();
-  const uninstaller = path.join(dir, 'Uninstall Tandem Staging.exe');
+  const uninstaller = path.join(dir, 'Uninstall Tandem.exe');
   try {
     execFileSync(uninstaller, ['/S'], { stdio: 'inherit', timeout: 120000 });
   } catch (e) {

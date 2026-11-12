@@ -1,9 +1,10 @@
 // Turns the desktop build into the staging build (CI on the cowork branch): it
 // installs beside the regular Tandem with its own folder and settings, and
-// updates itself from the staging feed. People see it as "Tandem" (shortcuts,
-// Apps list, menus, file names); inside it is still "Tandem Staging" (install
-// folder, settings folder, app id), so updates land in place and nobody is
-// signed out.
+// updates itself from the staging feed. It is named "Tandem" everywhere people
+// look (Start menu, shortcuts, Apps list, the .exe, menus, file names); its
+// install folder (desktop/build/staging-installer.nsh), settings folder
+// (desktop/main.js) and app id stay "Tandem Staging", so updates land in
+// place and nobody is signed out.
 //
 //   node packaging/staging-app.cjs desktop/package.json <github.run_number>
 //
@@ -32,21 +33,20 @@ function stagingVersion(base, run) {
 function toStaging(p, run) {
   const next = JSON.parse(JSON.stringify(p));
   next.version = stagingVersion(p.version, run);
-  next.productName = 'Tandem Staging'; // folders and app id: never change (see above)
+  next.productName = 'Tandem';
   next.tandemDisplayName = 'Tandem'; // what people see (desktop/main.js, updater.js)
+  next.tandemDataFolder = 'Tandem Staging'; // its settings and sign-in (desktop/main.js): never change
   // Read by desktop/updater.js: only a staging build may update itself, and
   // only from this feed (the page can't change it).
   next.tandemUpdates = { channel: CHANNEL, url: FEED_URL };
   const b = next.build;
-  b.productName = 'Tandem Staging';
-  b.appId = 'app.tandem.staging';
+  b.productName = 'Tandem';
+  b.appId = 'app.tandem.staging'; // never change: updates find the install by it
   b.nsis.shortcutName = 'Tandem';
   b.nsis.uninstallDisplayName = 'Tandem';
+  b.nsis.include = 'build/staging-installer.nsh'; // installs into "Tandem Staging" as before
   b.nsis.artifactName = 'Tandem-Setup-${version}.exe';
   b.portable.artifactName = 'Tandem-${version}-portable.exe';
-  // The Mac's shown name. Not CFBundleName: Electron finds its helper apps
-  // ("<CFBundleName> Helper.app") by it, so changing it stops the app starting.
-  b.mac = { ...b.mac, extendInfo: { ...(b.mac?.extendInfo || {}), CFBundleDisplayName: 'Tandem' } };
   // TODO(code signing): the installer isn't signed yet, so there is no
   // publisherName here (electron-updater would then require a signature that
   // matches it). Add win.signtoolOptions/azureSignOptions and publisherName

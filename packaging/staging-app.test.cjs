@@ -36,16 +36,16 @@ test('staging package: name, id, feed, channel; the source is untouched', () => 
   const p = toStaging(desktopPackage, 57);
   assert.equal(JSON.stringify(desktopPackage), before);
   assert.equal(p.version, '0.3.1-staging.57');
-  assert.equal(p.productName, 'Tandem Staging');
+  assert.equal(p.productName, 'Tandem');
+  assert.equal(p.tandemDataFolder, 'Tandem Staging'); // settings and sign-in stay where they were
+  assert.equal(p.build.nsis.include, 'build/staging-installer.nsh'); // and the install folder
   assert.equal(p.build.appId, 'app.tandem.staging');
   assert.equal(p.build.nsis.artifactName, 'Tandem-Setup-${version}.exe');
-  // Shown as Tandem; the folders and app id stay "Tandem Staging" so updates land in place.
+  // Named Tandem everywhere; the app id stays, so updates land in place.
   assert.equal(p.tandemDisplayName, 'Tandem');
   assert.equal(p.build.nsis.shortcutName, 'Tandem');
   assert.equal(p.build.nsis.uninstallDisplayName, 'Tandem');
-  assert.equal(p.build.productName, 'Tandem Staging');
-  assert.equal(p.build.mac.extendInfo.CFBundleDisplayName, 'Tandem');
-  assert.equal(p.build.mac.extendInfo.CFBundleName, undefined); // Electron finds its helpers by it
+  assert.equal(p.build.productName, 'Tandem');
   // One range per request (GitHub refuses several in one): small differential updates.
   assert.deepEqual(p.build.publish, [{ provider: 'generic', url: FEED_URL, channel: 'staging', useMultipleRangeRequest: false }]);
   assert.deepEqual(p.tandemUpdates, { channel: 'staging', url: FEED_URL });
