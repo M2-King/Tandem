@@ -4,6 +4,7 @@ import { PERMISSIONS, useCoworkRoute } from '../useCowork.js';
 import { normalizeUsername, passwordProblem, personForUsername, usernameProblem } from '../accounts.js';
 import { safeFileName, uniqueFileName } from '../../state/useDiskWorkspace.js';
 import { describeEvents, hasEdit, mergeProject, retab } from './merge.js';
+import { usePresence } from './usePresence.js';
 
 // Cowork live mode: the same interface as the preview (useCowork), backed by
 // Supabase. Shared projects, people and invitations come from the server;
@@ -658,6 +659,21 @@ export function useCoworkLive({ notify }) {
     };
   }, [project, opened, breakpoints, openFile, closeTab, setFile, createFile, uploadFiles, renameFile, removeFile, flush]);
 
+  // ------------------------------------------------------------ who's online
+  // Realtime presence and cursors (usePresence). Teammates' saved text still
+  // arrives through the reloads above.
+  const live = usePresence({ me, projectId: projectReady ? projectId : null, enabled: !!me, activePath: workspace?.activePath ?? null });
+  const presence = useMemo(() => {
+    if (!project) return [];
+    const memberIds = new Set(project.members.map((m) => m.id));
+    return Object.values(live.peers)
+      .filter((p) => memberIds.has(p.user_id) && p.path)
+      .map((p) => {
+        const person = people[p.user_id] || personForUsername(p.username || 'someone');
+        return { person: p.user_id, name: person.name, hue: person.hue, path: p.path, cell: p.cell || null, step: p.cursor || null };
+      });
+  }, [project, live.peers, people]);
+
   // ------------------------------------------------------------ sign in
   // Both return the account ({ id, username, name }) or throw with a
   // message to show; completeSignIn then loads Shared projects.
@@ -829,7 +845,9 @@ export function useCoworkLive({ notify }) {
     conflicts,
     resolveConflict,
     reloadProject: pull,
-    presence: [],
+    presence,
+    presenceState: live.state,
+    reportCursor: live.report,
     workspace,
     go,
     refresh,

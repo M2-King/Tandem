@@ -1,9 +1,10 @@
-// Teammates' cursors and selections in a Monaco editor (Cowork preview).
+// Teammates' cursors and selections in a Monaco editor (Cowork).
 //
-// A cursor is { id, name, hue, step }, where step is { select: text } (a
-// selection of that text) or { caretAfter: text } (the caret just after it).
-// Positions are found in the current text each time, so they stay on the
-// right code while you edit around them.
+// A cursor is { id, name, hue, step }. In live mode step is a position:
+// { line, column, anchorLine?, anchorColumn? } (the caret, and where the
+// selection started); if the text changed since, it is moved to the nearest
+// valid spot. The preview uses { select: text } (a selection of that text) or
+// { caretAfter: text } (the caret just after it), found in the current text.
 
 const styled = new Set();
 
@@ -21,7 +22,16 @@ function hueClass(hue) {
   return name;
 }
 
+const before = (a, b) => a.lineNumber < b.lineNumber || (a.lineNumber === b.lineNumber && a.column < b.column);
+
 function resolve(model, step) {
+  if (!step) return null;
+  if (step.line != null) {
+    const caret = model.validatePosition({ lineNumber: step.line, column: step.column || 1 });
+    const anchor = step.anchorLine != null ? model.validatePosition({ lineNumber: step.anchorLine, column: step.anchorColumn || 1 }) : caret;
+    const [start, end] = before(anchor, caret) ? [anchor, caret] : [caret, anchor];
+    return { start, end, caret, selection: before(start, end) };
+  }
   const text = model.getValue();
   const needle = step.select ?? step.caretAfter;
   if (!needle) return null;
@@ -29,7 +39,7 @@ function resolve(model, step) {
   if (at < 0) return null;
   const start = model.getPositionAt(at);
   const end = model.getPositionAt(at + needle.length);
-  return { start, end, selection: step.select != null };
+  return { start, end, caret: end, selection: step.select != null };
 }
 
 // labels: false leaves out the name above the caret (notebook cells name the
@@ -60,20 +70,21 @@ export function createRemoteCursors(editor, monaco, { labels = true } = {}) {
           });
         }
         list.push({
-          range: new monaco.Range(spot.end.lineNumber, spot.end.column, spot.end.lineNumber, spot.end.column),
+          range: new monaco.Range(spot.caret.lineNumber, spot.caret.column, spot.caret.lineNumber, spot.caret.column),
           options: { beforeContentClassName: `remote-caret ${cls}`, stickiness: 1 },
         });
         if (!labels) continue;
         // The name above the caret.
         const node = document.createElement('div');
         node.className = 'remote-label';
+        node.dataset.peer = c.id;
         node.style.setProperty('--peer-hue', c.hue);
         node.textContent = c.name.split(' ')[0];
         const widget = {
           getId: () => `remote-cursor-${c.id}`,
           getDomNode: () => node,
           getPosition: () => ({
-            position: spot.end,
+            position: spot.caret,
             preference: [monaco.editor.ContentWidgetPositionPreference.ABOVE, monaco.editor.ContentWidgetPositionPreference.BELOW],
           }),
         };

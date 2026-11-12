@@ -31,6 +31,22 @@ Run, Step through, Debug and notebook cells work in shared projects, each on the
 - Shared code was written by other people and runs with this person's permissions. The first run in each shared project on a device asks: "Code in <project> runs on this device with your permissions. Run it only if you trust its members." The answer is remembered for that project on that device; **Don't run** runs nothing (and asks again next time).
 - Leaving or closing a shared project shuts down its notebook kernels and stops its run. Device projects and shared projects never share files, folders or kernels.
 
+### Who's online and live cursors
+
+Each shared project has one private Supabase Realtime channel, `cowork:<project id>`. Only the project's members can join it: Realtime Authorization checks the policies on `realtime.messages` from [002_cowork_realtime.sql](../supabase/migrations/002_cowork_realtime.sql), so a non-member (or a member removed later, or anyone once the project is archived) is refused. Nothing sent on the channel is stored.
+
+- **Presence**: each member in the project shares their user id, username, the file they have open (and the notebook cell), their cursor and selection (line and column) and their colour. The avatars show who is online with a dot, and which file each person has open.
+- **Cursors**: caret and selection moves go as broadcasts, at most 10 a second, and are drawn in the same file in that person's colour with their name. If the text changed around a position, the cursor goes to the nearest valid spot.
+- The app leaves the channel while it is hidden and when the project is closed, so a person who leaves disappears for the others.
+- Typing still travels by saves: a teammate's saved text arrives with the 10-second sync (above). Live simultaneous typing is not part of this.
+
+Set up on a Supabase project (staging):
+
+1. Run [002_cowork_realtime.sql](../supabase/migrations/002_cowork_realtime.sql) in the SQL Editor. It is additive: it adds a `cowork_realtime` schema with one function and two policies on `realtime.messages`, and can be run again. Don't run 001 again.
+2. Realtime → Settings: turn off **Allow public access**, so only private channels can be joined.
+
+Until both are done the app works as before, without the online dots and cursors (joining is refused, quietly, and retried every 30 seconds).
+
 ### Staying in step
 
 An open project reloads every 10 seconds while the app is visible, when its window gets focus or becomes visible again (including an iPad coming back to the app), and when the network returns. It doesn't reload while the app is hidden. Shared Projects reloads every 30 seconds and on focus, so invitations appear without **Refresh**. Each file is merged by its revision:
@@ -45,6 +61,6 @@ The status reads Saved, Saving…, Offline, Unsaved or Conflict. Live co-editing
 
 Test with two real accounts and the Windows and iPad packages. On Windows, create the owner account and a private project; on iPad, create the member account. Invite the member by username, join, add a file, save an edit, close both apps, and sign in again to reopen the file. Then remove the member from the project and verify that its access is denied.
 
-The sync checks run against the local stand-in or staging (`supabase/tests/sync-e2e.cjs`, two accounts in two browser contexts): a teammate's save shows up within 10 seconds, a Conflict ends in Saved with either choice, and an edit made offline is saved when the connection returns. The merge rules have unit tests (`npm run test:cowork-merge`). Running shared projects is checked by `supabase/tests/run-e2e.cjs` (A on the desktop runtime or the iPad build, B saving a change A's Run then uses; the confirmation; a notebook cell; Step through) and the runtime's `tests/test_shared.py` (working copies, imports between project files, kernels).
+The sync checks run against the local stand-in or staging (`supabase/tests/sync-e2e.cjs`, two accounts in two browser contexts): a teammate's save shows up within 10 seconds, a Conflict ends in Saved with either choice, and an edit made offline is saved when the connection returns. The merge rules have unit tests (`npm run test:cowork-merge`). Running shared projects is checked by `supabase/tests/run-e2e.cjs` (A on the desktop runtime or the iPad build, B saving a change A's Run then uses; the confirmation; a notebook cell; Step through) and the runtime's `tests/test_shared.py` (working copies, imports between project files, kernels). Presence and cursors are checked by `supabase/tests/presence-e2e.cjs` (two accounts: a cursor within 1 second, switching files, hiding and closing; a non-member's join refused) against the stand-in, which includes Realtime and runs the same policies, and by a database test of the policies (`npm run test:cowork-db`).
 
 Live-mode sessions are in memory for this milestone, so restarting the app requires sign-in. Secure native session persistence and live co-editing are pending.

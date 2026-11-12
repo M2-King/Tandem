@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CursorReportContext, cursorOfSelection } from '../cowork/cursorReport.js';
 import { createRemoteCursors } from '../cowork/remoteCursors.js';
 import Editor from '@monaco-editor/react';
 import { monaco as monacoApi } from '../lib/monacoSetup.js';
@@ -62,7 +63,8 @@ export default function CodeEditor({
 
   // Callbacks change every render; keep the latest in refs for Monaco listeners.
   const latest = useRef({});
-  latest.current = { path, files, onChange, onGlyphClick, onSelection, onAskAI, glyphEnabled, breakpoints, onRunShortcut, onCaret };
+  const reportCursor = useContext(CursorReportContext); // Cowork live: teammates see this caret
+  latest.current = { path, files, onChange, onGlyphClick, onSelection, onAskAI, glyphEnabled, breakpoints, onRunShortcut, onCaret, reportCursor };
 
   const handleMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -141,6 +143,7 @@ export default function CodeEditor({
     };
 
     editor.onDidChangeCursorSelection(reportSelection);
+    editor.onDidChangeCursorSelection((e) => latest.current.reportCursor?.(latest.current.path, cursorOfSelection(e.selection)));
     editor.onDidScrollChange(reportSelection);
     editor.onDidChangeModel(() => latest.current.onSelection(null));
     editor.onDidBlurEditorWidget(() => {

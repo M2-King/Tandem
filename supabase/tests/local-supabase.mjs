@@ -10,6 +10,12 @@
 //       The migration's functions, run in Postgres as the signed-in user
 //       (role authenticated, JWT claims set), as PostgREST does, so the
 //       real access rules apply. Errors use PostgREST's codes and statuses.
+//   /realtime/v1/websocket
+//       Realtime with private channels only (Phoenix protocol 2.0.0, as
+//       realtime-js speaks it): presence and broadcast. A join is authorized
+//       the way Supabase Realtime does it: the policies on realtime.messages
+//       (002_cowork_realtime.sql) are run as the joining user with
+//       realtime.topic() set to the channel; no read access, no join.
 //
 // Usage (Postgres with tests/local_auth_stub.sql and the migration applied):
 //   COWORK_TEST_DB=postgres://postgres@127.0.0.1:54329/cowork_e2e node supabase/tests/local-supabase.mjs
@@ -19,6 +25,7 @@
 import http from 'node:http';
 import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import pg from 'pg';
+import { WebSocketServer } from 'ws';
 
 const PORT = Number(process.env.PORT || 54400);
 const SECRET = 'local-stand-in-secret';
@@ -98,8 +105,7 @@ async function rpc(fn, args, claims) {
   }
 }
 
-http
-  .createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') return send(res, 204);
     const url = new URL(req.url, 'http://local');
     const path = url.pathname;
@@ -146,4 +152,146 @@ http
       return send(res, 500, { message: e.message });
     }
   })
-  .listen(PORT, '127.0.0.1', () => console.log(`Local Supabase stand-in on http://127.0.0.1:${PORT}`));
+server.listen(PORT, '127.0.0.1', () => console.log(`Local Supabase stand-in on http://127.0.0.1:${PORT}`));
+
+// ------------------------------------------------------------------ Realtime
+
+// What this caller may do on a private channel: { read: Set, write: Set } of
+// 'broadcast' | 'presence'. As Supabase Realtime checks it: messages for the
+// topic exist; as the caller (role, claims, realtime.topic), which can it
+// select, and which may it insert? Rolled back: nothing is stored.
+async function channelAccess(topic, claims) {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query("insert into realtime.messages (topic, extension, private) values ($1, 'broadcast', true), ($1, 'presence', true)", [topic]);
+    await client.query(`set local role ${claims ? 'authenticated' : 'anon'}`);
+    await client.query("select set_config('request.jwt.claims', $1, true), set_config('realtime.topic', $2, true)", [JSON.stringify(claims || { role: 'anon' }), topic]);
+    const { rows } = await client.query('select distinct extension from realtime.messages where topic = $1', [topic]);
+    const read = new Set(rows.map((r) => r.extension));
+    const write = new Set();
+    for (const ext of ['broadcast', 'presence']) {
+      await client.query('savepoint w');
+      try {
+        await client.query('insert into realtime.messages (topic, extension, private) values ($1, $2, true)', [topic, ext]);
+        write.add(ext);
+      } catch {
+        // refused by the policy
+      }
+      await client.query('rollback to savepoint w');
+    }
+    return { read, write };
+  } finally {
+    await client.query('rollback').catch(() => {});
+    client.release();
+  }
+}
+
+const topics = new Map(); // topic -> Set of members { socket, joinRef, key, meta, access, self }
+const membersOf = (topic) => topics.get(topic) || new Set();
+const sendFrame = (socket, frame) => socket.readyState === 1 && socket.send(JSON.stringify(frame));
+const reply = (socket, joinRef, ref, topic, status, response = {}) => sendFrame(socket, [joinRef, ref, topic, 'phx_reply', { status, response }]);
+const presenceOf = (m) => ({ metas: [{ ...m.meta, phx_ref: m.phxRef }] });
+
+function presenceDiff(topic, joins, leaves) {
+  for (const m of membersOf(topic)) sendFrame(m.socket, [m.joinRef, null, topic, 'presence_diff', { joins, leaves }]);
+}
+function leave(m) {
+  const set = membersOf(m.topic);
+  if (!set.delete(m)) return;
+  if (!set.size) topics.delete(m.topic);
+  if (m.meta) presenceDiff(m.topic, {}, { [m.key]: presenceOf(m) });
+}
+function broadcast(from, event, payload) {
+  for (const m of membersOf(from.topic)) {
+    if (m === from && !from.self) continue;
+    sendFrame(m.socket, [m.joinRef, null, from.topic, 'broadcast', { type: 'broadcast', event, payload }]);
+  }
+}
+
+// realtime-js sends broadcasts as a small binary frame (kind 3, userBroadcastPush).
+function decodeBroadcastPush(buf) {
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  if (view.getUint8(0) !== 3) return null;
+  const [joinLen, refLen, topicLen, eventLen, metaLen, encoding] = [1, 2, 3, 4, 5, 6].map((i) => view.getUint8(i));
+  let offset = 7;
+  const take = (n) => buf.subarray(offset, (offset += n)).toString('utf8');
+  const joinRef = take(joinLen);
+  const ref = take(refLen);
+  const topic = take(topicLen);
+  const event = take(eventLen);
+  take(metaLen);
+  const rest = buf.subarray(offset);
+  return { joinRef, ref, topic, event, payload: encoding === 1 ? JSON.parse(rest.toString('utf8') || '{}') : null };
+}
+
+new WebSocketServer({ server, path: '/realtime/v1/websocket' }).on('connection', (socket) => {
+  const joined = new Map(); // topic -> member
+  socket.on('message', async (data, isBinary) => {
+    try {
+      if (isBinary) {
+        const push = decodeBroadcastPush(Buffer.from(data));
+        const m = push && joined.get(push.topic);
+        if (!m) return;
+        if (!m.access.write.has('broadcast')) return reply(socket, push.joinRef, push.ref, push.topic, 'error', { reason: 'Unauthorized: You do not have permissions to write to this Channel topic' });
+        broadcast(m, push.event, push.payload);
+        return push.ref && reply(socket, push.joinRef, push.ref, push.topic, 'ok');
+      }
+      const [joinRef, ref, topic, event, payload] = JSON.parse(String(data));
+      if (topic === 'phoenix' && event === 'heartbeat') return reply(socket, null, ref, 'phoenix', 'ok');
+      if (event === 'phx_join') {
+        const topicName = topic.replace(/^realtime:/, '');
+        const config = payload?.config || {};
+        if (!config.private) return reply(socket, joinRef, ref, topic, 'error', { reason: 'PrivateOnly: This project only allows private channels' });
+        const claims = verify(payload?.access_token);
+        const access = await channelAccess(topicName, claims);
+        if (!access.read.size) {
+          return reply(socket, joinRef, ref, topic, 'error', { reason: `Unauthorized: You do not have permissions to read from this Channel topic: ${topicName}` });
+        }
+        const old = joined.get(topic);
+        if (old) leave(old);
+        const m = { socket, topic, joinRef, key: config.presence?.key || randomUUID(), meta: null, phxRef: randomUUID(), access, self: !!config.broadcast?.self };
+        joined.set(topic, m);
+        if (!topics.has(topic)) topics.set(topic, new Set());
+        topics.get(topic).add(m);
+        reply(socket, joinRef, ref, topic, 'ok', { postgres_changes: [] });
+        const state = {};
+        for (const other of membersOf(topic)) if (other.meta) state[other.key] = presenceOf(other);
+        return sendFrame(socket, [joinRef, null, topic, 'presence_state', state]);
+      }
+      const m = joined.get(topic);
+      if (!m) return reply(socket, joinRef, ref, topic, 'error', { reason: 'unmatched topic' });
+      if (event === 'phx_leave') {
+        joined.delete(topic);
+        leave(m);
+        return reply(socket, joinRef, ref, topic, 'ok');
+      }
+      if (event === 'access_token') return reply(socket, joinRef, ref, topic, 'ok');
+      if (event === 'presence') {
+        if (!m.access.write.has('presence')) return reply(socket, joinRef, ref, topic, 'error', { reason: 'Unauthorized: You do not have permissions to track presence on this Channel topic' });
+        const before = m.meta ? { [m.key]: presenceOf(m) } : {};
+        if (payload.event === 'track') {
+          m.meta = payload.payload || {};
+          m.phxRef = randomUUID();
+          presenceDiff(topic, { [m.key]: presenceOf(m) }, before);
+        } else if (payload.event === 'untrack' && m.meta) {
+          m.meta = null;
+          presenceDiff(topic, {}, before);
+        }
+        return reply(socket, joinRef, ref, topic, 'ok');
+      }
+      if (event === 'broadcast') {
+        if (!m.access.write.has('broadcast')) return reply(socket, joinRef, ref, topic, 'error', { reason: 'Unauthorized' });
+        broadcast(m, payload.event, payload.payload);
+        return reply(socket, joinRef, ref, topic, 'ok');
+      }
+      return reply(socket, joinRef, ref, topic, 'ok');
+    } catch (e) {
+      console.error('realtime:', e.message);
+    }
+  });
+  socket.on('close', () => {
+    for (const m of joined.values()) leave(m);
+    joined.clear();
+  });
+});

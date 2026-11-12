@@ -243,3 +243,65 @@ test('deleting an account removes its profile, memberships and invitations', asy
   assert.equal((await db.query('select * from public.cowork_profiles where user_id = $1', [D.id])).rows.length, 0);
   assert.equal((await call(A, 'cowork_project', project)).invitations.length, 0);
 });
+
+// ------------------------------------------------------------------ Realtime (002_cowork_realtime.sql)
+// Realtime Authorization, checked the way Supabase Realtime checks a join to
+// a private channel: messages for the topic exist, then, as the caller with
+// realtime.topic() set, which can it read (receive) and insert (send)?
+async function channelAccess(who, topic) {
+  await db.query('begin');
+  try {
+    await db.query("insert into realtime.messages (topic, extension, private) values ($1, 'broadcast', true), ($1, 'presence', true)", [topic]);
+    await db.query(`set local role ${who ? 'authenticated' : 'anon'}`);
+    await db.query("select set_config('request.jwt.claims', $1, true), set_config('realtime.topic', $2, true)", [
+      JSON.stringify(who ? { sub: who.id, role: 'authenticated' } : { role: 'anon' }),
+      topic,
+    ]);
+    const read = (await db.query('select distinct extension from realtime.messages where topic = $1 order by 1', [topic])).rows.map((r) => r.extension);
+    const write = [];
+    for (const ext of ['broadcast', 'presence']) {
+      await db.query('savepoint w');
+      try {
+        await db.query('insert into realtime.messages (topic, extension, private) values ($1, $2, true)', [topic, ext]);
+        write.push(ext);
+      } catch {
+        // refused by the policy
+      }
+      await db.query('rollback to savepoint w');
+    }
+    return { read, write };
+  } finally {
+    await db.query('rollback');
+  }
+}
+
+test('Realtime: only members may join a project’s private channel', async () => {
+  const owner = await signUp(`rt_owner_${run}`);
+  const member = await signUp(`rt_member_${run}`);
+  const outsider = await signUp(`rt_out_${run}`);
+  const pid = (await call(owner, 'cowork_create_project', 'Realtime check')).id;
+  const inv = await call(owner, 'cowork_invite', pid, member.username, 'member');
+  const topic = `cowork:${pid}`;
+  const both = { read: ['broadcast', 'presence'], write: ['broadcast', 'presence'] };
+  const none = { read: [], write: [] };
+
+  assert.deepEqual(await channelAccess(owner, topic), both);
+  assert.deepEqual(await channelAccess(member, topic), none, 'invited, not joined yet');
+  await call(member, 'cowork_accept_invitation', inv.id);
+  assert.deepEqual(await channelAccess(member, topic), both);
+  assert.deepEqual(await channelAccess(outsider, topic), none);
+  assert.deepEqual(await channelAccess(null, topic), none, 'no session');
+  // Other topics never match: another project's, a malformed one, someone else's channel.
+  const other = (await call(outsider, 'cowork_create_project', 'Not yours')).id;
+  assert.deepEqual(await channelAccess(member, `cowork:${other}`), none);
+  assert.deepEqual(await channelAccess(member, `cowork:${pid}x`), none);
+  assert.deepEqual(await channelAccess(member, 'cowork:not-a-uuid'), none);
+  assert.deepEqual(await channelAccess(member, `other:${pid}`), none);
+  // Removed, or the project archived: no longer.
+  await call(owner, 'cowork_remove_member', pid, member.id);
+  assert.deepEqual(await channelAccess(member, topic), none);
+  await call(owner, 'cowork_set_archived', pid, true);
+  assert.deepEqual(await channelAccess(owner, topic), none);
+  // The helper isn't callable without a session.
+  await fails(as(null, 'select cowork_realtime.is_member($1)', [topic]), '42501');
+});

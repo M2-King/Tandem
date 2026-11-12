@@ -17,3 +17,25 @@ $$;
 grant usage on schema auth to anon, authenticated, service_role;
 grant execute on all functions in schema auth to anon, authenticated, service_role;
 grant usage on schema public to anon, authenticated, service_role;
+
+-- Supabase Realtime's authorization table, as far as the Cowork policies
+-- (002_cowork_realtime.sql) use it: Realtime checks a channel join by running
+-- the policies on realtime.messages with realtime.topic() set to the channel.
+create schema if not exists realtime;
+create table if not exists realtime.messages (
+  id uuid primary key default gen_random_uuid(),
+  topic text not null,
+  extension text not null,
+  payload jsonb,
+  event text,
+  private boolean default false,
+  inserted_at timestamp default now(),
+  updated_at timestamp default now()
+);
+alter table realtime.messages enable row level security;
+create or replace function realtime.topic() returns text language sql stable as $$
+  select nullif(current_setting('realtime.topic', true), '')::text
+$$;
+grant usage on schema realtime to anon, authenticated;
+grant select, insert, update on realtime.messages to anon, authenticated;
+grant execute on function realtime.topic() to anon, authenticated;

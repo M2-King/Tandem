@@ -161,3 +161,39 @@ export const saveFile = (id, path, content, revision) =>
   rpc('cowork_save_file', { p_project: id, p_path: path, p_content: content, p_revision: revision });
 export const renameFile = (id, from, to) => rpc('cowork_rename_file', { p_project: id, p_from: from, p_to: to });
 export const removeFile = (id, path) => rpc('cowork_remove_file', { p_project: id, p_path: path });
+
+// ------------------------------------------------------------------ realtime
+//
+// One private Realtime channel per project, cowork:<project id>: presence
+// (who is here, which file, where the cursor is) and broadcast (cursor
+// moves). Realtime Authorization (002_cowork_realtime.sql) lets only the
+// project's members join. Nothing sent here is stored.
+//
+// handlers: onPresence(state) with { userId: [meta, …] }, onCursor(payload),
+// onStatus(status, error) with SUBSCRIBED | CHANNEL_ERROR | TIMED_OUT | CLOSED.
+export function projectChannel(projectId, userId, { onPresence, onCursor, onStatus }) {
+  const sb = supabase();
+  const channel = sb.channel(`cowork:${projectId}`, {
+    config: { private: true, presence: { key: userId }, broadcast: { self: false, ack: false } },
+  });
+  channel.on('presence', { event: 'sync' }, () => onPresence(channel.presenceState()));
+  channel.on('broadcast', { event: 'cursor' }, ({ payload }) => onCursor(payload));
+  let closed = false;
+  (async () => {
+    try {
+      await sb.realtime.setAuth(); // the signed-in session's token: private channels need it
+    } catch {
+      // subscribe reports the failure
+    }
+    if (!closed) channel.subscribe((status, error) => !closed && onStatus?.(status, error));
+  })();
+  return {
+    track: (meta) => (closed ? Promise.resolve() : channel.track(meta)),
+    cursor: (payload) => (closed ? Promise.resolve() : channel.send({ type: 'broadcast', event: 'cursor', payload })),
+    close: () => {
+      if (closed) return;
+      closed = true;
+      sb.removeChannel(channel);
+    },
+  };
+}

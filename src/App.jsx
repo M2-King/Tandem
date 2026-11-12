@@ -53,6 +53,7 @@ import { useCoworkLive } from './cowork/live/useCoworkLive.js';
 import { COWORK_LIVE } from './cowork/live/api.js';
 import { createCoworkBackend } from './cowork/coworkBackend.js';
 import { createSharedBackend } from './cowork/live/sharedBackend.js';
+import { CursorReportContext } from './cowork/cursorReport.js';
 import { AvatarStack, CoworkTitle, DeviceChip, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
 import ProjectSettingsDialog from './cowork/ProjectSettingsDialog.jsx';
 import { RemoveFileDialog, RenameFileDialog } from './cowork/FileDialogs.jsx';
@@ -867,6 +868,7 @@ export default function App() {
 
   return (
     <RunModeContext.Provider value={inCowork ? (cowork.live ? COWORK_LIVE_RUN_MODE : COWORK_RUN_MODE) : DEMO_RUN_MODE}>
+    <CursorReportContext.Provider value={inCowork && cowork.live ? cowork.reportCursor : null}>
     <div className={`app ${inCowork || onSharedHome ? 'is-cowork' : ''}`}>
       <Toolbar
         titleSlot={
@@ -1419,6 +1421,7 @@ export default function App() {
         </Dialog>
       )}
     </div>
+    </CursorReportContext.Provider>
     </RunModeContext.Provider>
   );
 }

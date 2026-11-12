@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Editor from '@monaco-editor/react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -22,6 +22,7 @@ import { lineHeightFor } from './CodeEditor.jsx';
 import { bestMime, joinText, stripAnsi } from '../lib/notebook.js';
 import { setCompletionContext } from '../lib/pythonCompletion.js';
 import { createRemoteCursors } from '../cowork/remoteCursors.js';
+import { CursorReportContext, cursorOfSelection } from '../cowork/cursorReport.js';
 
 // A Jupyter notebook: code and Markdown cells, run in a real kernel.
 // Keyboard (like Jupyter): Shift+Enter runs and moves on, Ctrl/Cmd+Enter
@@ -103,10 +104,12 @@ function InputPrompt({ input, onSubmit }) {
 }
 
 // Monaco for one cell, as tall as its content.
-function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKeys, completionContext, peers }) {
+function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKeys, completionContext, peers, onCursor }) {
   const [height, setHeight] = useState(lineHeightFor(fontSize) + 16);
   const keys = useRef(onKeys);
   keys.current = onKeys;
+  const cursorRef = useRef(onCursor);
+  cursorRef.current = onCursor;
   const remote = useRef(null);
   // Teammates' cursors in this cell (Cowork).
   useEffect(() => {
@@ -136,6 +139,8 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
           editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => keys.current('run'));
           editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => keys.current('insert'));
           editor.onDidFocusEditorText(() => keys.current('focus'));
+          // Cowork live: teammates see where this cell's caret is.
+          editor.onDidChangeCursorSelection((e) => cursorRef.current?.(cursorOfSelection(e.selection)));
           // After the click that added the cell has finished, so focus stays here.
           if (autoFocus) {
             editor.focus();
@@ -179,6 +184,7 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
 
 const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, selected, editing, input, session, peers }) {
   const code = cell.cell_type === 'code';
+  const reportCursor = useContext(CursorReportContext);
   const label = state === 'running' ? '[*]' : state === 'queued' ? '[…]' : `[${cell.execution_count ?? ' '}]`;
   const onKeys = (key) => {
     if (key === 'focus') return session.select(cell.id);
@@ -223,6 +229,7 @@ const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, sel
             onKeys={onKeys}
             completionContext={code ? () => ({ path, prefix: session.codeBefore(cell.id) }) : null}
             peers={peers}
+            onCursor={reportCursor ? (cursor) => reportCursor(path, cursor, cell.id) : null}
           />
         ) : (
           <div
