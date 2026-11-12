@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createLiveText, isLiveTextPath, textDiff, LOCAL } from './liveText.js';
+import { newNotebook, newCell, parse, serialize } from '../../lib/notebook.js';
 
 // A device: its documents, the updates it would send, the texts it would show.
 function device() {
@@ -33,7 +34,7 @@ test('which files are typed live', () => {
   assert.equal(isLiveTextPath('a.py'), true);
   assert.equal(isLiveTextPath('q.sql'), true);
   assert.equal(isLiveTextPath('notes.md'), true);
-  assert.equal(isLiveTextPath('nb.ipynb'), false);
+  assert.equal(isLiveTextPath('nb.ipynb'), true); // cell by cell
   assert.equal(isLiveTextPath('data.db'), false);
 });
 
@@ -184,4 +185,130 @@ test('renamed and removed files', () => {
   assert.equal(A.sent.at(-1).path, 'b.py');
   A.live.drop('b.py');
   assert.equal(A.live.has('b.py'), false);
+});
+
+
+// ------------------------------------------------------------ notebooks
+
+const nbText = (sources, { types = [] } = {}) => {
+  const nb = newNotebook();
+  nb.cells = sources.map((src, i) => ({ ...newCell(types[i] || 'code', src), id: `c${i + 1}` }));
+  return serialize(nb);
+};
+const cellsOf = (text) => parse(text).notebook.cells.map((c) => [c.id, c.source]);
+// Type in a cell, as its editor's binding does.
+function typeCell(dev, path, id, index, text, remove = 0) {
+  const e = dev.live.entry(path);
+  const t = e.cellText(id);
+  e.doc.transact(() => {
+    if (remove) t.delete(index, remove);
+    if (text) t.insert(index, text);
+  }, LOCAL);
+}
+const both = (A, B) => {
+  deliver(A, B);
+  deliver(B, A);
+};
+
+test('notebooks: seeded the same everywhere, the text is the standard file', () => {
+  const A = device();
+  const B = device();
+  const text = nbText(['x = 1', 'print(x)']);
+  A.live.seed('nb.ipynb', text, 1);
+  B.live.seed('nb.ipynb', text, 1);
+  assert.equal(A.live.text('nb.ipynb'), text);
+  B.live.applyRemote('nb.ipynb', A.live.snapshot('nb.ipynb').doc);
+  assert.deepEqual(cellsOf(B.live.text('nb.ipynb')), [['c1', 'x = 1'], ['c2', 'print(x)']]); // not doubled
+});
+
+test('notebooks: typing in the same cell and in different cells merges letter by letter', () => {
+  const A = device();
+  const B = device();
+  const text = nbText(['x = 1', 'print(x)']);
+  A.live.seed('nb.ipynb', text, 1);
+  B.live.seed('nb.ipynb', text, 1);
+  typeCell(A, 'nb.ipynb', 'c1', 5, '0');       // x = 10
+  typeCell(B, 'nb.ipynb', 'c1', 0, '# B\n');    // same cell, elsewhere
+  typeCell(B, 'nb.ipynb', 'c2', 8, '  # ok');   // another cell
+  assert.ok(A.sent.length >= 1 && B.sent.length >= 2, 'each letter goes out as it is typed');
+  both(A, B);
+  const expected = [['c1', '# B\nx = 10'], ['c2', 'print(x)  # ok']];
+  assert.deepEqual(cellsOf(A.live.text('nb.ipynb')), expected);
+  assert.deepEqual(cellsOf(B.live.text('nb.ipynb')), expected);
+  // B saw A's letter arrive as a change from elsewhere (shown, not typed).
+  assert.ok(B.shown.some((s) => s.path === 'nb.ipynb' && s.origin !== LOCAL && /x = 10/.test(s.text)));
+});
+
+test('notebooks: adding, removing and moving cells at the same time', () => {
+  const A = device();
+  const B = device();
+  A.live.seed('nb.ipynb', nbText(['a', 'b', 'c']), 1);
+  B.live.seed('nb.ipynb', nbText(['a', 'b', 'c']), 1);
+  // A adds a cell after a; B removes c and moves b to the top.
+  const nbA = parse(A.live.text('nb.ipynb')).notebook;
+  nbA.cells.splice(1, 0, { ...newCell('markdown', '# notes'), id: 'n1' });
+  A.live.setText('nb.ipynb', serialize(nbA));
+  const nbB = parse(B.live.text('nb.ipynb')).notebook;
+  nbB.cells = [nbB.cells[1], nbB.cells[0]];
+  B.live.setText('nb.ipynb', serialize(nbB));
+  both(A, B);
+  const ids = (dev) => cellsOf(dev.live.text('nb.ipynb')).map(([id]) => id);
+  assert.deepEqual(ids(A), ids(B));
+  assert.deepEqual(new Set(ids(A)), new Set(['a', 'b', 'n1'].map((x) => (x === 'n1' ? 'n1' : x === 'a' ? 'c1' : 'c2'))));
+  assert.equal(ids(A)[0], 'c2'); // b moved to the top
+  assert.ok(parse(A.live.text('nb.ipynb')).notebook, 'still a valid notebook');
+});
+
+test('notebooks: typing in a cell someone removed goes with it (no stray text)', () => {
+  const A = device();
+  const B = device();
+  A.live.seed('nb.ipynb', nbText(['keep', 'gone']), 1);
+  B.live.seed('nb.ipynb', nbText(['keep', 'gone']), 1);
+  const nbA = parse(A.live.text('nb.ipynb')).notebook;
+  nbA.cells = nbA.cells.filter((c) => c.id !== 'c2');
+  A.live.setText('nb.ipynb', serialize(nbA));
+  typeCell(B, 'nb.ipynb', 'c2', 4, ' typed meanwhile');
+  both(A, B);
+  for (const dev of [A, B]) {
+    const text = dev.live.text('nb.ipynb');
+    assert.deepEqual(cellsOf(text), [['c1', 'keep']]);
+    assert.ok(!text.includes('typed meanwhile'));
+  }
+});
+
+test('notebooks: outputs and the cell type travel with the cell; setText of the same text changes nothing', () => {
+  const A = device();
+  const B = device();
+  A.live.seed('nb.ipynb', nbText(['print(1)']), 1);
+  B.live.seed('nb.ipynb', nbText(['print(1)']), 1);
+  const nb = parse(A.live.text('nb.ipynb')).notebook;
+  nb.cells[0] = { ...nb.cells[0], execution_count: 1, outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }] };
+  A.live.setText('nb.ipynb', serialize(nb));
+  deliver(A, B);
+  const cell = parse(B.live.text('nb.ipynb')).notebook.cells[0];
+  assert.equal(cell.execution_count, 1);
+  assert.equal(cell.outputs[0].text.join(''), '1\n');
+  const before = A.sent.length;
+  A.live.setText('nb.ipynb', A.live.text('nb.ipynb'));
+  assert.equal(A.sent.length, before);
+});
+
+test('notebooks: the cell editor gets the cell’s own text, also for a cell added later', () => {
+  const A = device();
+  A.live.seed('nb.ipynb', nbText(['x = 1']), 1);
+  const e = A.live.entry('nb.ipynb');
+  assert.equal(e.cellText('c1').toString(), 'x = 1');
+  assert.equal(e.cellText('new'), null);
+  const nb = parse(A.live.text('nb.ipynb')).notebook;
+  nb.cells.push({ ...newCell('code', 'y = 2'), id: 'new' });
+  A.live.setText('nb.ipynb', serialize(nb));
+  assert.equal(e.cellText('new').toString(), 'y = 2');
+});
+
+test('notebooks: not valid notebook JSON leaves the document as it was', () => {
+  const A = device();
+  A.live.seed('nb.ipynb', nbText(['ok']), 1);
+  const before = A.live.text('nb.ipynb');
+  A.live.setText('nb.ipynb', '{ not json');
+  assert.equal(A.live.text('nb.ipynb'), before);
 });

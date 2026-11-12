@@ -7,8 +7,15 @@ import { appendOutput, newCell, parse, serialize } from '../lib/notebook.js';
 //
 // Every change is saved through `save(text)` (the project's normal, debounced
 // file saving) in the standard .ipynb format.
+//
+// Shared projects (live typing): attachLive() keeps the notebook in step with
+// its live document (cowork/live/liveText.js). Changes made here go into it at
+// once (outputs at most every 300 ms); typing in a cell goes in through the
+// cell's editor; teammates' changes come back through external().
 
 const SAVE_DELAY = 350;
+const OUTPUT_SYNC_DELAY = 300;
+const EXTERNAL_DELAY = 60; // coalesce a burst of teammates' keystrokes
 
 export class NotebookSession {
   constructor({ path, text, backend, save }) {
@@ -55,18 +62,95 @@ export class NotebookSession {
     };
   }
 
+  // changed: true (cells, types, runs), 'source' (typing: its editor sends it
+  // live), 'output' (a running cell's output: sent live at most every 300 ms).
   emit({ changed = false } = {}) {
     this.snapshot = this.makeSnapshot();
     this.listeners.forEach((fn) => fn());
     if (changed && this.nb) {
       clearTimeout(this.saveTimer);
       this.saveTimer = setTimeout(() => this.flush(), SAVE_DELAY);
+      if (this.live && changed !== 'source') {
+        if (changed === 'output') {
+          this.outputTimer ??= setTimeout(() => this.syncLive(), OUTPUT_SYNC_DELAY);
+        } else this.syncLive();
+      }
     }
+  }
+
+  // ---------------------------------------------------------------- live
+  syncLive() {
+    clearTimeout(this.outputTimer);
+    this.outputTimer = null;
+    if (this.live && this.nb) this.live.sync(serialize(this.withLiveSources()));
+  }
+
+  // { entry, sync(text) }: the live document of this notebook, and how to set
+  // it. Returns a function that detaches.
+  attachLive({ entry, sync }) {
+    this.detachLive?.();
+    this.live = { entry, sync };
+    const onTransaction = (tr) => {
+      if (tr.origin === 'local' || !tr.changed.size) return;
+      clearTimeout(this.externalTimer);
+      this.externalTimer = setTimeout(() => this.live && this.external(this.live.entry.content()), EXTERNAL_DELAY);
+    };
+    entry.doc.on('afterTransaction', onTransaction);
+    // What is here and not yet in the document goes in now; then take the merged result.
+    this.syncLive();
+    this.external(entry.content());
+    const detach = () => {
+      entry.doc.off('afterTransaction', onTransaction);
+      if (this.detachLive !== detach) return; // attached again since: that one stays
+      clearTimeout(this.externalTimer);
+      clearTimeout(this.outputTimer);
+      this.outputTimer = null;
+      this.live = null;
+      this.detachLive = null;
+    };
+    this.detachLive = detach;
+    return detach;
+  }
+
+  // The notebook as it is now in the live document (teammates' changes merged
+  // with ours). Cells running here keep their outputs; nothing is saved for it.
+  external(text) {
+    if (!text) return;
+    const parsed = parse(text);
+    if (parsed.error) return;
+    const incoming = parsed.notebook;
+    const mine = new Map((this.nb?.cells || []).map((c) => [c.id, c]));
+    const cells = incoming.cells.map((c) => {
+      const here = mine.get(c.id);
+      return here && this.running[c.id] ? { ...c, outputs: here.outputs, execution_count: here.execution_count } : c;
+    });
+    this.nb = { ...incoming, cells };
+    this.error = null;
+    if (!cells.some((c) => c.id === this.selected)) this.selected = cells[0]?.id || null;
+    if (this.editing && !cells.some((c) => c.id === this.editing)) this.editing = null;
+    this.snapshot = this.makeSnapshot();
+    this.listeners.forEach((fn) => fn());
   }
 
   flush() {
     clearTimeout(this.saveTimer);
-    if (this.nb) this.save(serialize(this.nb));
+    if (this.nb) this.save(serialize(this.withLiveSources()));
+  }
+
+  // While live, each cell's text is the one in the live document: typed there
+  // directly (by its editor, or a teammate's), it is always the newest. The
+  // notebook here can trail it by a moment, and saving that would take back
+  // letters just typed.
+  withLiveSources() {
+    const entry = this.live?.entry;
+    if (!entry?.cellText) return this.nb;
+    return {
+      ...this.nb,
+      cells: this.nb.cells.map((c) => {
+        const text = entry.cellText(c.id);
+        return text ? { ...c, source: text.toString() } : c;
+      }),
+    };
   }
 
   updateCell(id, fn) {
@@ -96,7 +180,7 @@ export class NotebookSession {
     const cell = this.nb.cells.find((c) => c.id === id);
     if (!cell || cell.source === source) return;
     this.updateCell(id, (c) => ({ ...c, source }));
-    this.emit({ changed: true });
+    this.emit({ changed: 'source' });
   }
 
   insert(type, { after = this.selected, before = null } = {}) {
@@ -184,12 +268,12 @@ export class NotebookSession {
           this.pendingClear.delete(cell);
           return { ...c, outputs: appendOutput(base, output) };
         });
-        this.emit({ changed: true });
+        this.emit({ changed: 'output' });
       },
       onClear: (cell, wait) => {
         if (wait) this.pendingClear.add(cell);
         else this.updateCell(cell, (c) => ({ ...c, outputs: [] }));
-        this.emit({ changed: true });
+        this.emit({ changed: 'output' });
       },
       onInput: (cell, prompt, password) => {
         this.input = { cell, prompt, password };
@@ -296,6 +380,7 @@ export class NotebookSession {
   }
 
   close() {
+    this.detachLive?.();
     this.flush();
     this.kernel?.shutdown();
     this.kernel = null;

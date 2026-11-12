@@ -1,4 +1,4 @@
-import { memo, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Editor from '@monaco-editor/react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -22,7 +22,8 @@ import { lineHeightFor } from './CodeEditor.jsx';
 import { bestMime, joinText, stripAnsi } from '../lib/notebook.js';
 import { setCompletionContext } from '../lib/pythonCompletion.js';
 import { createRemoteCursors } from '../cowork/remoteCursors.js';
-import { CursorReportContext, cursorOfSelection } from '../cowork/cursorReport.js';
+import { CursorReportContext, LiveTextContext, cursorOfSelection } from '../cowork/cursorReport.js';
+import { bindModel } from '../cowork/live/monacoBinding.js';
 
 // A Jupyter notebook: code and Markdown cells, run in a real kernel.
 // Keyboard (like Jupyter): Shift+Enter runs and moves on, Ctrl/Cmd+Enter
@@ -103,14 +104,57 @@ function InputPrompt({ input, onSubmit }) {
   );
 }
 
-// Monaco for one cell, as tall as its content.
-function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKeys, completionContext, peers, onCursor }) {
+// Monaco for one cell, as tall as its content. In a shared project the cell
+// is typed live (letter by letter both ways, carets kept) through its own text
+// in the notebook's live document (liveText.js, monacoBinding.js).
+function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKeys, completionContext, peers, onCursor, live, cellId }) {
   const [height, setHeight] = useState(lineHeightFor(fontSize) + 16);
   const keys = useRef(onKeys);
   keys.current = onKeys;
   const cursorRef = useRef(onCursor);
   cursorRef.current = onCursor;
   const remote = useRef(null);
+  const editorRef = useRef(null);
+  const monacoRef = useRef(null);
+  const binding = useRef(null);
+  const liveRef = useRef(live);
+  liveRef.current = live;
+  const [mounted, setMounted] = useState(false);
+  // While bound, the binding owns the editor's text: the cell's value from the
+  // notebook (which can trail the typing by a moment) is never pushed into it,
+  // or it would take back letters just typed.
+  const [bound, setBound] = useState(false);
+  const entry = live?.entry || null;
+  // Bound to the cell's text once it is in the document (a new cell gets there a
+  // moment after it is added), and again if it is replaced (moved by a teammate).
+  useEffect(() => {
+    if (!entry || !mounted) return undefined;
+    let text = null;
+    let current = null;
+    const tryBind = () => {
+      const t = entry.cellText?.(cellId) || null;
+      if (t === text) return;
+      current?.dispose();
+      current = null;
+      binding.current = null;
+      text = t;
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      if (t && model) {
+        current = bindModel({ monaco: monacoRef.current, editor, model, entry: { doc: entry.doc, ytext: t } });
+        binding.current = current;
+      }
+      setBound(!!current);
+    };
+    tryBind();
+    entry.doc.on('afterTransaction', tryBind);
+    return () => {
+      entry.doc.off('afterTransaction', tryBind);
+      current?.dispose();
+      binding.current = null;
+      setBound(false);
+    };
+  }, [entry, cellId, mounted]);
   // Teammates' cursors in this cell (Cowork).
   useEffect(() => {
     remote.current?.set(peers || []);
@@ -119,14 +163,21 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
     <div className="nb-editor" style={{ height }}>
       <Editor
         path={path}
-        value={value}
+        defaultValue={value}
+        value={bound ? undefined : value}
         language={language}
         theme="tandem-dusk"
-        onChange={(v) => onChange(v ?? '')}
+        onChange={(v) => {
+          // A teammate's typing shown here isn't typing here.
+          if (binding.current?.applying) return;
+          onChange(v ?? '');
+        }}
         onMount={(editor, monaco) => {
+          editorRef.current = editor;
+          monacoRef.current = monaco;
           // Completion knows the code of the cells above this one.
           if (completionContext) setCompletionContext(editor.getModel(), completionContext);
-          remote.current = createRemoteCursors(editor, monaco, { labels: false });
+          remote.current = createRemoteCursors(editor, monaco); // with their names, as in files
           if (peers?.length) remote.current.set(peers);
           const fit = () => setHeight(Math.max(lineHeightFor(fontSize) + 16, editor.getContentHeight()));
           editor.onDidContentSizeChange(fit);
@@ -141,6 +192,19 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
           editor.onDidFocusEditorText(() => keys.current('focus'));
           // Cowork live: teammates see where this cell's caret is.
           editor.onDidChangeCursorSelection((e) => cursorRef.current?.(cursorOfSelection(e.selection)));
+          // Live typing: undo and redo take back only this person's changes.
+          editor.onKeyDown((e) => {
+            const l = liveRef.current;
+            if (!binding.current || !l || !(e.ctrlKey || e.metaKey)) return;
+            const z = e.keyCode === monaco.KeyCode.KeyZ;
+            const y = e.keyCode === monaco.KeyCode.KeyY;
+            if (!z && !y) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (y || e.shiftKey) l.redo();
+            else l.undo();
+          });
+          setMounted(true);
           // After the click that added the cell has finished, so focus stays here.
           if (autoFocus) {
             editor.focus();
@@ -182,7 +246,7 @@ function CellEditor({ path, language, value, fontSize, autoFocus, onChange, onKe
   );
 }
 
-const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, selected, editing, input, session, peers }) {
+const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, selected, editing, input, session, peers, live }) {
   const code = cell.cell_type === 'code';
   const reportCursor = useContext(CursorReportContext);
   const label = state === 'running' ? '[*]' : state === 'queued' ? '[…]' : `[${cell.execution_count ?? ' '}]`;
@@ -230,6 +294,8 @@ const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, sel
             completionContext={code ? () => ({ path, prefix: session.codeBefore(cell.id) }) : null}
             peers={peers}
             onCursor={reportCursor ? (cursor) => reportCursor(path, cursor, cell.id) : null}
+            live={live}
+            cellId={cell.id}
           />
         ) : (
           <div
@@ -290,6 +356,14 @@ const NO_PEERS = [];
 
 export default function NotebookView({ session, path, fontSize, onInstallPackage, presence, kernelNote }) {
   const snap = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  // Shared projects: the notebook's live document (null until it is ready).
+  const liveText = useContext(LiveTextContext);
+  const liveEntry = liveText?.entry(path) || null;
+  const live = useMemo(
+    () => (liveEntry ? { entry: liveEntry, undo: () => liveText.undo(path), redo: () => liveText.redo(path) } : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [liveEntry, path]
+  );
   const scroller = useRef(null);
   const busy = ['busy', 'starting', 'restarting'].includes(snap.kernelState) || Object.keys(snap.running).length > 0;
 
@@ -367,6 +441,7 @@ export default function NotebookView({ session, path, fontSize, onInstallPackage
             input={snap.input?.cell === cell.id ? snap.input : null}
             session={session}
             peers={presence?.[cell.id] || NO_PEERS}
+            live={live}
           />
         ))}
         <AddBar session={session} after={snap.cells[snap.cells.length - 1]?.id} />

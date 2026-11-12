@@ -612,6 +612,15 @@ export default function App() {
           save: ((path) => (text) => ws.setFile(path, text))(ws.activePath),
         })
       : null;
+  // Shared projects: the open notebook follows its live document both ways
+  // (cells typed live, cells added, moved and removed, outputs).
+  const liveNotebookEntry = activeNotebook && inCowork && cowork.live ? cowork.liveText?.entry(ws.activePath) || null : null;
+  useEffect(() => {
+    if (!activeNotebook || !liveNotebookEntry) return undefined;
+    const path = ws.activePath;
+    return activeNotebook.attachLive({ entry: liveNotebookEntry, sync: (text) => coworkRef.current.liveText?.setText(path, text) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeNotebook, liveNotebookEntry]);
   // SQL workspace (the Python | SQL switch in the toolbar).
   const sqlMode = IS_LOCAL && !inCowork && prefs.workspace === 'sql';
   const sql = useSqlWorkspace({ backend, ws, notify, active: sqlMode });

@@ -25,15 +25,16 @@
 //     send it to the others.
 
 import * as Y from 'yjs';
+import { isNotebook, joinText, serialize as serializeNotebook } from '../../lib/notebook.js';
 
 export const LOCAL = 'local'; // typed or set here
 export const REMOTE = 'remote'; // from a teammate or the server
 export const SEED = 'seed'; // started from plain text
 export const CATCH_UP = 'catch-up'; // brought up to date with text saved by an older build
 
-// Notebooks keep save-based sync (their JSON isn't edited as text); database
-// files aren't text.
-export const isLiveTextPath = (path) => !/\.(ipynb|db|sqlite|sqlite3)$/i.test(path || '');
+// Every text file is typed live; notebooks too, cell by cell (below).
+// Database files aren't text.
+export const isLiveTextPath = (path) => !/\.(db|sqlite|sqlite3)$/i.test(path || '');
 
 // ------------------------------------------------------------ helpers
 
@@ -103,19 +104,125 @@ function deterministic(doc, key, origin, fn) {
 // An update that carries nothing (no new items, no deletions).
 const isEmptyUpdate = (update) => update.length <= 2;
 
+// ------------------------------------------------------------ notebooks
+//
+// A notebook (.ipynb) isn't edited as one text: its document holds the cells
+// (a Y.Array of Y.Maps: id, shape, source) and the rest of the notebook
+// (meta). Each cell's source is a Y.Text of its own, typed live in the cell's
+// editor exactly like a file (monacoBinding.js), so two people in different
+// cells, or in the same cell, merge letter by letter; a cell added, removed or
+// moved on one device is added, removed or moved everywhere, and typing in a
+// cell someone removed meanwhile goes with it (never stray text in the file).
+// `shape` is the rest of the cell as JSON (type, metadata, outputs, in their
+// original key order), last writer wins. The file's text is built from these
+// in the standard format (lib/notebook.js serialize).
+
+// A notebook's text as cells, or null if it isn't one. Ids are made
+// deterministic where missing or repeated (devices seeding agree).
+function notebookParts(text) {
+  let nb;
+  try {
+    nb = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!nb || typeof nb !== 'object' || !Array.isArray(nb.cells)) return null;
+  const seen = new Set();
+  const cells = nb.cells.map((c, i) => {
+    const cell = c && typeof c === 'object' ? c : {};
+    const source = joinText(cell.source);
+    let id = typeof cell.id === 'string' && cell.id ? cell.id : '';
+    if (!id || seen.has(id)) id = `cell-${i}-${hash32(source, String(i)).toString(16)}`;
+    seen.add(id);
+    return { id, shape: JSON.stringify({ ...cell, id, source: null }), source };
+  });
+  return { meta: JSON.stringify({ ...nb, cells: null }), cells };
+}
+
+const newYCell = (c) => {
+  const m = new Y.Map();
+  m.set('id', c.id);
+  m.set('shape', c.shape);
+  m.set('source', new Y.Text(c.source));
+  return m;
+};
+
+function notebookText(entry) {
+  const meta = entry.meta.get('nb');
+  if (!meta) return '';
+  const nb = JSON.parse(meta);
+  const seen = new Set();
+  nb.cells = [];
+  for (const m of entry.cells.toArray()) {
+    const id = m.get('id');
+    if (seen.has(id)) continue; // moved by two people at once: shown once
+    seen.add(id);
+    nb.cells.push({ ...JSON.parse(m.get('shape')), source: m.get('source').toString() });
+  }
+  return serializeNotebook(nb);
+}
+
+// Bring the document to `text` with the fewest changes: cells matched by id.
+function setNotebook(entry, text) {
+  const nb = notebookParts(text);
+  if (!nb) return; // not valid notebook JSON: keep what we have
+  if (entry.meta.get('nb') !== nb.meta) entry.meta.set('nb', nb.meta);
+  const yc = entry.cells;
+  const wanted = new Set(nb.cells.map((c) => c.id));
+  for (let i = yc.length - 1; i >= 0; i--) if (!wanted.has(yc.get(i).get('id'))) yc.delete(i, 1);
+  nb.cells.forEach((c, i) => {
+    const here = i < yc.length ? yc.get(i) : null;
+    if (here && here.get('id') === c.id) {
+      if (here.get('shape') !== c.shape) here.set('shape', c.shape);
+      applyDiff(here.get('source'), c.source);
+      return;
+    }
+    // Elsewhere in the list: moved (taken out and put back here).
+    for (let k = i + 1; k < yc.length; k++) {
+      if (yc.get(k).get('id') === c.id) {
+        yc.delete(k, 1);
+        break;
+      }
+    }
+    yc.insert(i, [newYCell(c)]);
+  });
+  if (yc.length > nb.cells.length) yc.delete(nb.cells.length, yc.length - nb.cells.length);
+}
+
 // ------------------------------------------------------------ the documents
+
+// A file's text, whatever its kind; and setting it with the fewest changes.
+const contentOf = (entry) => (entry.notebook ? notebookText(entry) : entry.ytext.toString());
+const isEmpty = (entry) => (entry.notebook ? entry.cells.length === 0 && !entry.meta.get('nb') : entry.ytext.length === 0);
+const setContent = (entry, text) => (entry.notebook ? setNotebook(entry, text) : applyDiff(entry.ytext, text));
 
 export function createLiveText({ onText = () => {}, onUpdate = () => {} } = {}) {
   const entries = new Map(); // path -> { doc, ytext, undo, ready }
 
   const make = (path) => {
     const doc = new Y.Doc();
-    const ytext = doc.getText('text');
-    const entry = { path, doc, ytext, undo: null, ready: false };
-    entry.undo = new Y.UndoManager(ytext, { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 });
-    ytext.observe((event, tr) => {
-      if (tr.origin !== LOCAL && entry.ready) onText(entry.path, ytext.toString(), tr.origin === entry.undo ? 'undo' : tr.origin);
-    });
+    const notebook = isNotebook(path);
+    const entry = { path, doc, notebook, ytext: null, cells: null, meta: null, undo: null, ready: false };
+    entry.content = () => contentOf(entry);
+    if (notebook) {
+      entry.cells = doc.getArray('cells');
+      entry.meta = doc.getMap('meta');
+      // The cell's own Y.Text, for its editor (null until the cell is in the document).
+      entry.cellText = (id) => {
+        for (const m of entry.cells.toArray()) if (m.get('id') === id) return m.get('source');
+        return null;
+      };
+      entry.undo = new Y.UndoManager([entry.cells, entry.meta], { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 });
+      doc.on('afterTransaction', (tr) => {
+        if (tr.origin !== LOCAL && entry.ready && tr.changed.size) onText(entry.path, contentOf(entry), tr.origin === entry.undo ? 'undo' : tr.origin);
+      });
+    } else {
+      entry.ytext = doc.getText('text');
+      entry.undo = new Y.UndoManager(entry.ytext, { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 });
+      entry.ytext.observe((event, tr) => {
+        if (tr.origin !== LOCAL && entry.ready) onText(entry.path, entry.ytext.toString(), tr.origin === entry.undo ? 'undo' : tr.origin);
+      });
+    }
     doc.on('update', (update, origin) => {
       if (origin !== REMOTE && origin !== SEED && entry.ready) onUpdate(entry.path, update);
     });
@@ -129,7 +236,7 @@ export function createLiveText({ onText = () => {}, onUpdate = () => {} } = {}) 
     if (entry.ready) return;
     entry.ready = true;
     entry.undo.clear();
-    onText(entry.path, entry.ytext.toString(), SEED);
+    onText(entry.path, contentOf(entry), SEED);
   };
 
   return {
@@ -139,7 +246,7 @@ export function createLiveText({ onText = () => {}, onUpdate = () => {} } = {}) 
       const e = entries.get(path);
       return e?.ready ? e : null;
     },
-    text: (path) => entries.get(path)?.ytext.toString(),
+    text: (path) => (entries.has(path) ? contentOf(entries.get(path)) : undefined),
     paths: () => [...entries.keys()],
     readyPaths: () => [...entries.values()].filter((e) => e.ready).map((e) => e.path),
 
@@ -151,9 +258,11 @@ export function createLiveText({ onText = () => {}, onUpdate = () => {} } = {}) 
       // Saved since by an older build (the copy is behind the file): catch up
       // the same way on every device. (A copy newer than `file` is a save
       // that landed after the file was read: it is the newer one.)
-      if (saved.revision < file.revision && entry.ytext.toString() !== file.content) {
+      // (A notebook's copy may hold no cells: saved while it was plain text.)
+      const behind = saved.revision < file.revision || (entry.notebook && isEmpty(entry) && file.content);
+      if (behind && contentOf(entry) !== file.content) {
         const sv = Y.encodeStateVector(entry.doc);
-        deterministic(entry.doc, ['catch-up', file.revision, file.content, toBase64(sv)].join('\u0000'), CATCH_UP, () => applyDiff(entry.ytext, file.content));
+        deterministic(entry.doc, ['catch-up', file.revision, file.content, toBase64(sv)].join('\u0000'), CATCH_UP, () => setContent(entry, file.content));
       }
       markReady(entry);
       return entry;
@@ -163,8 +272,8 @@ export function createLiveText({ onText = () => {}, onUpdate = () => {} } = {}) 
     seed(path, content, revision) {
       const entry = entryFor(path);
       if (entry.ready) return entry;
-      if (entry.ytext.length === 0 && content) {
-        deterministic(entry.doc, ['seed', revision, content].join('\u0000'), SEED, () => entry.ytext.insert(0, content));
+      if (isEmpty(entry) && content) {
+        deterministic(entry.doc, ['seed', revision, content].join('\u0000'), SEED, () => setContent(entry, content));
       }
       // Still empty after seeding while others' edits wait: they were based
       // on another start. Show what we have; it settles with the next save.
@@ -176,16 +285,17 @@ export function createLiveText({ onText = () => {}, onUpdate = () => {} } = {}) 
     // take that text the same way on every device that has the same document.
     catchUp(path, content, revision) {
       const entry = entries.get(path);
-      if (!entry?.ready || entry.ytext.toString() === content) return;
+      if (!entry?.ready || contentOf(entry) === content) return;
       const sv = Y.encodeStateVector(entry.doc);
-      deterministic(entry.doc, ['catch-up', revision, content, toBase64(sv)].join('\u0000'), CATCH_UP, () => applyDiff(entry.ytext, content));
+      deterministic(entry.doc, ['catch-up', revision, content, toBase64(sv)].join('\u0000'), CATCH_UP, () => setContent(entry, content));
     },
 
     // An edit made here outside the editor.
     setText(path, text) {
       const entry = entries.get(path);
-      if (!entry?.ready || (entry.ytext.length === text.length && entry.ytext.toString() === text)) return;
-      entry.doc.transact(() => applyDiff(entry.ytext, text), LOCAL);
+      if (!entry?.ready) return;
+      if (entry.notebook ? contentOf(entry) === text : entry.ytext.length === text.length && entry.ytext.toString() === text) return;
+      entry.doc.transact(() => setContent(entry, text), LOCAL);
     },
 
     applyRemote(path, update) {
@@ -196,7 +306,7 @@ export function createLiveText({ onText = () => {}, onUpdate = () => {} } = {}) 
     snapshot(path) {
       const entry = entries.get(path);
       if (!entry?.ready) return null;
-      return { content: entry.ytext.toString(), doc: toBase64(Y.encodeStateAsUpdate(entry.doc)) };
+      return { content: contentOf(entry), doc: toBase64(Y.encodeStateAsUpdate(entry.doc)) };
     },
     stateVector(path) {
       const entry = entries.get(path);
@@ -217,6 +327,11 @@ export function createLiveText({ onText = () => {}, onUpdate = () => {} } = {}) 
       const entry = entries.get(from);
       if (!entry || from === to) return;
       entries.delete(from);
+      if (isNotebook(from) !== isNotebook(to)) {
+        // Now another kind of file (text <-> notebook): it starts again from its text.
+        entry.doc.destroy();
+        return;
+      }
       entries.get(to)?.doc.destroy();
       entry.path = to;
       entries.set(to, entry);

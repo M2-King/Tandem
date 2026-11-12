@@ -42,8 +42,7 @@ function resolve(model, step) {
   return { start, end, caret: end, selection: step.select != null };
 }
 
-// labels: false leaves out the name above the caret (notebook cells name the
-// person on the cell instead).
+// labels: false leaves out the name at the caret.
 export function createRemoteCursors(editor, monaco, { labels = true } = {}) {
   const decorations = editor.createDecorationsCollection();
   let widgets = [];
@@ -83,10 +82,14 @@ export function createRemoteCursors(editor, monaco, { labels = true } = {}) {
         const widget = {
           getId: () => `remote-cursor-${c.id}`,
           getDomNode: () => node,
-          getPosition: () => ({
-            position: spot.caret,
-            preference: [monaco.editor.ContentWidgetPositionPreference.ABOVE, monaco.editor.ContentWidgetPositionPreference.BELOW],
-          }),
+          // Not cut off by a small editor (a notebook cell shows overflowing widgets on top).
+          allowEditorOverflow: true,
+          // Above the caret; on the first line below it (above would be cut off
+          // by the editor's edge, as in a one-line notebook cell).
+          getPosition: () => {
+            const { ABOVE, BELOW } = monaco.editor.ContentWidgetPositionPreference;
+            return { position: spot.caret, preference: spot.caret.lineNumber === 1 ? [BELOW, ABOVE] : [ABOVE, BELOW] };
+          },
         };
         editor.addContentWidget(widget);
         widgets.push(widget);

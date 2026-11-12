@@ -39,7 +39,7 @@ Each shared project has one private Supabase Realtime channel, `cowork:<project 
 - **Cursors**: caret and selection moves go as broadcasts, at most 8 a second, and are drawn in the same file in that person's colour with their name. They are sent again when someone joins, after each presence update, and when you click back into a file. If the text changed around a position, the cursor goes to the nearest valid spot.
 - **Staying connected**: the app stays in the channel while it is hidden for up to 2 minutes (switching apps, Stage Manager, a covered window), then leaves; a project closed is left at once. Anything the app didn't ask for (the server closing the channel, a network drop, a timeout) is rejoined after 1, 2, 5 and then every 15 seconds; a refused join (not a member, Realtime not set up) every 30 seconds.
 - **Live indicator** next to the sync status: Live, Connecting…, Reconnecting… or Live unavailable, with the reason in its tooltip. The console logs joins, leaves and closes as `[cowork live]`; set `localStorage['tandem.coworkDebug'] = '1'` to log every cursor sent and received too.
-- Typing itself travels as live typing (below) in text files; in notebooks, by saves with the 10-second sync.
+- Typing itself travels as live typing (below), in every text file and in notebook cells.
 
 Set up on a Supabase project (staging):
 
@@ -56,7 +56,8 @@ A teammate's typing shows as they type, letter by letter, in text files (`.py`, 
 - **Saving**: a live file is saved together with its document, in one step (`cowork_save_file_doc`, which calls `cowork_save_file`, so revisions, "edited by" and history are as before). Each person saves their own typing about a second after they stop; a teammate's edits are saved from here too if they haven't saved them a few seconds later. Someone saving first isn't a Conflict for live files: their saved document is merged in and this device saves again if needed. After a save the others are told, so they don't save the same edits again.
 - **Opening**: a project's files start from their saved documents (`cowork_file_docs`). A file without one yet (created before live typing, or saved only by an older build) starts from its text in the same way on every device, after giving the others a moment to send theirs, so opening it on two devices at once doesn't double it.
 - **In the editor**: teammates' edits go straight into the editor; your caret and selection stay on the text they were on, and someone typing at your caret goes after it. Undo and redo (Ctrl/Cmd+Z, Ctrl+Shift+Z, Ctrl+Y) take back only your own typing.
-- **Not live**: notebooks (`.ipynb`) and everything when the server doesn't have 003 keep the save-based sync below, with Conflict and Use theirs / Keep mine. Live typing can be turned off on a device with `localStorage['tandem.coworkLiveTyping'] = 'off'`, and `localStorage['tandem.coworkDebug'] = '1'` logs every live message sent and received.
+- **Notebooks** (`.ipynb`) are typed live cell by cell: each cell's code is its own live text (letters both ways, carets kept, teammates' names at their carets), and adding, removing or moving a cell, changing its type and running it (outputs, sent at most every 300 ms) show up for everyone at once. Typing in a cell a teammate removed meanwhile goes with the cell. Checked by `supabase/tests/notebook-live-e2e.cjs` and the notebook cases in `liveText.test.mjs`.
+- **Not live**: database files, and everything when the server doesn't have 003, keep the save-based sync below, with Conflict and Use theirs / Keep mine. Live typing can be turned off on a device with `localStorage['tandem.coworkLiveTyping'] = 'off'`, and `localStorage['tandem.coworkDebug'] = '1'` logs every live message sent and received.
 - **Older builds**: a build without live typing saves plain text; a newer build brings the document up to date from it. If someone with an older build edits a file while others type in it live, those devices may show a Conflict for it. Everyone should update.
 
 Set up on a Supabase project (staging), after 002:
@@ -73,7 +74,7 @@ An open project reloads every 10 seconds while the app is visible, when its wind
 - A teammate saved a newer version while this device has an unsaved edit: nothing is overwritten. The status shows **Conflict** and the file shows "wei saved a newer version" with **Use theirs** (take their text) and **Keep mine** (save this device's text over theirs). A save refused because someone saved first ends up in the same Conflict.
 - No connection: the status shows **Offline**, edits stay on this device and are saved when the connection is back (or with **Retry**). **Unsaved** is left for other failures; copy the draft if one persists.
 
-The status reads Saved, Saving…, Offline, Unsaved or Conflict. This is how files that aren't typed live (notebooks, or all files without 003) stay in step; live typing (above) and cursors work alongside it. No database change is needed for this part; it uses `cowork_project`.
+The status reads Saved, Saving…, Offline, Unsaved or Conflict. This is how files that aren't typed live (database files, or all files without 003) stay in step; live typing (above) and cursors work alongside it. No database change is needed for this part; it uses `cowork_project`.
 
 ### Sharing an AI with the project
 

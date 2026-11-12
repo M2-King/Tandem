@@ -274,7 +274,13 @@ export function useLiveText({ me, onText, getText, onSaved }) {
 
   // For the editor (LiveTextContext): the document of a live file, and undo.
   const editorContext = useMemo(
-    () => ({ version, entry: (path) => api.entry(path), undo: (path) => api.undo(path), redo: (path) => api.redo(path) }),
+    () => ({
+      version,
+      entry: (path) => api.entry(path),
+      undo: (path) => api.undo(path),
+      redo: (path) => api.redo(path),
+      setText: (path, text) => api.setText(path, text), // a notebook's own changes (notebookSession.js)
+    }),
     [version, api]
   );
 
