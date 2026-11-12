@@ -22,5 +22,8 @@ export const COWORK_RUN_MODE = {
   sample: ' · sample result',
 };
 
+// Cowork live mode: real runs on this device's own Python, no label.
+export const COWORK_LIVE_RUN_MODE = { real: true, tag: null, tagTip: null, running: 'Running on this device', sample: '' };
+
 export const RunModeContext = createContext(DEMO_RUN_MODE);
 export const useRunMode = () => useContext(RunModeContext);

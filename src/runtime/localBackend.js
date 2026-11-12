@@ -39,7 +39,33 @@ export function lineCollector(onLine, onPartial) {
 export function createLocalBackend(config, { socket = true } = {}) {
   const client = new RuntimeClient({ ...config, socket });
 
-  return {
+  // A job (environment or packages), for the device project or, with
+  // scope 'shared', for Tandem Cowork's shared projects.
+  function startJob(job, { onStart, onOutput, onFinish }) {
+    const id = `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    let done = false;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      off();
+      offState();
+      onFinish?.(result);
+    };
+    const off = client.on((event) => {
+      if (event.id !== id) return;
+      if (event.type === 'job.started') onStart?.(event);
+      else if (event.type === 'job.output') onOutput?.(event.text);
+      else if (event.type === 'job.finished') finish(event);
+      else if (event.type === 'job.rejected') finish({ status: 'error', message: event.message });
+    });
+    const offState = client.onState((state) => {
+      if (state === 'disconnected') finish({ status: 'error', message: 'The connection to the runtime was lost.' });
+    });
+    if (!client.send({ type: 'job.start', id, ...job })) finish({ status: 'error', message: 'The runtime isn’t connected.' });
+    return { cancel: () => client.send({ type: 'job.cancel', id }) };
+  }
+
+  const backend = {
     kind: 'local',
     client,
 
@@ -81,35 +107,43 @@ export function createLocalBackend(config, { socket = true } = {}) {
     previewJob: (job) => client.api('/api/jobs/preview', { method: 'POST', body: job }),
     // job: { kind: 'create-env', base, name } | { kind: 'install', packages } | { kind: 'install', requirements: true }
     // onOutput(text), onFinish({ status, exitCode, message, ... }). Returns { cancel }.
-    startJob(job, { onStart, onOutput, onFinish }) {
-      const id = `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-      let done = false;
-      const finish = (result) => {
-        if (done) return;
-        done = true;
-        off();
-        offState();
-        onFinish?.(result);
+    startJob,
+
+    // Tandem Cowork: the Python and packages used for shared projects (one
+    // choice for all of them), in the same shape as above for the
+    // environment dialog. `project`: the open shared project, for its imports.
+    forScope(scope, project) {
+      if (scope !== 'shared') return backend;
+      const q = (extra = '') => `scope=shared${project ? `&project=${encodeURIComponent(project)}` : ''}${extra}`;
+      return {
+        ...backend,
+        envs: (refresh = false) => client.api(`/api/envs?${q(refresh ? '&refresh=1' : '')}`),
+        selectEnv: (python) => client.api('/api/envs/select?scope=shared', { method: 'PUT', body: { python } }),
+        packages: () => client.api(`/api/packages?${q()}`),
+        previewJob: (job) => client.api('/api/jobs/preview', { method: 'POST', body: { ...job, scope: 'shared', project } }),
+        startJob: (job, h) => startJob({ ...job, scope: 'shared', project }, h),
       };
-      const off = client.on((event) => {
-        if (event.id !== id) return;
-        if (event.type === 'job.started') onStart?.(event);
-        else if (event.type === 'job.output') onOutput?.(event.text);
-        else if (event.type === 'job.finished') finish(event);
-        else if (event.type === 'job.rejected') finish({ status: 'error', message: event.message });
-      });
-      const offState = client.onState((state) => {
-        if (state === 'disconnected') finish({ status: 'error', message: 'The connection to the runtime was lost.' });
-      });
-      if (!client.send({ type: 'job.start', id, ...job })) finish({ status: 'error', message: 'The runtime isn’t connected.' });
-      return { cancel: () => client.send({ type: 'job.cancel', id }) };
+    },
+
+    // Tandem Cowork: each shared project runs from a working copy on this
+    // computer (the runtime's shared folder). prepare() writes the project's
+    // current files there and returns what startRun/startKernel take as `shared`.
+    shared: {
+      prepare: async (id, files) => {
+        await client.api(`/api/shared/${encodeURIComponent(id)}/files`, { method: 'PUT', body: { files } });
+        return id;
+      },
+      close: (id) => client.api(`/api/shared/${encodeURIComponent(id)}/close`, { method: 'POST', body: {} }).catch(() => {}),
+      trusted: (id) => client.api(`/api/shared/${encodeURIComponent(id)}/trust`).then((r) => !!r.trusted),
+      setTrusted: (id, trusted) => client.api(`/api/shared/${encodeURIComponent(id)}/trust`, { method: 'PUT', body: { trusted } }),
     },
 
     // A Jupyter kernel for a notebook (ipykernel in the project's environment).
     // h: onStatus(state, info), onCount(cell, n), onOutput(cell, output),
     //    onClear(cell, wait), onInput(cell, prompt, password), onDone(cell, status, n),
     //    onRejected(message, code), onError(message)
-    startKernel(path, h) {
+    // opts.shared: a Tandem Cowork shared project's id (its working copy).
+    startKernel(path, h, opts = {}) {
       const id = uid('kernel');
       const off = client.on((e) => {
         if (e.id !== id) return;
@@ -125,7 +159,7 @@ export function createLocalBackend(config, { socket = true } = {}) {
       const offState = client.onState((state) => {
         if (state === 'disconnected') h.onStatus?.('dead', { lost: true });
       });
-      if (!client.send({ type: 'kernel.start', id, path })) h.onRejected?.('The runtime isn’t connected.');
+      if (!client.send({ type: 'kernel.start', id, path, ...(opts.shared ? { shared: opts.shared } : {}) })) h.onRejected?.('The runtime isn’t connected.');
       const send = (type, fields = {}) => client.send({ type, id, ...fields });
       return {
         execute: (cell, code) => send('kernel.execute', { cell, code }),
@@ -152,7 +186,8 @@ export function createLocalBackend(config, { socket = true } = {}) {
     //   onPaused(pause), onResumed(), onFinish(result)
     // result: { status: 'success'|'error'|'stopped', exitCode, output, variables,
     //           figures, metrics, error, durationMs, python, lostConnection? }
-    startRun({ path, mode = 'run', breakpoints = [], onStart, onOutput, onPartial, onPaused, onResumed, onFinish }) {
+    // shared: a Tandem Cowork shared project's id: run from its working copy.
+    startRun({ path, mode = 'run', breakpoints = [], shared = null, onStart, onOutput, onPartial, onPaused, onResumed, onFinish }) {
       const id = uid('run');
       const output = [];
       const figures = [];
@@ -253,7 +288,7 @@ export function createLocalBackend(config, { socket = true } = {}) {
         }
       });
 
-      if (!client.send({ type: 'run.start', id, path, mode, breakpoints })) {
+      if (!client.send({ type: 'run.start', id, path, mode, breakpoints, ...(shared ? { shared } : {}) })) {
         offEvents();
         offState();
         throw new Error('The Tandem runtime is disconnected. Start it with `tandem open` and try again.');
@@ -282,4 +317,5 @@ export function createLocalBackend(config, { socket = true } = {}) {
       };
     },
   };
+  return backend;
 }

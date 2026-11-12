@@ -21,6 +21,16 @@ New projects start empty. The owner invites a teammate by username or Tandem add
 
 Both owners and members can create, upload, rename, and edit UTF-8 text files up to 1 MB. File removal and project archive require an owner. An account that isn't in a project can't open, read, or change it, even with its link.
 
+### Running shared projects
+
+Run, Step through, Debug and notebook cells work in shared projects, each on the member's own device, with that device's Python. Nothing runs on the server, and each person's runs and output are their own.
+
+- **Windows**: the desktop app keeps a working copy of each shared project in its own data folder, `%APPDATA%\Tandem Staging\Shared\<project id>\` (the app's user data, `Shared/`). Before each run, notebook kernel start and notebook cell, Tandem writes the project's current text there (teammates' merged saves and this device's unsaved edits included; only files that changed) and deletes files removed from the project. Runs use the Python chosen for shared projects (the Python chip in the toolbar → Environment), else the default Python; it is one choice for all shared projects, separate from the device project's.
+- **iPad**: the same, inside Pyodide: each project has its own folder, kept in the app's storage on the iPad. Packages installed for a device project aren't loaded for shared projects; Pyodide's own packages (numpy, pandas, matplotlib, …) load by themselves.
+- Files a run creates (charts, output CSVs) stay in the working copy on this device and aren't uploaded. The Output says so once.
+- Shared code was written by other people and runs with this person's permissions. The first run in each shared project on a device asks: "Code in <project> runs on this device with your permissions. Run it only if you trust its members." The answer is remembered for that project on that device; **Don't run** runs nothing (and asks again next time).
+- Leaving or closing a shared project shuts down its notebook kernels and stops its run. Device projects and shared projects never share files, folders or kernels.
+
 ### Staying in step
 
 An open project reloads every 10 seconds while the app is visible, when its window gets focus or becomes visible again (including an iPad coming back to the app), and when the network returns. It doesn't reload while the app is hidden. Shared Projects reloads every 30 seconds and on focus, so invitations appear without **Refresh**. Each file is merged by its revision:
@@ -35,6 +45,6 @@ The status reads Saved, Saving…, Offline, Unsaved or Conflict. Live co-editing
 
 Test with two real accounts and the Windows and iPad packages. On Windows, create the owner account and a private project; on iPad, create the member account. Invite the member by username, join, add a file, save an edit, close both apps, and sign in again to reopen the file. Then remove the member from the project and verify that its access is denied.
 
-The sync checks run against the local stand-in or staging (`supabase/tests/sync-e2e.cjs`, two accounts in two browser contexts): a teammate's save shows up within 10 seconds, a Conflict ends in Saved with either choice, and an edit made offline is saved when the connection returns. The merge rules have unit tests (`npm run test:cowork-merge`).
+The sync checks run against the local stand-in or staging (`supabase/tests/sync-e2e.cjs`, two accounts in two browser contexts): a teammate's save shows up within 10 seconds, a Conflict ends in Saved with either choice, and an edit made offline is saved when the connection returns. The merge rules have unit tests (`npm run test:cowork-merge`). Running shared projects is checked by `supabase/tests/run-e2e.cjs` (A on the desktop runtime or the iPad build, B saving a change A's Run then uses; the confirmation; a notebook cell; Step through) and the runtime's `tests/test_shared.py` (working copies, imports between project files, kernels).
 
-Live-mode sessions are in memory for this milestone, so restarting the app requires sign-in. Secure native session persistence, live co-editing, and wiring the shared project to each device's Python runtime are pending. Cowork live mode blocks sample runs. The regular local-project runtime stays available in the installed apps.
+Live-mode sessions are in memory for this milestone, so restarting the app requires sign-in. Secure native session persistence and live co-editing are pending.

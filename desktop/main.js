@@ -68,6 +68,8 @@ function runtimeCommand() {
 function startRuntime(folder) {
   return new Promise((resolve, reject) => {
     const args = ['serve', folder, '--port', '0', '--print-url', '--watch-pid', String(process.pid)];
+    // Tandem Cowork: working copies of shared projects live in the app's own data, not in project folders.
+    args.push('--shared-root', path.join(app.getPath('userData'), 'Shared'));
     if (!app.isPackaged && process.env.TANDEM_UI) args.push('--ui', process.env.TANDEM_UI);
     // windowsHide keeps a console for the runtime (Stop needs one) without showing it.
     const proc = spawn(runtimeCommand(), args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });

@@ -24,6 +24,7 @@ from .jobs import JobError, JobManager
 from .kernels import KernelError, KernelHub
 from .runs import RunError, RunManager
 from .security import TOKEN_HEADER, AccessPolicy
+from .shared import SharedError, SharedWorkspaces
 
 CONFIG_TAG_ID = "tandem-runtime"
 
@@ -93,6 +94,14 @@ class SelectEnvBody(BaseModel):
     python: str | None = None
 
 
+class SharedFilesBody(BaseModel):
+    files: dict[str, str]
+
+
+class TrustBody(BaseModel):
+    trusted: bool
+
+
 class AITestBody(BaseModel):
     provider: str
 
@@ -108,7 +117,7 @@ class AssistBody(BaseModel):
 
 
 def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cli_python: str | None = None,
-               ai_settings: AISettings | None = None) -> FastAPI:
+               ai_settings: AISettings | None = None, shared_root: Path | None = None) -> FastAPI:
     files = ProjectFiles(project_root)
     ai = ai_settings or AISettings()
 
@@ -118,6 +127,9 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
     runs = RunManager(files, interpreter)
     jobs = JobManager()
     kernels = KernelHub(files.root, interpreter)
+    # Tandem Cowork: working copies of shared projects, each with its own runs
+    # and kernels, apart from the project folder above (shared.py).
+    shared = SharedWorkspaces(shared_root or (ai.folder / "shared"), cli_python)
 
     @contextlib.asynccontextmanager
     async def lifespan(_app):
@@ -125,11 +137,34 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
         await runs.shutdown()
         await jobs.shutdown()
         await kernels.shutdown_all()
+        await shared.shutdown()
 
     app = FastAPI(title="Tandem runtime", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
     app.state.files = files
     app.state.runs = runs
+    app.state.shared = shared
+
+    # Environments and packages apply to the device project (scope "project")
+    # or to every shared project (scope "shared": one Python for all of them).
+    def scope_root(scope: str | None, project: str | None = None) -> Path:
+        if scope == "shared":
+            if project:
+                try:
+                    return shared.get(project).root
+                except SharedError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from None
+            shared.root.mkdir(parents=True, exist_ok=True)
+            return shared.root
+        return files.root
+
+    def scope_python(scope: str | None) -> tuple[Path | None, str]:
+        if scope == "shared":
+            return shared.interpreter_and_source()
+        return resolve_interpreter(files.root, cli_python)
+
+    def scope_settings_root(scope: str | None) -> Path:
+        return scope_root(scope) if scope == "shared" else files.root
 
     # ---------------- API ----------------
 
@@ -142,6 +177,7 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
             "project": {"root": str(files.root), "name": files.root.name},
             "python": {**info, "source": source},
             "busy": runs.current.path if runs.current else None,
+            "shared": {"root": str(shared.root)},
         }
 
     def file_error(exc: FileError):
@@ -222,37 +258,68 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
         raise HTTPException(status_code=400, detail=str(exc))
 
     @app.get("/api/envs")
-    def get_envs(refresh: bool = False):
+    def get_envs(refresh: bool = False, scope: str | None = None):
         if refresh:
             envs.interpreters(refresh=True)
-        python, source = resolve_interpreter(files.root, cli_python)
-        return envs.environments(files.root, python, source)
+        python, source = scope_python(scope)
+        return envs.environments(scope_settings_root(scope), python, source)
 
     @app.put("/api/envs/select")
-    def put_env_select(body: SelectEnvBody):
-        if runs.current is not None:
+    def put_env_select(body: SelectEnvBody, scope: str | None = None):
+        busy = runs.current is not None if scope != "shared" else any(w.runs.current for w in shared.open.values())
+        if busy:
             raise HTTPException(status_code=400, detail="Stop the run before switching environments.")
         try:
-            envs.select(files.root, body.python)
+            envs.select(scope_settings_root(scope), body.python)
         except envs.EnvError as exc:
             env_error(exc)
-        python, source = resolve_interpreter(files.root, cli_python)
-        return envs.environments(files.root, python, source)
+        python, source = scope_python(scope)
+        return envs.environments(scope_settings_root(scope), python, source)
 
     @app.get("/api/packages")
-    def get_packages():
-        python, source = resolve_interpreter(files.root, cli_python)
+    def get_packages(scope: str | None = None, project: str | None = None):
+        python, source = scope_python(scope)
+        root = scope_root(scope, project)
         if python is None:
             raise HTTPException(status_code=400, detail="No Python interpreter is selected for this project.")
         can, reason = envs.can_install_into(python)
         out = {"python": {"path": str(python), "source": source}, "can_install": can, "reason": reason,
-               "requirements": (files.root / "requirements.txt").is_file(), "packages": [], "missing": []}
+               "requirements": (root / "requirements.txt").is_file(), "packages": [], "missing": []}
         try:
             out["packages"] = envs.installed_packages(python)
         except envs.EnvError as exc:
             out["error"] = str(exc)
-        out["missing"] = envs.missing_imports(files.root, python)
+        out["missing"] = envs.missing_imports(root, python)
         return out
+
+    # ---------------- Tandem Cowork: shared projects' working copies ----------------
+
+    def shared_error(exc: Exception):
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.put("/api/shared/{project_id}/files")
+    def put_shared_files(project_id: str, body: SharedFilesBody):
+        try:
+            return shared.sync(project_id, body.files)
+        except SharedError as exc:
+            shared_error(exc)
+
+    @app.post("/api/shared/{project_id}/close")
+    async def post_shared_close(project_id: str):
+        await shared.close(project_id)
+        return {"ok": True}
+
+    @app.get("/api/shared/{project_id}/trust")
+    def get_shared_trust(project_id: str):
+        return {"trusted": shared.trusted(project_id)}
+
+    @app.put("/api/shared/{project_id}/trust")
+    def put_shared_trust(project_id: str, body: TrustBody):
+        try:
+            shared.set_trusted(project_id, body.trusted)
+        except SharedError as exc:
+            shared_error(exc)
+        return {"trusted": shared.trusted(project_id)}
 
     # ---------------- AI provider settings ----------------
     # Keys go in, never out: responses only say whether a key is saved.
@@ -294,29 +361,37 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
     def job_plan(message: dict):
         """(kind, command, on_done) for a requested job; raises EnvError with a readable reason."""
         kind = message.get("kind")
+        scope = "shared" if message.get("scope") == "shared" else None
+        settings_root = scope_settings_root(scope)
         if kind == "create-env":
             base = str(message.get("base") or "")
-            command, target = envs.create_command(files.root, base, str(message.get("name") or ".venv"))
+            command, target = envs.create_command(settings_root, base, str(message.get("name") or ".venv"))
 
             async def done(job, code):
                 if code == 0 and envs.venv_python(target):
                     python = envs.created_python(target)
-                    if runs.current is None:
-                        envs.select(files.root, str(python))
-                    return {"ok": True, "python": str(python), "selected": runs.current is None}
+                    if scope == "shared" or runs.current is None:
+                        envs.select(settings_root, str(python))
+                    return {"ok": True, "python": str(python), "selected": scope == "shared" or runs.current is None}
                 if target.exists():
                     await asyncio.to_thread(shutil.rmtree, target, True)  # a half-made environment
                 return {"ok": False, "message": envs.explain_create_failure(job.log, describe(base).get("version"))}
 
             return kind, command, done
         if kind == "install":
-            python, _ = resolve_interpreter(files.root, cli_python)
+            python, _ = scope_python(scope)
             if python is None:
                 raise envs.EnvError("No Python interpreter is selected for this project.")
             if message.get("requirements"):
-                if not (files.root / "requirements.txt").is_file():
+                req_root = files.root
+                if scope == "shared":
+                    try:
+                        req_root = shared.get(str(message.get("project") or "")).root
+                    except SharedError as exc:
+                        raise envs.EnvError(str(exc)) from None
+                if not (req_root / "requirements.txt").is_file():
                     raise envs.EnvError("This project has no requirements.txt.")
-                command = envs.install_command(python, requirements=files.root / "requirements.txt")
+                command = envs.install_command(python, requirements=req_root / "requirements.txt")
             else:
                 packages = message.get("packages")
                 command = envs.install_command(python, packages if isinstance(packages, list) else [])
@@ -336,17 +411,17 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
             kind, command, _ = job_plan(body)
         except envs.EnvError as exc:
             env_error(exc)
-        return {"kind": kind, "command": command, "cwd": str(files.root)}
+        return {"kind": kind, "command": command, "cwd": str(scope_settings_root(body.get("scope")))}
 
     async def start_job(message: dict, send) -> None:
         job_id = str(message.get("id"))
         try:
             kind, command, done = job_plan(message)
-            await jobs.start(job_id, kind, command, files.root, send, done)
+            await jobs.start(job_id, kind, command, scope_settings_root(message.get("scope")), send, done)
         except (envs.EnvError, JobError) as exc:
             await send({"type": "job.rejected", "id": job_id, "message": str(exc)})
 
-    async def kernel_command(kind: str, message: dict, send) -> None:
+    async def kernel_command(kind: str, message: dict, send, kernels: KernelHub = kernels) -> None:
         kernel_id = str(message.get("id"))
         try:
             if kind == "kernel.execute":
@@ -371,6 +446,13 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
         lock = asyncio.Lock()
         mine: set[str] = set()
         my_kernels: set[str] = set()
+        # Which runs and kernels belong to a shared project's working copy.
+        run_owner: dict[str, RunManager] = {}
+        kernel_owner: dict[str, KernelHub] = {}
+
+        def workspace_for(message: dict):
+            project_id = message.get("shared")
+            return shared.get(str(project_id)) if project_id else None
 
         async def send(event: dict):
             async with lock:
@@ -384,34 +466,44 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
                 if kind == "run.start":
                     run_id = str(message.get("id"))
                     try:
-                        await runs.start(run_id, str(message.get("path", "")), send,
-                                         mode=str(message.get("mode") or "run"),
-                                         breakpoints=message.get("breakpoints") if isinstance(message.get("breakpoints"), list) else None)
+                        ws_ = workspace_for(message)
+                        manager = ws_.runs if ws_ else runs
+                        await manager.start(run_id, str(message.get("path", "")), send,
+                                            mode=str(message.get("mode") or "run"),
+                                            breakpoints=message.get("breakpoints") if isinstance(message.get("breakpoints"), list) else None)
                         mine.add(run_id)
-                    except (RunError, FileError) as exc:
+                        run_owner[run_id] = manager
+                    except (RunError, FileError, SharedError) as exc:
                         await send({"type": "run.rejected", "id": run_id, "message": str(exc)})
                 elif kind == "run.stop":
-                    await runs.stop(str(message.get("id")), force=bool(message.get("force")))
+                    run_id = str(message.get("id"))
+                    await run_owner.get(run_id, runs).stop(run_id, force=bool(message.get("force")))
                 elif kind == "run.input" and str(message.get("id")) in mine:
-                    await runs.send_input(str(message.get("id")), str(message.get("text", ""))[:100_000])
+                    run_id = str(message.get("id"))
+                    await run_owner.get(run_id, runs).send_input(run_id, str(message.get("text", ""))[:100_000])
                 elif kind == "run.input-end" and str(message.get("id")) in mine:
-                    await runs.close_input(str(message.get("id")))
+                    run_id = str(message.get("id"))
+                    await run_owner.get(run_id, runs).close_input(run_id)
                 elif kind == "debug.command" and str(message.get("id")) in mine:
+                    run_id = str(message.get("id"))
                     bps = message.get("breakpoints")
-                    await runs.debug_command(str(message.get("id")), str(message.get("cmd", "")),
-                                             bps if isinstance(bps, list) else None)
+                    await run_owner.get(run_id, runs).debug_command(run_id, str(message.get("cmd", "")),
+                                                                    bps if isinstance(bps, list) else None)
                 elif kind == "kernel.start":
                     kernel_id = str(message.get("id"))
                     try:
+                        ws_ = workspace_for(message)
+                        hub, where = (ws_.kernels, ws_.files) if ws_ else (kernels, files)
                         path = str(message.get("path", ""))
-                        files.resolve(path)
-                        await kernels.start(kernel_id, path, send)
+                        where.resolve(path)
+                        await hub.start(kernel_id, path, send)
                         my_kernels.add(kernel_id)
-                    except (KernelError, FileError) as exc:
+                        kernel_owner[kernel_id] = hub
+                    except (KernelError, FileError, SharedError) as exc:
                         await send({"type": "kernel.rejected", "id": kernel_id, "message": str(exc),
                                     "code": getattr(exc, "code", None)})
                 elif kind.startswith("kernel.") and str(message.get("id")) in my_kernels:
-                    await kernel_command(kind, message, send)
+                    await kernel_command(kind, message, send, kernel_owner.get(str(message.get("id")), kernels))
                 elif kind == "job.start":
                     await start_job(message, send)
                 elif kind == "job.cancel":
@@ -422,10 +514,12 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
             pass
         finally:
             # A run belongs to the window that started it: don't leave it orphaned.
-            if runs.current is not None and runs.current.id in mine:
-                await runs.stop(runs.current.id)
+            for manager in {runs, *run_owner.values()}:
+                if manager.current is not None and manager.current.id in mine:
+                    await manager.stop(manager.current.id)
             # So do its notebooks' kernels.
-            await kernels.shutdown_all(my_kernels)
+            for hub in {kernels, *kernel_owner.values()}:
+                await hub.shutdown_all(my_kernels)
 
     # ---------------- UI ----------------
 

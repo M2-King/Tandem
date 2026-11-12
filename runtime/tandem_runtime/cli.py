@@ -47,6 +47,9 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--ui", type=Path, default=DEFAULT_UI, help="folder with the built Tandem UI")
         p.add_argument("--print-url", action="store_true", help="print only the URL (for desktop shells)")
         p.add_argument("--watch-pid", type=int, help="exit when this process (the desktop app) exits")
+        p.add_argument("--shared-root", type=Path, default=None,
+                       help="folder for working copies of Tandem Cowork shared projects "
+                            "(default: Tandem's settings folder, shared/)")
     args = parser.parse_args(argv)
 
     project = Path(args.project).expanduser().resolve()
@@ -74,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     port = sock.getsockname()[1]
     policy = AccessPolicy(token=new_token(), port=port)
     ui_dir = args.ui.resolve() if args.ui and args.ui.exists() else None
-    app = create_app(project, policy, ui_dir, cli_python=args.python)
+    app = create_app(project, policy, ui_dir, cli_python=args.python, shared_root=args.shared_root)
 
     url = f"http://127.0.0.1:{port}/"
     if args.print_url:

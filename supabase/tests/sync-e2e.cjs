@@ -17,7 +17,8 @@ const [BASE, out] = process.argv.slice(2);
 const APP = `${BASE.replace(/\/?$/, '/')}#/shared`;
 const tag = Date.now().toString(36).slice(-5);
 const A = `synca_${tag}`, B = `syncb_${tag}`;
-const PASS = 'sync-pass-123';
+// A new random password each run (the accounts are new each run too).
+const PASS = `pw-${require('node:crypto').randomBytes(12).toString('base64url')}`;
 let failures = 0;
 const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAILED: ') + msg); if (!ok) failures++; };
 const nb = (t) => t.replace(/ /g, ' ');

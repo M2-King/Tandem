@@ -47,11 +47,12 @@ import { DEBUG_FILE, PROJECT_NAME } from './data/sampleProject.js';
 import { diffStats } from './lib/diff.js';
 import { buildRunAnalysis, proposalForRun } from './services/analysisService.js';
 import { shortHash } from './lib/text.js';
-import { RunModeContext, COWORK_RUN_MODE, DEMO_RUN_MODE } from './lib/runMode.js';
+import { RunModeContext, COWORK_LIVE_RUN_MODE, COWORK_RUN_MODE, DEMO_RUN_MODE } from './lib/runMode.js';
 import { useCowork } from './cowork/useCowork.js';
 import { useCoworkLive } from './cowork/live/useCoworkLive.js';
 import { COWORK_LIVE } from './cowork/live/api.js';
 import { createCoworkBackend } from './cowork/coworkBackend.js';
+import { createSharedBackend } from './cowork/live/sharedBackend.js';
 import { AvatarStack, CoworkTitle, DeviceChip, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
 import ProjectSettingsDialog from './cowork/ProjectSettingsDialog.jsx';
 import { RemoveFileDialog, RenameFileDialog } from './cowork/FileDialogs.jsx';
@@ -70,15 +71,9 @@ const backend = IS_IPAD ? createIpadBackend(RUNTIME_CONFIG) : IS_LOCAL ? createL
 // when the app is built (VITE_COWORK_MODE). Fixed for the page's life, so
 // the hook order is stable.
 const useCoworkMode = COWORK_LIVE ? useCoworkLive : useCowork;
-const LIVE_RUN_BLOCKED =
-  'Running shared projects isn’t available yet: each member’s own Python comes in a later update. Projects on this device still run.';
-// Live mode: notebooks in shared projects don't run yet either.
-const liveNotebookBackend = {
-  startKernel(_path, h) {
-    setTimeout(() => h.onRejected?.(LIVE_RUN_BLOCKED), 0);
-    return { execute() {}, input() {}, interrupt() {}, restart() {}, shutdown() {} };
-  },
-};
+// Live mode runs shared projects with this device's own Python (the desktop
+// runtime or Pyodide on iPad); a page without either can't.
+const NO_DEVICE_PYTHON = 'Shared projects run with the Tandem app’s Python on Windows or iPad. This page has none.';
 
 // Rows and columns of the sample CSV, read from the file as it is now.
 // The block of code that draws figure `index` in a script: each figure ends
@@ -172,14 +167,27 @@ export default function App() {
   const onSharedHome = ['home', 'signin', 'opening'].includes(cowork.screen);
   const coworkRef = useRef(cowork);
   coworkRef.current = cowork;
+  // The first run in a shared project on this device asks first.
+  const [trustAsk, setTrustAsk] = useState(null); // { project, resolve }
   const coworkBackend = useMemo(
     () =>
-      createCoworkBackend({
-        getProjectId: () => coworkRef.current.project?.id,
-        getFiles: () => coworkRef.current.workspace?.files || {},
-      }),
+      COWORK_LIVE
+        ? createSharedBackend({
+            device: backend,
+            getProject: () => coworkRef.current.project,
+            getFiles: () => coworkRef.current.workspace?.files || {},
+            confirmTrust: (project) => new Promise((resolve) => setTrustAsk({ project, resolve })),
+          })
+        : createCoworkBackend({
+            getProjectId: () => coworkRef.current.project?.id,
+            getFiles: () => coworkRef.current.workspace?.files || {},
+          }),
     []
   );
+  const answerTrust = (yes) => {
+    trustAsk?.resolve(yes);
+    setTrustAsk(null);
+  };
   const coworkExec = useExecution({ onSave, backend: coworkBackend, real: true });
   const ws = inCowork ? cowork.workspace : deviceWs;
   const exec = inCowork ? coworkExec : deviceExec;
@@ -208,16 +216,41 @@ export default function App() {
     lastShared.current = coworkProjectId ? { id: coworkProjectId, paths: Object.keys(cowork.workspace.files) } : null;
     if (left && left.id !== coworkProjectId) {
       left.paths.filter(isNotebook).forEach((path) => closeNotebookSession(`cowork:${left.id}/${path}`));
+      if (coworkExec.session && !coworkExec.session.finished) coworkExec.stop();
       coworkExec.reset();
+      if (COWORK_LIVE) backend?.shared?.close(left.id); // its runs and kernels on this device
       setShareOpen(false);
       setSettingsOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coworkProjectId]);
 
+  // Shared projects' Python on this device (one choice for all of them).
+  const [sharedPython, setSharedPython] = useState(null);
+  const [sharedEnvTick, setSharedEnvTick] = useState(0);
+  const liveShared = inCowork && cowork.live && !!backend?.forScope;
+  useEffect(() => {
+    if (!liveShared) return undefined;
+    let live = true;
+    backend
+      .forScope('shared', coworkProjectId)
+      .envs()
+      .then(
+        (r) => live && setSharedPython(r.current),
+        () => live && setSharedPython(null)
+      );
+    return () => {
+      live = false;
+    };
+  }, [liveShared, coworkProjectId, sharedEnvTick, runtime.connection]);
+
   const runBlocked = inCowork
     ? cowork.live
-      ? LIVE_RUN_BLOCKED
+      ? !backend
+        ? NO_DEVICE_PYTHON
+        : runtime.connection !== 'connected'
+          ? 'The Tandem runtime is disconnected'
+          : null
       : null
     : !IS_LOCAL
     ? null
@@ -527,7 +560,7 @@ export default function App() {
     (IS_LOCAL || inCowork) && isNotebook(ws.activePath) && ws.files[ws.activePath] !== undefined
       ? notebookSession(notebookKey(ws.activePath), {
           text: ws.files[ws.activePath],
-          backend: inCowork ? (cowork.live ? liveNotebookBackend : coworkBackend) : backend,
+          backend: inCowork ? coworkBackend : backend,
           save: ((path) => (text) => ws.setFile(path, text))(ws.activePath),
         })
       : null;
@@ -833,7 +866,7 @@ export default function App() {
   const inertProps = (hidden) => (hidden ? { inert: '', 'aria-hidden': true } : {});
 
   return (
-    <RunModeContext.Provider value={inCowork ? COWORK_RUN_MODE : DEMO_RUN_MODE}>
+    <RunModeContext.Provider value={inCowork ? (cowork.live ? COWORK_LIVE_RUN_MODE : COWORK_RUN_MODE) : DEMO_RUN_MODE}>
     <div className={`app ${inCowork || onSharedHome ? 'is-cowork' : ''}`}>
       <Toolbar
         titleSlot={
@@ -841,7 +874,22 @@ export default function App() {
             <CoworkTitle cowork={cowork}>{inCowork && <span className="cowork-inline">{coworkControls}</span>}</CoworkTitle>
           ) : undefined
         }
-        beforeRun={inCowork && !cowork.live ? <span className="toolbar-device"><DeviceChip /></span> : null}
+        beforeRun={
+          inCowork && !cowork.live ? (
+            <span className="toolbar-device">
+              <DeviceChip />
+            </span>
+          ) : liveShared ? (
+            <span className="toolbar-device shared-python" data-tooltip="Shared projects run here, with this device’s Python. Everyone runs on their own device.">
+              <RuntimeStatus
+                connection={runtime.connection}
+                status={{ python: sharedPython ? { ok: true, ...sharedPython } : runtime.status?.python }}
+                error={runtime.error}
+                onOpenEnv={(tab) => setEnvDialog({ tab, scope: 'shared' })}
+              />
+            </span>
+          ) : null
+        }
         hideWork={onSharedHome}
         onSharedProjects={onSharedHome ? null : () => cowork.go('home')}
         projectName={projectName}
@@ -849,7 +897,7 @@ export default function App() {
         savesToDisk={IS_LOCAL}
         saveState={saveState}
         run={
-          inCowork
+          inCowork && !cowork.live
             ? {
                 session,
                 runTarget: activeNotebook ? ws.activePath : runTarget,
@@ -1028,7 +1076,7 @@ export default function App() {
             }}
             remoteCursors={remoteCursors}
             notebookPresence={notebookPresence}
-            kernelNote={inCowork ? (cowork.live ? 'shared projects don’t run yet' : 'this device · preview') : null}
+            kernelNote={inCowork ? (cowork.live ? 'this device' : 'this device · preview') : null}
             fileBar={inCowork ? conflictBar(cowork, ws.activePath) : null}
             onOpenDatabase={
               IS_LOCAL && !inCowork
@@ -1228,12 +1276,15 @@ export default function App() {
 
       {envDialog && backend && (
         <EnvironmentDialog
-          backend={backend}
+          backend={envDialog.scope === 'shared' ? backend.forScope('shared', coworkProjectId) : backend}
           initialTab={envDialog.tab}
           focusModule={envDialog.focusModule}
           runActive={!!exec.session && !exec.session.finished}
           onClose={() => setEnvDialog(null)}
-          onChanged={runtime.refresh}
+          onChanged={() => {
+            runtime.refresh();
+            setSharedEnvTick((n) => n + 1);
+          }}
         />
       )}
       {newFileOpen && (
@@ -1302,6 +1353,24 @@ export default function App() {
             if (id) notify(`Created ${name}. Invite people from Share.`);
           }}
         />
+      )}
+
+      {trustAsk && (
+        <Dialog title="Run shared code on this device" onClose={() => answerTrust(false)} className="dialog-confirm">
+          <h2 className="dialog-title">Run code from {trustAsk.project.name}?</h2>
+          <p className="dialog-text">
+            Code in {trustAsk.project.name} runs on this device with your permissions. Run it only if you trust its members.
+          </p>
+          <p className="dialog-text">Tandem asks once for each shared project on this device.</p>
+          <div className="dialog-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => answerTrust(false)} data-autofocus>
+              Don’t run
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => answerTrust(true)}>
+              Run on this device
+            </button>
+          </div>
+        </Dialog>
       )}
 
       {updateConfirm && (

@@ -5993,3 +5993,10 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
 .file-bar .banner-text {
   min-width: 0;
 }
+
+/* A note from Tandem in the Output (not the program's output). */
+.line-note {
+  color: var(--text-muted);
+  font-style: italic;
+  white-space: pre-wrap;
+}

@@ -35,6 +35,8 @@ export function useCoworkLive({ notify }) {
   const [sync, setSync] = useState('saved'); // saved | saving | offline | unsaved | conflict
   const [conflicts, setConflicts] = useState({}); // path -> conflict (merge.js)
   const [arrival, setArrival] = useState(null);
+  // Breakpoints are this device's own (for Debug), per project and file.
+  const [breakpoints, setBreakpoints] = useState({});
 
   // Saving: per file, the server copy this device is in step with
   // ({ content, revision }), a pending timer, and whether its last save
@@ -630,7 +632,7 @@ export function useCoworkLive({ notify }) {
       fileOrder: Object.keys(files).sort(),
       openTabs: open,
       activePath: open.includes(opened.active) ? opened.active : open[0] || null,
-      breakpoints: {},
+      breakpoints: breakpoints[opened.id] || {},
       loading: false,
       project: { name: opened.name, root: `cowork:${opened.id}` },
       openFile,
@@ -641,14 +643,20 @@ export function useCoworkLive({ notify }) {
       renameFile,
       removeFile,
       flush,
-      toggleBreakpoint: () => {},
+      toggleBreakpoint: (path, line) =>
+        setBreakpoints((all) => {
+          const mine = all[opened.id] || {};
+          const current = mine[path] || [];
+          const next = current.includes(line) ? current.filter((l) => l !== line) : [...current, line].sort((a, b) => a - b);
+          return { ...all, [opened.id]: { ...mine, [path]: next } };
+        }),
       resetFile: () => {},
       reset: () => {},
       reload: () => {},
       noteFile: () => {},
       addFiles: null,
     };
-  }, [project, opened, openFile, closeTab, setFile, createFile, uploadFiles, renameFile, removeFile, flush]);
+  }, [project, opened, breakpoints, openFile, closeTab, setFile, createFile, uploadFiles, renameFile, removeFile, flush]);
 
   // ------------------------------------------------------------ sign in
   // Both return the account ({ id, username, name }) or throw with a

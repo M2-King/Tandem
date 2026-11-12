@@ -70,7 +70,7 @@ function OutputLines({ lines, partial = '', dropped = 0 }) {
         </div>
       )}
       {lines.map((l, i) => (
-        <div key={i} className={l.kind === 'err' ? (i === lastErr ? 'line-err line-err-final' : 'line-err') : undefined}>
+        <div key={i} className={l.kind === 'err' ? (i === lastErr ? 'line-err line-err-final' : 'line-err') : l.kind === 'note' ? 'line-note' : undefined}>
           {l.typed != null ? (
             <>
               {l.text.slice(0, l.text.length - l.typed.length)}

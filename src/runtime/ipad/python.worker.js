@@ -134,6 +134,60 @@ async function saveChanges(snapshot) {
   return changed.map(([path]) => path);
 }
 
+// Tandem Cowork: a shared project runs from a working copy of its own,
+// /shared/<project id>, kept on this iPad (IndexedDB, through Pyodide's
+// IDBFS) so files a run creates stay here between runs. Before each run or
+// kernel start the page sends the project's current text; changed files are
+// written and files removed from the project deleted. Nothing is uploaded,
+// and the device project (its files, its packages) isn't touched.
+const SHARED_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const mountedShared = new Set();
+const syncfs = (populate) =>
+  new Promise((resolve) => pyodide.FS.syncfs(populate, (err) => resolve(!err)));
+
+async function mountShared({ id, files }) {
+  if (!SHARED_ID.test(id || '')) throw new Error('That isn’t a shared project.');
+  const dir = `/shared/${id}`;
+  const FS = pyodide.FS;
+  if (!mountedShared.has(dir)) {
+    FS.mkdirTree(dir);
+    try {
+      FS.mount(FS.filesystems.IDBFS, {}, dir);
+      await syncfs(true); // what earlier runs left here
+    } catch {
+      // No IndexedDB: the working copy lasts for this run only.
+    }
+    mountedShared.add(dir);
+  }
+  const exists = (path) => FS.analyzePath(path).exists;
+  let before = [];
+  try {
+    before = JSON.parse(new TextDecoder().decode(FS.readFile(`${dir}/.tandem/synced.json`))).files || [];
+  } catch {
+    before = [];
+  }
+  const encoder = new TextEncoder();
+  for (const [path, text] of Object.entries(files || {})) {
+    if (!path || path.startsWith('/') || path.split('/').some((part) => part === '..' || part === '') || path.startsWith('.tandem/')) continue;
+    const full = `${dir}/${path}`;
+    const bytes = encoder.encode(text);
+    if (exists(full)) {
+      const old = FS.readFile(full);
+      if (old.length === bytes.length && old.every((b, i) => b === bytes[i])) continue;
+    }
+    FS.mkdirTree(full.slice(0, full.lastIndexOf('/')));
+    FS.writeFile(full, bytes);
+  }
+  for (const path of before) {
+    if (typeof path !== 'string' || path in (files || {})) continue;
+    const full = `${dir}/${path}`;
+    if (exists(full)) FS.unlink(full);
+  }
+  FS.mkdirTree(`${dir}/.tandem`);
+  FS.writeFile(`${dir}/.tandem/synced.json`, JSON.stringify({ files: Object.keys(files || {}).sort() }));
+  return dir;
+}
+
 // The project's own packages (Packages… → Install): pure-Python wheels from
 // PyPI kept in the project (.tandem/packages), plus the Pyodide packages they
 // need. Loaded before every run, offline.
@@ -215,11 +269,16 @@ json.dumps({"installed": installed, "lock": lock, "imports": imports})
   post({ type: 'installed', pypi: saved, pyodide: pyodideDeps });
 }
 
-async function run({ path, mode, breakpoints }) {
-  const snapshot = await mountProject();
-  await loadProjectPackages();
+async function run({ path, mode, breakpoints, shared }) {
+  let snapshot = null;
+  let root = '/project';
+  if (shared) root = await mountShared(shared);
+  else {
+    snapshot = await mountProject();
+    await loadProjectPackages();
+  }
   // Packages the script imports (numpy, pandas, matplotlib, ...) load from the app.
-  const source = new TextDecoder().decode(pyodide.FS.readFile(`/project/${path}`));
+  const source = new TextDecoder().decode(pyodide.FS.readFile(`${root}/${path}`));
   try {
     await pyodide.loadPackagesFromImports(source, { messageCallback: () => {}, errorCallback: () => {} });
   } catch {
@@ -256,19 +315,20 @@ async function run({ path, mode, breakpoints }) {
     },
   });
 
-  pyodide.globals.set('_tandem_args', pyodide.toPy({ path, mode, breakpoints }));
-  post({ type: 'started' });
+  pyodide.globals.set('_tandem_args', pyodide.toPy({ path, mode, breakpoints, root }));
+  post({ type: 'started', cwd: root });
   const code = pyodide.runPython(`
 import os, sys
+_root = _tandem_args["root"]
 os.environ["MPLBACKEND"] = "module://tandem_mpl"
-os.environ["TANDEM_PROJECT_ROOT"] = "/project"
+os.environ["TANDEM_PROJECT_ROOT"] = _root
 if _tandem_args["mode"] != "run":
     import json
     os.environ["TANDEM_DEBUG"] = _tandem_args["mode"]
-    os.environ["TANDEM_BREAKPOINTS"] = json.dumps([["/project/" + p, l] for p, l in _tandem_args["breakpoints"]])
+    os.environ["TANDEM_BREAKPOINTS"] = json.dumps([[_root + "/" + p, l] for p, l in _tandem_args["breakpoints"]])
 sys.path.append("/tandem")  # after the script's own folder, which the wrapper puts first
-os.chdir("/project")
-sys.argv = ["tandem_run.py", "/project/" + _tandem_args["path"]]
+os.chdir(_root)
+sys.argv = ["tandem_run.py", _root + "/" + _tandem_args["path"]]
 import tandem_run
 try:
     tandem_run.main()
@@ -279,7 +339,8 @@ _code
 `);
   outWriter.end();
   errWriter.end();
-  const saved = await saveChanges(snapshot);
+  // A shared project's files stay in its working copy on this iPad.
+  const saved = shared ? (await syncfs(false), []) : await saveChanges(snapshot);
   post({ type: 'exit', code, saved });
 }
 
@@ -312,9 +373,14 @@ def show(*args, **kwargs):
     tandem_kernel.show_figures()
 `;
 
-async function kernelStart() {
-  const snapshot = await mountProject();
-  await loadProjectPackages();
+async function kernelStart({ shared } = {}) {
+  let snapshot = null;
+  let root = '/project';
+  if (shared) root = await mountShared(shared);
+  else {
+    snapshot = await mountProject();
+    await loadProjectPackages();
+  }
   pyodide.FS.writeFile('/tandem/_tandem_inline.py', INLINE_BACKEND);
   pyodide.registerJsModule('_tandem_kernel_host', {
     output(json) {
@@ -333,16 +399,17 @@ async function kernelStart() {
   });
   pyodide.setStdout(kernelStream('stdout'));
   pyodide.setStderr(kernelStream('stderr'));
+  pyodide.globals.set('_tandem_root', root);
   pyodide.runPython(`
 import os, sys
 os.environ["MPLBACKEND"] = "module://_tandem_inline"
-os.environ["TANDEM_PROJECT_ROOT"] = "/project"
+os.environ["TANDEM_PROJECT_ROOT"] = _tandem_root
 sys.path.append("/tandem")
-os.chdir("/project")
-sys.path.insert(0, "/project")
+os.chdir(_tandem_root)
+sys.path.insert(0, _tandem_root)
 import tandem_kernel
 `);
-  kernel = { snapshot, cell: null, run: pyodide.pyimport('tandem_kernel').run_cell };
+  kernel = { snapshot, shared: !!shared, cell: null, run: pyodide.pyimport('tandem_kernel').run_cell };
   post({ type: 'kernel-ready' });
 }
 
@@ -362,7 +429,8 @@ async function kernelExecute({ cell, code }) {
   } catch (e) {
     post({ type: 'kernel-output', cell, output: { output_type: 'error', ename: 'Error', evalue: String(e?.message || e), traceback: [String(e?.message || e)] } });
   }
-  await saveChanges(kernel.snapshot).catch(() => {});
+  if (kernel.shared) await syncfs(false);
+  else await saveChanges(kernel.snapshot).catch(() => {});
   kernel.cell = null;
   post({ type: 'kernel-done', cell, status });
 }
@@ -400,7 +468,8 @@ self.onmessage = async (e) => {
     if (message.type === 'init') await init(message);
     else if (message.type === 'run') await run(message);
     else if (message.type === 'install') await install(message);
-    else if (message.type === 'kernel-start') await kernelStart();
+    else if (message.type === 'kernel-start') await kernelStart(message);
+    else if (message.type === 'shared-sync') await mountShared(message.shared); // a shared notebook's files, before a cell
     else if (message.type === 'complete-init') await completeInit();
     else if (message.type === 'complete') await completeRequest(message);
     else if (message.type === 'kernel-execute') await kernelExecute(message);

@@ -154,7 +154,9 @@ export function createIpadBackend(config) {
     // ---- Notebooks: a kernel is one long-lived Python worker per notebook ----
     // Same handlers as the desktop's startKernel. Cells run one at a time, in
     // order; after an error the cells queued behind it are skipped (as in Jupyter).
-    startKernel(path, h) {
+    // opts.shared ({ id, files }): a Tandem Cowork shared project's notebook,
+    // run from its working copy on this iPad (python.worker.js).
+    startKernel(path, h, opts = {}) {
       let slot = null;
       let ready = false;
       let closed = false;
@@ -218,11 +220,16 @@ export function createIpadBackend(config) {
             else h.onStatus?.('dead', {});
           }
         };
-        slot.worker.postMessage({ type: 'kernel-start' });
+        slot.worker.postMessage({ type: 'kernel-start', shared: opts.shared || null });
       };
       boot();
 
       return {
+        // A shared notebook: the project's current files, written before the next cell.
+        syncShared: (shared) => {
+          if (slot && ready) slot.worker.postMessage({ type: 'shared-sync', shared });
+          else opts.shared = shared;
+        },
         execute: (cell, code) => {
           queue.push({ cell, code });
           pump();
@@ -387,6 +394,32 @@ export function createIpadBackend(config) {
       };
     },
 
+    // Tandem Cowork: shared projects run in the worker, from a working copy
+    // per project (python.worker.js); the files travel with each run. Whether
+    // this iPad may run a project's code is remembered here (the page's
+    // origin is the app's own fixed address).
+    shared: {
+      prepare: async (id, files) => ({ id, files }),
+      close: async () => {},
+      trusted: async (id) => {
+        try {
+          return localStorage.getItem(`tandem.cowork.trust.${id}`) === 'yes';
+        } catch {
+          return false;
+        }
+      },
+      setTrusted: async (id, yes) => {
+        try {
+          if (yes) localStorage.setItem(`tandem.cowork.trust.${id}`, 'yes');
+          else localStorage.removeItem(`tandem.cowork.trust.${id}`);
+        } catch {
+          // not remembered: asked again next time
+        }
+      },
+    },
+    // One built-in Python, for device and shared projects alike.
+    forScope: () => backend,
+
     listProjects: () => client.api('/api/projects'),
     // The person's wallpaper photo, kept by the app so it survives reinstalls of the page.
     loadWallpaper: () => client.api('/api/wallpaper'),
@@ -398,8 +431,10 @@ export function createIpadBackend(config) {
     assist: (body, signal) => ai.assist(body, signal),
 
     // Same callbacks and handle as the desktop's startRun.
-    startRun({ path, mode = 'run', breakpoints = [], onStart, onOutput, onPartial, onPaused, onResumed, onFinish }) {
+    // shared ({ id, files }): a Tandem Cowork shared project, run from its working copy.
+    startRun({ path, mode = 'run', breakpoints = [], shared = null, onStart, onOutput, onPartial, onPaused, onResumed, onFinish }) {
       const id = uid('run');
+      let root = '/project';
       const output = [];
       const figures = [];
       let variables = [];
@@ -456,7 +491,8 @@ export function createIpadBackend(config) {
             const m = e.data;
             switch (m.type) {
               case 'started':
-                onStart?.({ python: python?.version, cwd: '/project' });
+                root = m.cwd || root;
+                onStart?.({ python: python?.version, cwd: root });
                 break;
               case 'output':
                 if (m.stream === 'err') stderr = (stderr + m.text).slice(-64 * 1024);
@@ -500,7 +536,7 @@ export function createIpadBackend(config) {
               default:
             }
           };
-          slot.worker.postMessage({ type: 'run', path, mode, breakpoints: breakpoints.map((b) => [b.path, b.line]) });
+          slot.worker.postMessage({ type: 'run', path, mode, shared, breakpoints: breakpoints.map((b) => [b.path, b.line]) });
         },
         (e) => finish({ status: 'rejected', message: `Python couldn’t start: ${e.message}`, durationMs: 0 })
       );
@@ -544,7 +580,7 @@ export function createIpadBackend(config) {
         setBreakpoints(list) {
           // Applied when the program next pauses (the debugger reads it before the next step).
           if (done || !slot) return;
-          commands.unshift({ cmd: 'breakpoints', list: list.map((b) => [`/project/${b.path}`, b.line]) });
+          commands.unshift({ cmd: 'breakpoints', list: list.map((b) => [`${root}/${b.path}`, b.line]) });
           deliverCommand();
         },
       };
