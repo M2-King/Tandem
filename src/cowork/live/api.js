@@ -161,6 +161,11 @@ export const saveFile = (id, path, content, revision) =>
   rpc('cowork_save_file', { p_project: id, p_path: path, p_content: content, p_revision: revision });
 export const renameFile = (id, from, to) => rpc('cowork_rename_file', { p_project: id, p_from: from, p_to: to });
 export const removeFile = (id, path) => rpc('cowork_remove_file', { p_project: id, p_path: path });
+// Live typing (003_cowork_live_text.sql): a file saved with its Yjs document,
+// and the saved documents of a project, by path ({ revision, doc }).
+export const saveFileDoc = (id, path, content, revision, doc) =>
+  rpc('cowork_save_file_doc', { p_project: id, p_path: path, p_content: content, p_revision: revision, p_doc: doc });
+export const fileDocs = async (id) => Object.fromEntries((await rpc('cowork_file_docs', { p_project: id })).map((d) => [d.path, d]));
 
 // ------------------------------------------------------------------ realtime
 //
@@ -170,12 +175,13 @@ export const removeFile = (id, path) => rpc('cowork_remove_file', { p_project: i
 // project's members join. Nothing sent here is stored.
 //
 // handlers: onPresence(state) with { userId: [meta, …] }, onCursor(payload),
+// onMessage(event, payload) for live typing (doc, doc-sync, doc-reply),
 // onStatus(status, error) with SUBSCRIBED | CHANNEL_ERROR | TIMED_OUT | CLOSED.
 //
 // The client keeps one channel per topic and hands back an existing one, so a
 // channel left before (by us, or closed by the server) is removed first and a
 // rejoin always gets a fresh channel.
-export function projectChannel(projectId, userId, { onPresence, onCursor, onStatus }) {
+export function projectChannel(projectId, userId, { onPresence, onCursor, onMessage, onStatus }) {
   const sb = supabase();
   const topic = `cowork:${projectId}`;
   let channel = null;
@@ -199,11 +205,15 @@ export function projectChannel(projectId, userId, { onPresence, onCursor, onStat
     });
     channel.on('presence', { event: 'sync' }, () => !closed && onPresence(channel.presenceState()));
     channel.on('broadcast', { event: 'cursor' }, ({ payload }) => !closed && onCursor(payload));
+    for (const event of ['doc', 'doc-sync', 'doc-reply', 'saved']) {
+      channel.on('broadcast', { event }, ({ payload }) => !closed && onMessage?.(event, payload));
+    }
     channel.subscribe((status, error) => !closed && onStatus?.(status, error));
   })();
   return {
     track: (meta) => (closed || !channel ? Promise.resolve() : channel.track(meta)),
     cursor: (payload) => (closed || !channel ? Promise.resolve() : channel.send({ type: 'broadcast', event: 'cursor', payload })),
+    send: (event, payload) => (closed || !channel ? Promise.resolve() : channel.send({ type: 'broadcast', event, payload })),
     close: () => {
       if (closed) return;
       closed = true;

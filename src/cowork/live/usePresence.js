@@ -70,7 +70,13 @@ export function retryDelay(failures, refused = false) {
 }
 const isRefusal = (error) => /unauthori[sz]ed|permission|forbidden/i.test(error?.message || String(error || ''));
 
-export function usePresence({ me, projectId, enabled, activePath }) {
+// onMessage(event, payload): live typing messages (useLiveText); onJoined():
+// each time the channel is joined (or joined again), so it can catch up.
+export function usePresence({ me, projectId, enabled, activePath, onMessage, onJoined }) {
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
+  const onJoinedRef = useRef(onJoined);
+  onJoinedRef.current = onJoined;
   const [peers, setPeers] = useState({}); // user id -> { user_id, username, path, cell, cursor, at }
   const [state, setState] = useState('off'); // off | joining | online | reconnecting | unavailable
   const [reason, setReason] = useState(null);
@@ -181,6 +187,9 @@ export function usePresence({ me, projectId, enabled, activePath }) {
             return prev;
           });
         },
+        onMessage: (event, payload) => {
+          if (ch === mineCh) onMessageRef.current?.(event, payload);
+        },
         onStatus: (status, error) => {
           if (ch !== mineCh) return;
           if (status === 'SUBSCRIBED') {
@@ -191,6 +200,7 @@ export function usePresence({ me, projectId, enabled, activePath }) {
             log('online');
             track();
             if (mine.current.path) sendCursor();
+            onJoinedRef.current?.();
             return;
           }
           if (status !== 'CHANNEL_ERROR' && status !== 'TIMED_OUT' && status !== 'CLOSED') return;
@@ -268,5 +278,12 @@ export function usePresence({ me, projectId, enabled, activePath }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { peers, state, reason, report };
+  // Live typing: send a message to the others in the project (false when not connected).
+  const send = useCallback((event, payload) => {
+    if (!channel.current || !online.current) return false;
+    channel.current.send(event, payload).catch(() => {});
+    return true;
+  }, []);
+
+  return { peers, state, reason, report, send };
 }

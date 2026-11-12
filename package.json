@@ -8,8 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:cowork-db": "node --test supabase/tests/cowork.test.mjs",
-    "test:cowork-merge": "node --test src/cowork/live/merge.test.mjs",
+    "test:cowork-db": "node --test supabase/tests/cowork.test.mjs supabase/tests/live-text.test.mjs",
+    "test:cowork-merge": "node --test src/cowork/live/merge.test.mjs src/cowork/live/liveText.test.mjs",
     "cowork:local": "node supabase/tests/local-supabase.mjs"
   },
   "dependencies": {
@@ -23,7 +23,8 @@
     "monaco-editor": "^0.57.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "sql.js": "^1.16.0"
+    "sql.js": "^1.16.0",
+    "yjs": "13.6.33"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.2.1",

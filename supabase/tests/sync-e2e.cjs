@@ -11,7 +11,9 @@
 // within 10 s without reopening; an unsaved edit meeting a newer save shows
 // Conflict, and both Use theirs and Keep mine end in Saved with the same text
 // on both sides; an edit made offline is saved when back online; created
-// files and the project name arrive; no reloads while hidden.
+// files and the project name arrive; no reloads while hidden. This is the
+// save-based sync (notebooks, and servers without live typing), so the test
+// turns live typing off in its browsers; live-typing-e2e.cjs covers that.
 const { chromium } = require('playwright');
 const [BASE, out] = process.argv.slice(2);
 const APP = `${BASE.replace(/\/?$/, '/')}#/shared`;
@@ -26,6 +28,10 @@ const nb = (t) => t.replace(/ /g, ' ');
 async function signUp(p, user) {
   await p.goto('about:blank');
   await p.goto(APP);
+  await p.waitForSelector('#signin-username');
+  // Save-based sync (notebooks, servers without live typing): live typing off here.
+  await p.evaluate(() => localStorage.setItem('tandem.coworkLiveTyping', 'off'));
+  await p.reload();
   await p.waitForSelector('#signin-username');
   await p.getByRole('tab', { name: 'Create account' }).click();
   await p.locator('#signin-username').fill(user);

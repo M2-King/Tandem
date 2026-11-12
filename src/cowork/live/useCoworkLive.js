@@ -5,6 +5,7 @@ import { normalizeUsername, passwordProblem, personForUsername, usernameProblem 
 import { safeFileName, uniqueFileName } from '../../state/useDiskWorkspace.js';
 import { describeEvents, hasEdit, mergeProject, retab } from './merge.js';
 import { usePresence } from './usePresence.js';
+import { useLiveText, isMissingFunction } from './useLiveText.js';
 
 // Cowork live mode: the same interface as the preview (useCowork), backed by
 // Supabase. Shared projects, people and invitations come from the server;
@@ -18,8 +19,18 @@ import { usePresence } from './usePresence.js';
 // edit here, and marks a Conflict on one with an edit (Use theirs / Keep
 // mine). A save refused because someone saved first becomes that Conflict;
 // a save that fails for lack of network is kept and retried.
+//
+// Live typing (useLiveText, with 003_cowork_live_text.sql on the server):
+// text files are edited through shared documents, so a teammate's typing
+// shows as it happens. A live file is saved together with its document; a
+// newer saved document is merged in instead of becoming a Conflict; a
+// teammate's edits are saved here too if they haven't saved them a few
+// seconds later. Notebooks, and everything when 003 isn't there, work as
+// described above.
 
 const SAVE_DELAY = 700;
+const LIVE_SAVE_DELAY = 1200; // live files: typing travels at once, saving can wait a little
+const BACKUP_SAVE_DELAY = 6000; // a teammate's edit not saved by them by then: saved from here
 const PROJECT_POLL = 10 * 1000;
 const OVERVIEW_POLL = 30 * 1000;
 const visible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
@@ -48,11 +59,31 @@ export function useCoworkLive({ notify }) {
   const timers = useRef(new Map());
   const inflight = useRef(new Set());
   const failed = useRef(new Map()); // path -> { message, offline }
+  const resave = useRef(new Set()); // paths to save again at once (live typing turned off mid-save)
   const openedRef = useRef(null);
   const openGen = useRef(0); // bumped each time a project is opened
   openedRef.current = opened;
   const meRef = useRef(null);
   meRef.current = me;
+  const backups = useRef(new Map()); // path -> timer: saving a teammate's live edits if they don't
+  const savedPull = useRef(null); // a reload soon after a teammate saved
+
+  // Live typing. Text changed by anything but typing here (a teammate, undo,
+  // starting a file) is shown without counting as an edit of ours, except undo.
+  const liveTextRef = useRef(null);
+  const { live: typing, editorContext: liveEditor } = useLiveText({
+    me,
+    getText: (path) => filesRef.current[path],
+    onText: (path, text, origin) => liveTextRef.current?.(path, text, origin),
+    // A teammate saved a live file: no need to save their edits from here;
+    // reload soon to be in step with that revision.
+    onSaved: (path) => {
+      clearTimeout(backups.current.get(path));
+      backups.current.delete(path);
+      clearTimeout(savedPull.current);
+      savedPull.current = setTimeout(() => pullRef.current?.(), 600);
+    },
+  });
 
   // ------------------------------------------------------------ people
   // Everyone is known by username; members also by their user id.
@@ -110,14 +141,25 @@ export function useCoworkLive({ notify }) {
   useEffect(() => {
     if (!me || !projectId) {
       setOpened(null);
+      typing.end();
       return undefined;
     }
     if (openedRef.current?.id === projectId) return undefined;
     let live = true;
     openGen.current += 1; // reloads started before this opening are dropped
     setOpened({ id: projectId, loading: true });
+    typing.end();
     api.openProject(projectId).then(
-      (p) => {
+      async (p) => {
+        // The saved live documents (null: live typing stays off for this opening).
+        let docs = null;
+        if (typing.supported) {
+          try {
+            docs = await api.fileDocs(projectId);
+          } catch (e) {
+            if (isMissingFunction(e)) typing.disable();
+          }
+        }
         if (!live) return;
         filesRef.current = Object.fromEntries(p.files.map((f) => [f.path, f.content]));
         base.current = Object.fromEntries(p.files.map((f) => [f.path, { content: f.content, revision: f.revision }]));
@@ -127,6 +169,7 @@ export function useCoworkLive({ notify }) {
         setSync('saved');
         const first = p.files.map((f) => f.path).find((x) => /\.(py|ipynb)$/.test(x)) || p.files[0]?.path;
         setOpened({ ...p, files: filesRef.current, open: first ? [first] : [], active: first || null });
+        if (docs) typing.begin(p.files, docs);
       },
       (e) => {
         if (!live) return;
@@ -140,7 +183,7 @@ export function useCoworkLive({ notify }) {
     return () => {
       live = false;
     };
-  }, [me, projectId, lostAccess, notify, go]);
+  }, [me, projectId, lostAccess, notify, go, typing]);
 
   // Reload the open project's people and invitations (after changes there).
   const reloadPeople = useCallback(async () => {
@@ -217,9 +260,13 @@ export function useCoworkLive({ notify }) {
   const save = useCallback(
     async (path) => {
       timers.current.delete(path);
+      clearTimeout(backups.current.get(path));
+      backups.current.delete(path);
       const id = openedRef.current?.id;
       if (!id || inflight.current.has(path)) return;
-      const content = filesRef.current[path];
+      // A live file: its text and document, taken together.
+      const snap = typing.isLive(path) ? typing.snapshot(path) : null;
+      const content = snap ? snap.content : filesRef.current[path];
       if (content === undefined || conflictsRef.current[path] || !base.current[path]) return;
       if (content === base.current[path].content) {
         failed.current.delete(path);
@@ -229,12 +276,24 @@ export function useCoworkLive({ notify }) {
       inflight.current.add(path);
       settle();
       try {
-        const r = await api.saveFile(id, path, content, base.current[path].revision);
+        const r = snap
+          ? await api.saveFileDoc(id, path, content, base.current[path].revision, snap.doc)
+          : await api.saveFile(id, path, content, base.current[path].revision);
         base.current[path] = { content, revision: r.revision };
         failed.current.delete(path);
+        if (snap) typing.announceSaved(path, r.revision);
       } catch (e) {
         if (lostAccess(e)) return;
-        if (e.code === 'PT409' || e.code === 'PT404') {
+        if (snap && isMissingFunction(e)) {
+          // The server lost (or never had) live typing: carry on without it.
+          typing.disable();
+          resave.current.add(path);
+        } else if (snap && e.code === 'PT409') {
+          // Someone saved first: their document is merged in by the reload
+          // (no Conflict for live files), then this saves again if needed.
+          failed.current.delete(path);
+          pullRef.current?.();
+        } else if (e.code === 'PT409' || e.code === 'PT404') {
           // Someone saved first (or renamed or removed the file): a Conflict,
           // settled once the newer copy is here.
           failed.current.delete(path);
@@ -252,7 +311,7 @@ export function useCoworkLive({ notify }) {
       } finally {
         inflight.current.delete(path);
         // Typed again while saving: save the newer text too.
-        if (filesRef.current[path] !== content && !failed.current.has(path) && !conflictsRef.current[path]) save(path);
+        if (resave.current.delete(path) || (filesRef.current[path] !== content && !failed.current.has(path) && !conflictsRef.current[path] && base.current[path]?.content === content)) save(path);
         settle();
       }
     },
@@ -283,6 +342,28 @@ export function useCoworkLive({ notify }) {
       const p = await api.openProject(id);
       // Left, reopened or still opening meanwhile: this result is stale.
       if (openedRef.current?.id !== id || openedRef.current.loading || openGen.current !== gen) return;
+      // Live files a teammate saved since: merge their saved document in (no
+      // Conflict); the text follows through liveTextRef. Files new here get
+      // their documents too.
+      let docs = {};
+      const behind = p.files.filter((f) => typing.isLive(f.path) && base.current[f.path] && f.revision > base.current[f.path].revision && !inflight.current.has(f.path));
+      const appeared = p.files.filter((f) => typing.isLivePath(f.path) && !(f.path in base.current));
+      if (typing.supported && (behind.length || appeared.length)) {
+        try {
+          docs = await api.fileDocs(id);
+        } catch (e) {
+          if (isMissingFunction(e)) typing.disable();
+        }
+        if (openedRef.current?.id !== id || openedRef.current.loading || openGen.current !== gen) return;
+        for (const f of behind) {
+          const d = docs[f.path];
+          if (!d || d.revision !== f.revision) continue; // saved by an older build: below
+          typing.merge(f.path, d.doc);
+          base.current[f.path] = { content: f.content, revision: f.revision };
+          // Edits here (or a teammate's not saved yet) on top: save them.
+          if (filesRef.current[f.path] !== f.content && !timers.current.has(f.path)) timers.current.set(f.path, setTimeout(() => save(f.path), LIVE_SAVE_DELAY));
+        }
+      }
       const merged = mergeProject(
         { files: filesRef.current, base: base.current, conflicts: conflictsRef.current },
         p.files,
@@ -310,6 +391,18 @@ export function useCoworkLive({ notify }) {
         failed.current.delete(path);
       }
       setConflictsNow(merged.conflicts);
+      // Live documents follow: renamed, removed, new; text saved by an older build.
+      for (const e of merged.events) {
+        if (e.type === 'renamed') typing.rename(e.from, e.path);
+        if (e.type === 'removed') typing.drop(e.path);
+        if (e.type === 'created') {
+          const f = p.files.find((x) => x.path === e.path);
+          if (f) typing.add(f, docs[f.path] && docs[f.path].revision === f.revision ? docs[f.path] : null);
+        }
+      }
+      for (const f of p.files) {
+        if (typing.isLive(f.path) && merged.files[f.path] === f.content && typing.text(f.path) !== f.content) typing.catchUp(f.path, f.content, f.revision);
+      }
       setOpened((o) => {
         if (!o || o.id !== id || o.loading) return o;
         const tabs = retab(o, merged.files, merged.events);
@@ -431,6 +524,7 @@ export function useCoworkLive({ notify }) {
           filesRef.current = { ...filesRef.current, [path]: c.content };
           failed.current.delete(path);
           setOpened((o) => (o ? { ...o, files: filesRef.current } : o));
+          typing.catchUp(path, c.content, c.revision);
           settle();
         } else {
           await save(path); // over the newer revision
@@ -446,6 +540,7 @@ export function useCoworkLive({ notify }) {
         delete base.current[path];
         failed.current.delete(path);
         setOpened((o) => (o && !o.loading ? { ...o, files, ...retab(o, files, []) } : o));
+        typing.drop(path);
         settle();
       } else {
         const id = openedRef.current?.id;
@@ -453,6 +548,7 @@ export function useCoworkLive({ notify }) {
         try {
           const r = await api.createFile(id, path, text);
           base.current[path] = { content: text, revision: r.revision };
+          typing.add({ path, content: text, revision: r.revision }, null, { here: true });
         } catch (e) {
           if (!lostAccess(e)) {
             notify(e.message);
@@ -466,18 +562,38 @@ export function useCoworkLive({ notify }) {
   );
 
   const setFile = useCallback(
-    (path, text) => {
+    (path, text, { typed = false } = {}) => {
       if (filesRef.current[path] === text) return;
       filesRef.current = { ...filesRef.current, [path]: text };
       setOpened((o) => (o ? { ...o, files: filesRef.current } : o));
       clearTimeout(timers.current.get(path));
       timers.current.delete(path);
       // In a conflict the edit is kept here until Use theirs / Keep mine.
-      if (!conflictsRef.current[path]) timers.current.set(path, setTimeout(() => save(path), SAVE_DELAY));
+      const isLive = typing.isLive(path);
+      if (!conflictsRef.current[path]) timers.current.set(path, setTimeout(() => save(path), isLive ? LIVE_SAVE_DELAY : SAVE_DELAY));
+      // A live file: the editor has put typing into the document already (just
+      // after this runs); anything else (an accepted change) goes in as the difference.
+      if (isLive && !typed) queueMicrotask(() => typing.setText(path, filesRef.current[path]));
       settle();
     },
-    [save, settle]
+    [save, settle, typing]
   );
+
+  // Text of a live file changed by anything but typing here.
+  liveTextRef.current = (path, text, origin) => {
+    if (!(path in filesRef.current) || filesRef.current[path] === text) return;
+    filesRef.current = { ...filesRef.current, [path]: text };
+    setOpened((o) => (o && !o.loading ? { ...o, files: filesRef.current } : o));
+    if (origin === 'undo' || origin === 'kept') {
+      // Undo/redo here, or typing kept from before the file was live: ours to save.
+      clearTimeout(timers.current.get(path));
+      timers.current.set(path, setTimeout(() => save(path), LIVE_SAVE_DELAY));
+    } else if (origin === 'remote' && !timers.current.has(path) && !backups.current.has(path)) {
+      // A teammate's edit: they save it; if they haven't a little later, save it from here.
+      backups.current.set(path, setTimeout(() => save(path), BACKUP_SAVE_DELAY));
+    }
+    settle();
+  };
 
   const flush = useCallback(async () => {
     const paths = [...timers.current.keys()];
@@ -514,6 +630,7 @@ export function useCoworkLive({ notify }) {
       try {
         const r = await api.createFile(id, path, text);
         addLocal(path, text, r.revision);
+        typing.add({ path, content: text, revision: r.revision }, null, { here: true });
       } catch (e) {
         if (!lostAccess(e)) throw e; // the New file dialog shows it
       }
@@ -549,6 +666,7 @@ export function useCoworkLive({ notify }) {
           const r = await api.createFile(id, path, text);
           taken.add(path);
           addLocal(path, text, r.revision, { open: !added.length });
+          typing.add({ path, content: text, revision: r.revision }, null, { here: true });
           added.push(path);
         } catch (e) {
           if (lostAccess(e)) return;
@@ -584,6 +702,7 @@ export function useCoworkLive({ notify }) {
           setConflictsNow(next);
         }
         showFiles((o) => ({ ...o, files, open: o.open.map((x) => (x === from ? path : x)), active: o.active === from ? path : o.active }));
+        typing.rename(from, path);
         return null;
       } catch (e) {
         if (lostAccess(e)) return null;
@@ -610,6 +729,9 @@ export function useCoworkLive({ notify }) {
       filesRef.current = files;
       delete base.current[path];
       failed.current.delete(path);
+      clearTimeout(backups.current.get(path));
+      backups.current.delete(path);
+      typing.drop(path);
       if (conflictsRef.current[path]) {
         const next = { ...conflictsRef.current };
         delete next[path];
@@ -666,7 +788,16 @@ export function useCoworkLive({ notify }) {
   // ------------------------------------------------------------ who's online
   // Realtime presence and cursors (usePresence). Teammates' saved text still
   // arrives through the reloads above.
-  const live = usePresence({ me, projectId: projectReady ? projectId : null, enabled: !!me, activePath: workspace?.activePath ?? null });
+  const live = usePresence({
+    me,
+    projectId: projectReady ? projectId : null,
+    enabled: !!me,
+    activePath: workspace?.activePath ?? null,
+    onMessage: typing.receive,
+    onJoined: typing.joined,
+  });
+  typing.sendRef.current = live.send;
+  useEffect(() => typing.presenceChanged(live.state), [live.state, typing]);
   const presence = useMemo(() => {
     if (!project) return [];
     const memberIds = new Set(project.members.map((m) => m.id));
@@ -853,6 +984,7 @@ export function useCoworkLive({ notify }) {
     presenceState: live.state,
     presenceReason: live.reason,
     reportCursor: live.report,
+    liveText: liveEditor,
     workspace,
     go,
     refresh,

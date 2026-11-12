@@ -14,3 +14,8 @@ export const cursorOfSelection = (s) =>
     anchorLine: s.selectionStartLineNumber,
     anchorColumn: s.selectionStartColumn,
   };
+
+// Cowork live mode: live typing. { version, entry(path), undo(path), redo(path) }
+// where entry(path) is the Yjs document of a live file (liveText.js), or null
+// when the file isn't typed live. Null outside live shared projects.
+export const LiveTextContext = createContext(null);

@@ -1,5 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CursorReportContext, cursorOfSelection } from '../cowork/cursorReport.js';
+import { CursorReportContext, LiveTextContext, cursorOfSelection } from '../cowork/cursorReport.js';
+import { bindModel } from '../cowork/live/monacoBinding.js';
 import { createRemoteCursors } from '../cowork/remoteCursors.js';
 import Editor from '@monaco-editor/react';
 import { monaco as monacoApi } from '../lib/monacoSetup.js';
@@ -60,11 +61,14 @@ export default function CodeEditor({
   const hoverDecorations = useRef(null);
   const remote = useRef(null);
   const [mounted, setMounted] = useState(false);
+  const [modelTick, setModelTick] = useState(0); // the editor switched files (models)
 
   // Callbacks change every render; keep the latest in refs for Monaco listeners.
   const latest = useRef({});
   const reportCursor = useContext(CursorReportContext); // Cowork live: teammates see this caret
-  latest.current = { path, files, onChange, onGlyphClick, onSelection, onAskAI, glyphEnabled, breakpoints, onRunShortcut, onCaret, reportCursor };
+  const liveText = useContext(LiveTextContext); // Cowork live typing
+  const binding = useRef(null);
+  latest.current = { path, files, onChange, onGlyphClick, onSelection, onAskAI, glyphEnabled, breakpoints, onRunShortcut, onCaret, reportCursor, liveText };
 
   const handleMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -77,6 +81,7 @@ export default function CodeEditor({
     };
     registerModel();
     editor.onDidChangeModel(registerModel);
+    editor.onDidChangeModel(() => setModelTick((t) => t + 1));
 
     // The selected text, kept when focus moves to a button (Run in the SQL workspace).
     editor.onDidChangeCursorSelection(() => {
@@ -101,9 +106,12 @@ export default function CodeEditor({
     editor.onDidChangeModelContent(() => {
       const model = editor.getModel();
       if (!model) return;
+      // A teammate's typing (or undo) written in by live typing isn't an edit to report.
+      if (binding.current?.applying) return;
       const uri = model.uri.toString();
       const filePath = Object.keys(latest.current.files).find((p) => monaco.Uri.parse(p).toString() === uri);
-      if (filePath) latest.current.onChange(filePath, model.getValue());
+      // { typed: true }: typing in a live file, which the binding puts into its document.
+      if (filePath) latest.current.onChange(filePath, model.getValue(), binding.current ? { typed: true } : undefined);
     });
 
     // A model kept from earlier can be out of date (e.g. a change was
@@ -154,6 +162,18 @@ export default function CodeEditor({
     editor.onDidChangeModel(() => setTimeout(() => editor.hasTextFocus() && reportHere(), 0));
     editor.onDidScrollChange(reportSelection);
     editor.onDidChangeModel(() => latest.current.onSelection(null));
+    // Live typing: undo and redo take back only this person's typing.
+    editor.onKeyDown((e) => {
+      const live = latest.current.liveText;
+      if (!binding.current || !live || !(e.ctrlKey || e.metaKey)) return;
+      const z = e.keyCode === monaco.KeyCode.KeyZ;
+      const y = e.keyCode === monaco.KeyCode.KeyY;
+      if (!z && !y) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (y || e.shiftKey) live.redo(latest.current.path);
+      else live.undo(latest.current.path);
+    });
     editor.onDidBlurEditorWidget(() => {
       // Let clicks on the floating selection actions land first.
       setTimeout(() => {
@@ -203,6 +223,21 @@ export default function CodeEditor({
       if (model) replaceModelText(model, content);
     }
   }, [files, path, mounted]);
+
+  // Live typing: while a live file is open, the editor and its document are
+  // kept in step both ways (monacoBinding.js).
+  const liveEntry = mounted && liveText ? liveText.entry(path) : null;
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!liveEntry || !model || model.uri.toString() !== monacoApi.Uri.parse(path).toString()) return undefined;
+    const b = bindModel({ monaco: monacoApi, editor, model, entry: liveEntry });
+    binding.current = b;
+    return () => {
+      b.dispose();
+      if (binding.current === b) binding.current = null;
+    };
+  }, [liveEntry, path, mounted, modelTick]);
 
   // The open file changed from outside the editor (a teammate's save, an
   // accepted change): apply just the difference before the editor library
