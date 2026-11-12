@@ -40,7 +40,7 @@ function folderSize(dir) {
 }
 
 // Arguments for powershell.exe (testable without Windows).
-function updatingArgs({ scriptPath, installDir, exeName, appName, version, baseline, readyFile }) {
+function updatingArgs({ scriptPath, installDir, exeName, appName, version, baseline, readyFile, logFile = '' }) {
   return [
     '-NoProfile',
     '-ExecutionPolicy',
@@ -61,6 +61,8 @@ function updatingArgs({ scriptPath, installDir, exeName, appName, version, basel
     String(Math.max(0, Math.round(baseline || 0))),
     '-ReadyFile',
     readyFile,
+    '-LogFile',
+    logFile,
   ];
 }
 
@@ -70,7 +72,7 @@ async function showUpdatingWindow({
   execPath = process.execPath,
   appName = 'Tandem',
   version = '',
-  waitMs = 5000,
+  waitMs = 8000,
   spawn = require('child_process').spawn,
   tmpdir = os.tmpdir(),
   platform = process.platform,
@@ -81,6 +83,21 @@ async function showUpdatingWindow({
     const installDir = path.dirname(execPath);
     const scriptPath = path.join(tmpdir, 'tandem-updating.ps1');
     const readyFile = path.join(tmpdir, `tandem-updating-${process.pid}.ready`);
+    // What happened, kept for the next time something goes wrong (%TEMP%\tandem-updating.log).
+    const logFile = path.join(tmpdir, 'tandem-updating.log');
+    const note = (text) => {
+      try {
+        fs.appendFileSync(logFile, `${new Date().toISOString()} [tandem] ${text}\n`);
+      } catch {
+        // not important
+      }
+    };
+    try {
+      if (fs.statSync(logFile).size > 200000) fs.unlinkSync(logFile);
+    } catch {
+      // none yet
+    }
+    note(`update to ${version || '?'}: starting the progress window`);
     fs.writeFileSync(scriptPath, fs.readFileSync(path.join(__dirname, 'updating.ps1'), 'utf8'));
     try {
       fs.unlinkSync(readyFile);
@@ -95,15 +112,23 @@ async function showUpdatingWindow({
       version,
       baseline: folderSize(installDir),
       readyFile,
+      logFile,
     });
     const child = spawn('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: true });
-    child.on?.('error', (err) => log.warn?.('[updates] progress window', err));
+    child.on?.('error', (err) => {
+      note(`could not start powershell: ${err?.message || err}`);
+      log.warn?.('[updates] progress window', err);
+    });
     child.unref?.();
     const until = Date.now() + waitMs;
     while (Date.now() < until) {
-      if (fs.existsSync(readyFile)) return true;
+      if (fs.existsSync(readyFile)) {
+        note('the window is on screen; quitting into the installer');
+        return true;
+      }
       await new Promise((r) => setTimeout(r, 100));
     }
+    note(`the window did not show within ${waitMs} ms; installing anyway`);
     return false;
   } catch (err) {
     log.warn?.('[updates] progress window', err);

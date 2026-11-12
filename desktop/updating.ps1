@@ -10,7 +10,8 @@
 #   -InstallDir     the app's folder          -ExeName  the app's .exe name
 #   -AppName        the name to show          -Version  the version to show
 #   -Baseline       the folder's size in bytes before the update (0: unknown)
-#   -ReadyFile      written once the window shows (Tandem quits after that)
+#   -ReadyFile      written once the window is on screen (Tandem quits after that)
+#   -LogFile        what happened, for when something goes wrong (temp folder)
 #   -TestSeconds    CI: simulate an update for this long, then exit
 #   -ScreenshotPath CI: save the window as a .png before exiting
 
@@ -21,12 +22,25 @@ param(
   [string]$Version = '',
   [double]$Baseline = 0,
   [string]$ReadyFile = '',
+  [string]$LogFile = '',
   [int]$TimeoutSeconds = 300,
   [int]$TestSeconds = 0,
   [string]$ScreenshotPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
+function Write-Log($text) {
+  if (-not $LogFile) { return }
+  try { Add-Content -Path $LogFile -Value ("{0:HH:mm:ss.fff} {1}" -f (Get-Date), $text) -Encoding ASCII } catch {}
+}
+Write-Log "start: app=$AppName version=$Version dir=$InstallDir baseline=$Baseline test=$TestSeconds"
+# Tandem starts this hidden (no console window). Windows applies "hidden" to
+# the first window a program shows, so the window shows itself again, on top.
+Add-Type -Namespace TandemUpdating -Name Native -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(System.IntPtr hWnd);
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr hWnd);
+'@
 $ell = [string][char]0x2026  # an ellipsis (kept out of the file: PowerShell 5.1 reads it as ANSI)
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -156,6 +170,7 @@ $script:failed = $false
 # A problem never shows an error box during a real update: the window just
 # closes (the update goes on). In the CI test it fails the step.
 function Stop-OnError($err) {
+  Write-Log "error: $err"
   if ($TestSeconds -gt 0) { [Console]::Error.WriteLine("updating.ps1: $err"); $script:failed = $true }
   $form.Close()
 }
@@ -174,9 +189,15 @@ $check.Add_Tick({ try {
     elseif ($t -lt 0.85) { Set-Phase "Installing the new version$ell" (12 + 80 * ($t - 0.3) / 0.55) }
     else { Set-Phase "Opening $AppName$ell" 100 }
     if ($elapsed -ge $TestSeconds) {
+      if (-not [TandemUpdating.Native]::IsWindowVisible($form.Handle)) {
+        Stop-OnError 'the window is not visible on screen'
+        return
+      }
       if ($ScreenshotPath) {
+        # What is really on screen there (not a drawing of the window).
         $bmp = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
-        $form.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $form.Width, $form.Height)))
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.CopyFromScreen($form.Location, [System.Drawing.Point]::Empty, $form.Size)
         $bmp.Save($ScreenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
       }
       $form.Close()
@@ -229,11 +250,18 @@ $anim.Add_Tick({ try {
 } catch { Stop-OnError $_ } })
 
 $form.Add_Shown({
+  try {
+    [void][TandemUpdating.Native]::ShowWindow($form.Handle, 5)  # SW_SHOW
+    [void][TandemUpdating.Native]::SetForegroundWindow($form.Handle)
+    $form.Activate()
+  } catch { Write-Log "show: $_" }
+  $visible = [TandemUpdating.Native]::IsWindowVisible($form.Handle)
+  Write-Log "shown: visible=$visible"
   $check.Start()
   $anim.Start()
-  $form.Activate()
-  if ($ReadyFile) { try { Set-Content -Path $ReadyFile -Value 'shown' -Encoding ASCII } catch {} }
+  # Tandem quits once this says the window is on screen.
+  if ($ReadyFile -and $visible) { try { Set-Content -Path $ReadyFile -Value 'shown' -Encoding ASCII } catch {} }
 })
-$form.Add_FormClosed({ $check.Stop(); $anim.Stop() })
+$form.Add_FormClosed({ $check.Stop(); $anim.Stop(); Write-Log "closed: finished=$($script:finished) progress=$([int]$script:shown)" })
 [void]$form.ShowDialog()
 if ($script:failed) { exit 1 }

@@ -113,18 +113,12 @@ jobs:
           node --test packaging/staging-app.test.cjs desktop/updater.test.cjs desktop/secureStore.test.cjs desktop/updatingWindow.test.cjs
 
       # The "Updating Tandem" window that shows while the installer runs
-      # (desktop/updating.ps1): opened in Windows PowerShell 5.1 as Tandem
-      # opens it, through a made-up update, and saved as a picture.
+      # (desktop/updating.ps1), started exactly as Tandem starts it, through a
+      # made-up update; it must really be on screen (a capture is kept).
       - name: The "Updating Tandem" window
         if: github.ref == 'refs/heads/cowork'
         timeout-minutes: 3
-        shell: pwsh
-        run: |
-          $png = Join-Path $PWD 'updating-window.png'
-          $p = Start-Process powershell.exe -PassThru -Wait -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'desktop/updating.ps1', '-AppName', 'Tandem', '-Version', '"0.3.1 (build 1)"', '-TestSeconds', '5', '-ScreenshotPath', "`"$png`"")
-          if ($p.ExitCode -ne 0) { throw "updating.ps1 exited with $($p.ExitCode)" }
-          if (-not (Test-Path $png)) { throw 'updating.ps1 saved no picture' }
-          Write-Output "ok   the window showed and ended by itself ($((Get-Item $png).Length) bytes)"
+        run: node packaging/updating-window-check.cjs updating-window.png
       - uses: actions/upload-artifact@v4
         if: always() && github.ref == 'refs/heads/cowork'
         with:
