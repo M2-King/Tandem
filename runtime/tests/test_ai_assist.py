@@ -41,6 +41,14 @@ class Fake(BaseHTTPRequestHandler):
             return self._json(200, {"choices": [{"message": {"role": "assistant", "content": Fake.reply}}]})
         if self.path == "/api/chat":
             return self._json(200, {"message": {"role": "assistant", "content": Fake.reply}})
+        if self.path == "/functions/v1/cowork-ai":  # the shared AI (supabase/functions/cowork-ai)
+            if self.headers.get("Authorization") != "Bearer member-token":
+                return self._json(401, {"error": "Sign in again to use the shared AI."})
+            if Fake.reply == "LIMIT":
+                return self._json(429, {"error": "You've used today's 30 requests on the shared AI."})
+            return self._json(200, {"text": Fake.reply, "stop_reason": "end_turn", "model": "claude-sonnet-5-5",
+                                    "provider": "anthropic", "shared_by": "tim", "used_today": 3,
+                                    "daily_limit": 30, "unlimited": False})
         self._json(404, {})
 
 
@@ -127,3 +135,56 @@ def test_provider_errors_are_reported(client, project):
     client.put("/api/ai/settings", json={"provider": "ollama", "base_url": "http://127.0.0.1:9", "model": "x", "activate": True})
     result = client.post("/api/ai/assist", json=request_for(project)).json()
     assert result["kind"] == "error" and "Couldn't reach" in result["text"]
+
+
+def shared_request(project, fake, token="member-token"):
+    req = request_for(project)
+    # A shared project: its files aren't this device's; the owner shares their AI.
+    req["file_list"] = ["test.py", "data/prices.csv"]
+    req["shared_ai"] = {"url": fake + "/functions/v1/cowork-ai", "apikey": "publishable", "token": token,
+                        "project_id": "00000000-0000-0000-0000-000000000001"}
+    return req
+
+
+def test_without_own_ai_a_shared_project_uses_the_owners_shared_ai(client, project, fake):
+    Fake.reply = f'Loop until DONE.\n\n<tandem-file path="test.py">\n{FIXED}</tandem-file>\n\n- Loop\n'
+    result = client.post("/api/ai/assist", json=shared_request(project, fake)).json()
+    assert result["kind"] == "proposal" and result["new_content"] == FIXED
+    assert result["provider"] == "Shared by tim" and result["model"] == "claude-sonnet-5-5"
+    assert result["shared"] == {"shared_by": "tim", "used_today": 3, "daily_limit": 30, "unlimited": False}
+    path, headers, body = Fake.seen[-1]
+    # The member's sign-in goes to the function; no provider key is involved here.
+    assert headers.get("Authorization") == "Bearer member-token" and {k.lower(): v for k, v in headers.items()}.get("apikey") == "publishable"
+    assert body["project_id"].endswith("0001") and "Tandem" in body["system"] and body["max_tokens"] <= 16000
+    sent = json.dumps(body["messages"])
+    assert "data/prices.csv" in sent and "EOFError" in sent  # the shared project's file list, the traceback
+
+
+def test_own_ai_comes_before_the_shared_one(client, project, fake):
+    client.put("/api/ai/settings", json={"provider": "ollama", "base_url": fake, "model": "llama3.2", "activate": True})
+    Fake.reply = "Mine."
+    result = client.post("/api/ai/assist", json=shared_request(project, fake)).json()
+    assert result["kind"] == "answer" and Fake.seen[-1][0] == "/api/chat" and "Shared" not in result.get("provider", "")
+
+
+def test_shared_ai_errors_are_shown_as_they_are(client, project, fake):
+    Fake.reply = "LIMIT"
+    result = client.post("/api/ai/assist", json=shared_request(project, fake)).json()
+    assert result == {"kind": "error", "text": "You've used today's 30 requests on the shared AI."}
+    result = client.post("/api/ai/assist", json=shared_request(project, fake, token="expired")).json()
+    assert result["kind"] == "error" and "Sign in again" in result["text"]
+
+
+def test_a_shared_project_without_ai_says_an_owner_can_share_one(client, project):
+    req = request_for(project)
+    req["file_list"] = ["test.py"]
+    result = client.post("/api/ai/assist", json=req).json()
+    assert result["kind"] == "setup" and "Share your AI" in result["text"]
+
+
+def test_a_shared_project_proposal_never_reads_this_devices_file_of_the_same_name(client, project, fake):
+    (project / "other.py").write_text("DEVICE PROJECT\n")
+    Fake.reply = '<tandem-file path="other.py">\nprint("new")\n</tandem-file>'
+    req = shared_request(project, fake)
+    result = client.post("/api/ai/assist", json=req).json()
+    assert result["kind"] == "proposal" and result["new_file"] is True

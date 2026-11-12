@@ -191,6 +191,19 @@ export const removeFile = (id, path) => rpc('cowork_remove_file', { p_project: i
 // and the saved documents of a project, by path ({ revision, doc }).
 export const saveFileDoc = (id, path, content, revision, doc) =>
   rpc('cowork_save_file_doc', { p_project: id, p_path: path, p_content: content, p_revision: revision, p_doc: doc });
+// The AI an owner shares with a project (004_cowork_shared_ai.sql). The key
+// goes in once and never comes back; members' assistants use it through the
+// cowork-ai Edge Function, which adds it on the server.
+export const aiShare = (id) => rpc('cowork_ai_share', { p_project: id });
+export const setAiShare = (id, { provider, model, baseUrl = '', apiKey = '', dailyLimit }) =>
+  rpc('cowork_set_ai_share', { p_project: id, p_provider: provider, p_model: model, p_base_url: baseUrl, p_api_key: apiKey, p_daily_limit: dailyLimit });
+export const stopAiShare = (id) => rpc('cowork_stop_ai_share', { p_project: id });
+// Where the assistant sends a request for the shared AI, signed in as you.
+export async function sharedAIEndpoint() {
+  const { data } = await supabase().auth.getSession();
+  return { url: `${URL_}/functions/v1/cowork-ai`, apikey: KEY, token: data?.session?.access_token || '' };
+}
+
 export const fileDocs = async (id) => Object.fromEntries((await rpc('cowork_file_docs', { p_project: id })).map((d) => [d.path, d]));
 
 // ------------------------------------------------------------------ realtime

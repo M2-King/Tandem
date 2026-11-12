@@ -178,16 +178,22 @@ export function createIpadAI({ api, token, settings }) {
     return { ok: true, models, latency_ms, model_found: models.includes(p.model), message: `Connected · ${count}.` };
   }
 
+  // A shared project's file list comes with the request (its files aren't this iPad's).
+  const projectPaths = async (request) =>
+    Array.isArray(request.file_list) ? request.file_list : (await (await api('/api/files')).json()).files.map((f) => f.path);
+
   async function assist(request, signal) {
     const provider = await active();
+    if (!provider && request.shared_ai) return assistShared(request, signal);
     if (!provider) {
       return {
         kind: 'setup',
-        text: 'No AI model is connected yet. Open **AI settings**, add your Anthropic, OpenAI-compatible or Ollama model, and use it for the assistant. Then ask again.',
+        text: `No AI model is connected yet. Open **AI settings**, add your Anthropic, OpenAI-compatible or Ollama model, and use it for the assistant. Then ask again.${
+          Array.isArray(request.file_list) ? ' In a shared project, an owner can also share their AI with everyone in it (**Share**, then **Share your AI**).' : ''
+        }`,
       };
     }
-    const { files } = await (await api('/api/files')).json();
-    const messages = [...history(request), { role: 'user', content: contextMessage(request, files.map((f) => f.path)) }];
+    const messages = [...history(request), { role: 'user', content: contextMessage(request, await projectPaths(request)) }];
     let text;
     try {
       if (provider.provider === 'anthropic') {
@@ -219,6 +225,36 @@ export function createIpadAI({ api, token, settings }) {
       return { kind: 'error', text: anthropicError(e) || e.message };
     }
     return { ...parseReply(text, request), model: provider.model, provider: provider.label };
+  }
+
+  // No AI of your own: the AI the project's owner shares, through the
+  // cowork-ai Edge Function, which adds the owner's key on the server.
+  async function assistShared(request, signal) {
+    const shared = request.shared_ai;
+    const messages = [...history(request), { role: 'user', content: contextMessage(request, await projectPaths(request)) }];
+    let response;
+    try {
+      response = await fetch(shared.url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${shared.token}`, apikey: shared.apikey },
+        body: JSON.stringify({ project_id: shared.project_id, system: SYSTEM, messages, max_tokens: MAX_TOKENS }),
+        signal,
+      });
+    } catch (e) {
+      if (e?.name === 'AbortError') throw e;
+      return { kind: 'error', text: 'Couldn’t reach the shared AI. Check your internet connection.' };
+    }
+    const data = await response.json().catch(() => null);
+    if (!response.ok) return { kind: 'error', text: data?.error || `The shared AI answered with HTTP ${response.status}.` };
+    if (data.stop_reason === 'refusal') return { kind: 'error', text: 'The model declined this request.' };
+    let text = String(data.text || '');
+    if (data.stop_reason === 'max_tokens') text += '\n\n[cut off: the answer was too long]';
+    return {
+      ...parseReply(text, request),
+      model: data.model,
+      provider: `Shared by ${data.shared_by || 'the owner'}`,
+      shared: { shared_by: data.shared_by, used_today: data.used_today, daily_limit: data.daily_limit, unlimited: data.unlimited },
+    };
   }
 
   return { active, test, assist };

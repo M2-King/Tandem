@@ -59,10 +59,18 @@ def active_provider(settings: AISettings) -> dict | None:
     return {"provider": name, "label": PROVIDERS[name]["label"], "model": cfg["model"], "base_url": cfg["base_url"]}
 
 
+def _project_paths(request: dict, files: ProjectFiles) -> list[str]:
+    """The project's file list: a shared project's comes with the request."""
+    given = request.get("file_list")
+    if isinstance(given, list):
+        return [str(p) for p in given if isinstance(p, str)][:300]
+    return [f["path"] for f in files.list()][:300]
+
+
 def _context_message(request: dict, files: ProjectFiles) -> str:
     """The user turn: files, last run, selection and the request itself."""
     parts = []
-    listed = [f["path"] for f in files.list()][:300]
+    listed = _project_paths(request, files)
     parts.append("Project files:\n" + "\n".join(f"- {p}" for p in listed))
 
     contents = request.get("files") or {}
@@ -205,6 +213,39 @@ def _ask_ollama(cfg: dict, messages: list[dict], timeout: float) -> str:
         raise AssistError("Ollama's answer had no message in it.") from None
 
 
+def _ask_shared(shared: dict, messages: list[dict], timeout: float) -> dict:
+    """A shared project's AI, shared by its owner: the cowork-ai Edge Function
+    adds the owner's key on the server (supabase/functions/cowork-ai)."""
+    url = str(shared.get("url") or "")
+    if not re.match(r"^(https://|http://(127\.0\.0\.1|localhost)(:\d+)?/)", url):
+        raise AssistError("The shared AI's address isn't valid.")
+    body = {"project_id": shared.get("project_id"), "system": SYSTEM, "messages": messages, "max_tokens": MAX_TOKENS}
+    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method="POST", headers={
+        "Content-Type": "application/json", "Accept": "application/json",
+        "Authorization": f"Bearer {shared.get('token') or ''}", "apikey": str(shared.get("apikey") or ""),
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            data = json.loads(response.read(16 * 1024 * 1024).decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        message = ""
+        try:
+            message = str(json.loads(exc.read(4000)).get("error") or "")
+        except Exception:
+            pass
+        raise AssistError(message or f"The shared AI answered with HTTP {exc.code}.") from None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise AssistError("Couldn't reach the shared AI. Check your internet connection.") from None
+    except ValueError:
+        raise AssistError("The shared AI didn't answer with JSON.") from None
+    if data.get("stop_reason") == "refusal":
+        raise AssistError("The model declined this request.")
+    text = str(data.get("text") or "")
+    if data.get("stop_reason") == "max_tokens":
+        text += "\n\n[cut off: the answer was too long]"
+    return {**data, "text": text}
+
+
 # ---------------------------------------------------------------- the request
 
 def parse_reply(text: str, request: dict, files: ProjectFiles) -> dict:
@@ -221,7 +262,8 @@ def parse_reply(text: str, request: dict, files: ProjectFiles) -> dict:
         return {"kind": "answer", "text": f"The model proposed a change to {path}, which is outside this project, so it was ignored.\n\n" + text[:match.start()].strip()}
     new = match.group(2)
     base = (request.get("files") or {}).get(path)
-    if base is None:
+    # (A shared project's files aren't this device's: only what came with the request.)
+    if base is None and not isinstance(request.get("file_list"), list):
         try:
             base = files.read(path).get("text")
         except FileError:
@@ -246,11 +288,25 @@ def parse_reply(text: str, request: dict, files: ProjectFiles) -> dict:
 
 def assist(settings: AISettings, files: ProjectFiles, request: dict, timeout: float = 300) -> dict:
     provider = active_provider(settings)
+    shared = request.get("shared_ai")
+    if provider is None and isinstance(shared, dict):
+        # No AI of your own: the AI the project's owner shares.
+        messages = _history(request) + [{"role": "user", "content": _context_message(request, files)}]
+        started = time.monotonic()
+        answer = _ask_shared(shared, messages, timeout)
+        result = parse_reply(answer["text"], request, files)
+        result["model"] = answer.get("model") or ""
+        result["provider"] = f"Shared by {answer.get('shared_by') or 'the owner'}"
+        result["shared"] = {k: answer.get(k) for k in ("shared_by", "used_today", "daily_limit", "unlimited")}
+        result["elapsed_ms"] = int((time.monotonic() - started) * 1000)
+        return result
     if provider is None:
         return {
             "kind": "setup",
             "text": "No AI model is connected yet. Open **AI settings**, add your Anthropic, OpenAI-compatible or Ollama "
-                    "model, and use it for the assistant. Then ask again.",
+                    "model, and use it for the assistant. Then ask again."
+                    + (" In a shared project, an owner can also share their AI with everyone in it (**Share**, then "
+                       "**Share your AI**)." if isinstance(request.get("file_list"), list) else ""),
         }
     messages = _history(request) + [{"role": "user", "content": _context_message(request, files)}]
     started = time.monotonic()

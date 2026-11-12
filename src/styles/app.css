@@ -6436,3 +6436,85 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
     animation: none;
   }
 }
+
+/* Share › AI for everyone (SharedAISection): the AI an owner shares. */
+.ai-share-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+.ai-share-card.is-empty {
+  border-style: dashed;
+}
+.ai-share-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ai-share-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.ai-share-title {
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+}
+.ai-share-detail {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.ai-share-buttons {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+.ai-share-form {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+.ai-share-provider {
+  display: flex;
+  width: fit-content;
+}
+.ai-share-limit .field-input {
+  width: 120px;
+}
+.ai-share-note {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  color: var(--text-secondary);
+}
+.ai-share-note svg {
+  flex: none;
+  margin-top: 2px;
+}
+.ai-share-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ai-model-tag.is-shared {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+@media (max-width: 560px) {
+  .ai-share-card {
+    flex-wrap: wrap;
+  }
+}

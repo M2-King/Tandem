@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Eye, Lock, LogOut, UserMinus, X } from 'lucide-react';
+import SharedAISection from './SharedAISection.jsx';
 import Dialog from '../components/Dialog.jsx';
 import { Avatar } from './CoworkBits.jsx';
 import { addressOf, normalizeUsername, personForUsername } from './accounts.js';
@@ -56,7 +57,7 @@ function PersonRow({ m, cowork, project, isOwner, owners, where }) {
 }
 
 // Who is in a shared project, and (for owners) inviting people and roles.
-export default function ShareDialog({ cowork, project, presence, onClose, notify }) {
+export default function ShareDialog({ cowork, project, presence, onClose, notify, sharedAI }) {
   const { viewer, roleIn } = cowork;
   const isOwner = roleIn(project) === 'owner';
   const [who, setWho] = useState('');
@@ -299,6 +300,7 @@ export default function ShareDialog({ cowork, project, presence, onClose, notify
             <p className="share-empty">No pending invitations.</p>
           )}
         </section>
+        {sharedAI?.available && <SharedAISection sharedAI={sharedAI} isOwner={isOwner} notify={notify} />}
       </div>
 
       <div className="dialog-actions share-actions">

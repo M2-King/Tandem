@@ -55,6 +55,7 @@ import { createCoworkBackend } from './cowork/coworkBackend.js';
 import { createSharedBackend } from './cowork/live/sharedBackend.js';
 import { Loader2 } from 'lucide-react';
 import { useSharedPython } from './cowork/useSharedPython.js';
+import { useSharedAI } from './cowork/live/useSharedAI.js';
 import PreparePythonDialog from './cowork/PreparePythonDialog.jsx';
 import { CursorReportContext, LiveTextContext } from './cowork/cursorReport.js';
 import { AvatarStack, CoworkTitle, DeviceChip, LiveStatus, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
@@ -306,17 +307,42 @@ export default function App() {
     if (IS_LOCAL) backend.aiActive().then(setAIActive, () => {});
   }, []);
   useEffect(() => refreshAI(), [refreshAI]);
+  // A live shared project: the AI an owner shares with it, used when this
+  // device has no AI of its own (cowork-ai Edge Function; the key stays there).
+  const sharedAI = useSharedAI({ projectId: cowork.live && inCowork ? cowork.project.id : null });
+  const sharedAIRef = useRef(sharedAI);
+  sharedAIRef.current = sharedAI;
   const realRequest = useMemo(
     () =>
       IS_LOCAL
         ? createRealAssistant({
             backend,
             getLastRun: (path) => runsRef.current.filter((r) => r.path === path).at(-1) || null,
-            getModelLabel: () => aiActiveRef.current?.model,
+            getModelLabel: () => aiActiveRef.current?.model || sharedAIRef.current.share?.model,
+            getShared: async () => {
+              const s = sharedAIRef.current;
+              if (!s.available) return null;
+              const shared_ai = !aiActiveRef.current && s.share ? await s.access() : null;
+              return { file_list: Object.keys(filesRef.current), ...(shared_ai ? { shared_ai } : {}) };
+            },
+            onShared: (used) => sharedAIRef.current.noteUse(used),
           })
         : undefined,
     []
   );
+  const share = sharedAI.share;
+  const assistantModel =
+    aiActive ||
+    (share
+      ? {
+          label: `Shared by ${share.shared_by_me ? 'you' : share.shared_by}`,
+          model: share.model,
+          shared: true,
+          note: share.shared_by_me
+            ? 'You share this AI with the project. Your own requests have no limit.'
+            : `${share.used_today} of ${share.daily_limit} requests used today.`,
+        }
+      : null);
   const assistant = useAssistant({
     getFiles: useCallback(() => filesRef.current, []),
     getActivePath: useCallback(() => activeRef.current, []),
@@ -1238,7 +1264,7 @@ export default function App() {
             onAction={(action) =>
               action.type === 'reset-file' ? resetFile(action.path) : action.type === 'open-ai-settings' && setAISettingsOpen(true)
             }
-            aiModel={aiActive}
+            aiModel={assistantModel}
             onRetry={(r) => sendPrompt(r.prompt, { intent: r.intent, context: r.context })}
             composerRef={composerRef}
             onClose={closeAssistant}
@@ -1343,7 +1369,7 @@ export default function App() {
       )}
 
       {shareOpen && inCowork && (
-        <ShareDialog cowork={cowork} project={cowork.project} presence={cowork.presence} onClose={() => setShareOpen(false)} notify={notify} />
+        <ShareDialog cowork={cowork} project={cowork.project} presence={cowork.presence} onClose={() => setShareOpen(false)} notify={notify} sharedAI={sharedAI} />
       )}
       {settingsOpen && inCowork && (
         <ProjectSettingsDialog cowork={cowork} project={cowork.project} onClose={() => setSettingsOpen(false)} notify={notify} />

@@ -116,6 +116,10 @@ class AssistBody(BaseModel):
     active_path: str | None = None
     last_run: dict | None = None
     history: list[dict] = []
+    # Shared projects: their file list, and the owner's shared AI if there is one
+    # ({url, apikey, token, project_id}: the cowork-ai Edge Function).
+    file_list: list[str] | None = None
+    shared_ai: dict | None = None
 
 
 def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cli_python: str | None = None,

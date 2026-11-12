@@ -75,6 +75,21 @@ An open project reloads every 10 seconds while the app is visible, when its wind
 
 The status reads Saved, Saving…, Offline, Unsaved or Conflict. This is how files that aren't typed live (notebooks, or all files without 003) stay in step; live typing (above) and cursors work alongside it. No database change is needed for this part; it uses `cowork_project`.
 
+### Sharing an AI with the project
+
+An owner can share their AI with a project, so teammates without an AI subscription can use the assistant: **Share → AI for everyone → Share your AI**. Choose Anthropic (Claude) or an OpenAI-compatible provider, the model, the API key and how many requests each person may make per day (1 to 1000; the owner who shared it has no limit). **Change** updates the model or limit (leave the key empty to keep it); **Stop sharing** deletes the key.
+
+- **The key stays on the server.** It goes to Supabase once and never comes back: not to members, not to the owner (who sees its last 4 characters). The tables have no API access at all; `cowork_ai_use`, the only function that returns the key, can be called only with the service role, by the Edge Function.
+- **How a request goes.** A member whose device has no AI of its own asks the assistant; the app (desktop runtime, or the iPad page) builds the request as usual and sends it to the `cowork-ai` Edge Function with the member's sign-in. The function checks the sign-in and the membership, counts the request against the person's day (UTC), adds the owner's key and asks the provider; the member gets the answer, never the key. A request the provider fails doesn't count. Anyone with their own AI connected keeps using theirs.
+- **What people see.** The assistant shows the shared model with a people icon; its tooltip and Share show the requests used today. When the day's requests are used up, the assistant says so.
+
+To turn it on (once):
+
+1. Run [004_cowork_shared_ai.sql](../supabase/migrations/004_cowork_shared_ai.sql) in the SQL Editor (additive, safe to run again).
+2. **Edge Functions → Deploy a new function → Via Editor**: name it `cowork-ai`, paste [supabase/functions/cowork-ai/index.ts](../supabase/functions/cowork-ai/index.ts), and deploy. In the function's settings turn **Verify JWT** off: the function checks the sign-in itself (this also works with the new API keys). It needs no secrets of its own.
+
+Checked by `supabase/tests/shared-ai-api.mjs` (the access rules and the function, with a fake provider) and `supabase/tests/shared-ai-e2e.cjs` (sharing from Share, a teammate's assistant using it, the daily limit, stopping), both against the local stand-in, which runs the same function file.
+
 ## Acceptance
 
 Test with two real accounts and the Windows and iPad packages. On Windows, create the owner account and a private project; on iPad, create the member account. Invite the member by username, join, add a file, save an edit, close both apps, and sign in again to reopen the file. Then remove the member from the project and verify that its access is denied.

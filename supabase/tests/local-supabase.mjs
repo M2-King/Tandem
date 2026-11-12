@@ -16,6 +16,10 @@
 //       the way Supabase Realtime does it: the policies on realtime.messages
 //       (002_cowork_realtime.sql) are run as the joining user with
 //       realtime.topic() set to the channel; no read access, no join.
+//   /functions/v1/cowork-ai
+//       The shared-AI Edge Function (supabase/functions/cowork-ai/index.ts),
+//       the same file, run here in Node. It calls the service-role-only
+//       functions with SERVICE_KEY below, as the real service role key.
 //
 // Usage (Postgres with tests/local_auth_stub.sql and the migration applied):
 //   COWORK_TEST_DB=postgres://postgres@127.0.0.1:54329/cowork_e2e node supabase/tests/local-supabase.mjs
@@ -29,6 +33,7 @@ import { WebSocketServer } from 'ws';
 
 const PORT = Number(process.env.PORT || 54400);
 const SECRET = 'local-stand-in-secret';
+export const SERVICE_KEY = 'local-stand-in-service-role';
 const pool = new pg.Pool({ connectionString: process.env.COWORK_TEST_DB || 'postgres://postgres@127.0.0.1:54329/cowork_e2e' });
 const passwords = new Map(); // email -> { salt, hash }
 const hashOf = (password, salt) => scryptSync(password, salt, 32);
@@ -84,15 +89,15 @@ async function session(id, email, meta) {
   };
 }
 
-async function rpc(fn, args, claims) {
+async function rpc(fn, args, claims, service = false) {
   if (!/^cowork_[a-z_]+$/.test(fn)) return [404, { code: 'PGRST202', message: `Could not find the function public.${fn}` }];
   const names = Object.keys(args);
   if (names.some((n) => !/^p_[a-z_]+$/.test(n))) return [400, { code: 'PGRST100', message: 'Bad argument name' }];
   const client = await pool.connect();
   try {
     await client.query('begin');
-    await client.query(`set local role ${claims ? 'authenticated' : 'anon'}`);
-    await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify(claims || { role: 'anon' })]);
+    await client.query(`set local role ${service ? 'service_role' : claims ? 'authenticated' : 'anon'}`);
+    await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify(service ? { role: 'service_role' } : claims || { role: 'anon' })]);
     const sql = `select public.${fn}(${names.map((n, i) => `${n} => $${i + 1}`).join(', ')}) as r`;
     const { rows } = await client.query(sql, names.map((n) => args[n]));
     await client.query('commit');
@@ -103,6 +108,26 @@ async function rpc(fn, args, claims) {
   } finally {
     client.release();
   }
+}
+
+// The Edge Function, as Supabase runs it: a web Request in, a Response out.
+let edgeHandle = null;
+async function edgeFunction(req, res) {
+  if (!edgeHandle) {
+    const vars = { SUPABASE_URL: `http://127.0.0.1:${PORT}`, SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY, SUPABASE_ANON_KEY: 'local', COWORK_AI_ALLOW_HTTP: '1' };
+    globalThis.Deno = { env: { get: (name) => vars[name] } }; // no Deno.serve: the file only exports handle
+    edgeHandle = (await import(new URL('../functions/cowork-ai/index.ts', import.meta.url))).handle;
+  }
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  const request = new Request(`http://127.0.0.1:${PORT}${req.url}`, {
+    method: req.method,
+    headers: Object.entries(req.headers).filter(([, v]) => typeof v === 'string'),
+    body: ['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? undefined : Buffer.concat(chunks),
+  });
+  const response = await edgeHandle(request);
+  res.writeHead(response.status, Object.fromEntries(response.headers));
+  res.end(Buffer.from(await response.arrayBuffer()));
 }
 
 const server = http.createServer(async (req, res) => {
@@ -137,14 +162,17 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, await session(rows[0].id, email, rows[0].raw_user_meta_data));
       }
       if (path === '/auth/v1/logout') return send(res, 204);
-      const claims = verify((req.headers.authorization || '').replace(/^Bearer /, ''));
+      const bearer = (req.headers.authorization || '').replace(/^Bearer /, '');
+      const service = bearer === SERVICE_KEY || (!bearer && req.headers.apikey === SERVICE_KEY);
+      const claims = service ? null : verify(bearer);
+      if (path === '/functions/v1/cowork-ai') return edgeFunction(req, res);
       if (path === '/auth/v1/user') {
         if (!claims) return send(res, 401, { code: 401, msg: 'invalid JWT' });
         return send(res, 200, { id: claims.sub, email: claims.email, aud: 'authenticated', role: 'authenticated' });
       }
       const m = /^\/rest\/v1\/rpc\/([a-z_]+)$/.exec(path);
       if (m && req.method === 'POST') {
-        const [status, body] = await rpc(m[1], await readBody(req), claims);
+        const [status, body] = await rpc(m[1], await readBody(req), claims, service);
         return send(res, status, body);
       }
       return send(res, 404, { message: 'Not found' });

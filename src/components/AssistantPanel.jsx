@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, Sparkles, ChevronRight, MessageSquareText, Wrench, Lightbulb, FileCode2, Table2, History } from 'lucide-react';
+import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, Sparkles, ChevronRight, MessageSquareText, Wrench, Lightbulb, FileCode2, Table2, History, Users } from 'lucide-react';
 import TandemMark from './TandemMark.jsx';
 import Markdown from './Markdown.jsx';
 import ProposalCard from './ProposalCard.jsx';
@@ -503,8 +503,13 @@ export default function AssistantPanel({
         <span className="panel-title">Assistant</span>
         {IS_LOCAL ? (
           aiModel ? (
-            <span className="sim-tag ai-model-tag" data-tooltip={`${aiModel.label} · ${aiModel.model}. Every change it proposes needs your review.`}>
+            <span
+              className={`sim-tag ai-model-tag${aiModel.shared ? ' is-shared' : ''}`}
+              data-tooltip={`${aiModel.label} · ${aiModel.model}. ${aiModel.note ? `${aiModel.note} ` : ''}Every change it proposes needs your review.`}
+            >
+              {aiModel.shared && <Users size={12} aria-hidden="true" />}
               {aiModel.model}
+              {aiModel.shared && <span className="sr-only"> (shared)</span>}
             </span>
           ) : (
             <span className="sim-tag" data-tooltip="Connect an AI model in AI settings to use the assistant.">

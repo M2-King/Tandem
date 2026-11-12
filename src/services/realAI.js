@@ -4,7 +4,10 @@
 
 const lineText = (l) => (typeof l === 'string' ? l : l?.text ?? '');
 
-export function createRealAssistant({ backend, getLastRun, getModelLabel }) {
+// getShared (shared projects): () => Promise<{ file_list, shared_ai } | null>:
+// the project's file list, and the owner's shared AI if there is one (used
+// when this device has no AI of its own). onShared: how much of it is used.
+export function createRealAssistant({ backend, getLastRun, getModelLabel, getShared, onShared }) {
   return async function sendRealAssistantRequest({ prompt, intent, context, files, activePath, history, signal, onStage }) {
     // The files the request is about: the open file, plus any file a context chip names.
     const paths = new Set([activePath, ...context.map((c) => c.path)].filter((p) => p && typeof files[p] === 'string'));
@@ -14,6 +17,7 @@ export function createRealAssistant({ backend, getLastRun, getModelLabel }) {
 
     onStage?.(paths.size ? `Reading ${[...paths].join(', ')}` : 'Reading the project');
     onStage?.(`Asking ${getModelLabel() || 'the AI model'}`);
+    const shared = (await getShared?.().catch(() => null)) || {};
     const result = await backend.assist(
       {
         prompt,
@@ -22,6 +26,7 @@ export function createRealAssistant({ backend, getLastRun, getModelLabel }) {
         files: sent,
         active_path: activePath,
         history: history.slice(-12),
+        ...shared,
         last_run: run
           ? {
               path: run.path,
@@ -35,6 +40,7 @@ export function createRealAssistant({ backend, getLastRun, getModelLabel }) {
       signal
     );
 
+    if (result.shared) onShared?.(result.shared);
     if (result.kind === 'proposal' && typeof files[result.path] !== 'string') {
       // Review works on files that exist; show a new file as code to create.
       return { kind: 'answer', text: `${result.text}\n\nNew file **${result.path}**:\n\n\`\`\`python\n${result.new_content}\`\`\`` };
