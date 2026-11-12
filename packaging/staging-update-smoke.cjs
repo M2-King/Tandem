@@ -28,7 +28,7 @@ function check(ok, message) {
 
 (async () => {
   // Where a tester's install goes: per user, %LOCALAPPDATA%\Programs\Tandem Staging
-  // (named Tandem, in its own folder: desktop/build/staging-installer.nsh).
+  // (named Tandem, in its own folder: desktop/nsis/staging-installer.nsh).
   const dir = path.join(process.env.LOCALAPPDATA, 'Programs', 'Tandem Staging');
   execFileSync(installer, ['/S'], { stdio: 'inherit', timeout: 300000 });
   const exe = path.join(dir, 'Tandem.exe');

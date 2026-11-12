@@ -38,7 +38,7 @@ test('staging package: name, id, feed, channel; the source is untouched', () => 
   assert.equal(p.version, '0.3.1-staging.57');
   assert.equal(p.productName, 'Tandem');
   assert.equal(p.tandemDataFolder, 'Tandem Staging'); // settings and sign-in stay where they were
-  assert.equal(p.build.nsis.include, 'build/staging-installer.nsh'); // and the install folder
+  assert.equal(p.build.nsis.include, 'nsis/staging-installer.nsh'); // and the install folder
   assert.equal(p.build.appId, 'app.tandem.staging');
   assert.equal(p.build.nsis.artifactName, 'Tandem-Setup-${version}.exe');
   // Named Tandem everywhere; the app id stays, so updates land in place.
