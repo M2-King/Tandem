@@ -130,10 +130,25 @@ jobs:
           zip -qry Tandem-iPad.ipa Payload
           ls -la Tandem-iPad.ipa
 
+      # ipad branch and releases: a zip with the .ipa (the release job downloads it by name).
       - uses: actions/upload-artifact@v4
+        if: github.ref != 'refs/heads/cowork'
         with:
-          name: ${{ github.ref == 'refs/heads/cowork' && 'Tandem-Staging-iPad' || 'Tandem-iPad' }}
+          name: Tandem-iPad
           path: Tandem-iPad.ipa
+          retention-days: 30
+          if-no-files-found: error
+      # cowork (Tandem Staging): the .ipa itself, not zipped, so the artifact
+      # link downloads Tandem-Staging-iPad.ipa directly.
+      - name: Name the staging .ipa
+        if: github.ref == 'refs/heads/cowork'
+        run: cp Tandem-iPad.ipa Tandem-Staging-iPad.ipa
+      - name: Upload the staging .ipa (not zipped)
+        if: github.ref == 'refs/heads/cowork'
+        uses: actions/upload-artifact@v7
+        with:
+          path: Tandem-Staging-iPad.ipa
+          archive: false
           retention-days: 30
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
