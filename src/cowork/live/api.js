@@ -171,29 +171,43 @@ export const removeFile = (id, path) => rpc('cowork_remove_file', { p_project: i
 //
 // handlers: onPresence(state) with { userId: [meta, …] }, onCursor(payload),
 // onStatus(status, error) with SUBSCRIBED | CHANNEL_ERROR | TIMED_OUT | CLOSED.
+//
+// The client keeps one channel per topic and hands back an existing one, so a
+// channel left before (by us, or closed by the server) is removed first and a
+// rejoin always gets a fresh channel.
 export function projectChannel(projectId, userId, { onPresence, onCursor, onStatus }) {
   const sb = supabase();
-  const channel = sb.channel(`cowork:${projectId}`, {
-    config: { private: true, presence: { key: userId }, broadcast: { self: false, ack: false } },
-  });
-  channel.on('presence', { event: 'sync' }, () => onPresence(channel.presenceState()));
-  channel.on('broadcast', { event: 'cursor' }, ({ payload }) => onCursor(payload));
+  const topic = `cowork:${projectId}`;
+  let channel = null;
   let closed = false;
   (async () => {
+    for (const old of sb.getChannels().filter((c) => c.topic === `realtime:${topic}`)) {
+      try {
+        await sb.removeChannel(old);
+      } catch {
+        // gone either way
+      }
+    }
     try {
       await sb.realtime.setAuth(); // the signed-in session's token: private channels need it
     } catch {
       // subscribe reports the failure
     }
-    if (!closed) channel.subscribe((status, error) => !closed && onStatus?.(status, error));
+    if (closed) return;
+    channel = sb.channel(topic, {
+      config: { private: true, presence: { key: userId }, broadcast: { self: false, ack: false } },
+    });
+    channel.on('presence', { event: 'sync' }, () => !closed && onPresence(channel.presenceState()));
+    channel.on('broadcast', { event: 'cursor' }, ({ payload }) => !closed && onCursor(payload));
+    channel.subscribe((status, error) => !closed && onStatus?.(status, error));
   })();
   return {
-    track: (meta) => (closed ? Promise.resolve() : channel.track(meta)),
-    cursor: (payload) => (closed ? Promise.resolve() : channel.send({ type: 'broadcast', event: 'cursor', payload })),
+    track: (meta) => (closed || !channel ? Promise.resolve() : channel.track(meta)),
+    cursor: (payload) => (closed || !channel ? Promise.resolve() : channel.send({ type: 'broadcast', event: 'cursor', payload })),
     close: () => {
       if (closed) return;
       closed = true;
-      sb.removeChannel(channel);
+      if (channel) sb.removeChannel(channel).catch(() => {});
     },
   };
 }

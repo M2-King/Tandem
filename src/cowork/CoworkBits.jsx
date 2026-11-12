@@ -87,6 +87,26 @@ export function SyncStatus({ sync }) {
   );
 }
 
+// Live mode: the connection that carries who's online and cursors.
+const LIVE = {
+  online: { text: 'Live', tip: 'Connected: you see who is here and their cursors.' },
+  joining: { text: 'Connecting…', tip: 'Connecting to see who is here and their cursors.', spin: true },
+  reconnecting: { text: 'Reconnecting…', tip: 'The live connection dropped. Reconnecting; editing and saving still work.', spin: true },
+  unavailable: { text: 'Live unavailable', tip: 'Who’s online and cursors aren’t available. Editing and saving still work.' },
+};
+
+export function LiveStatus({ state, reason }) {
+  const s = LIVE[state];
+  if (!s) return null;
+  const tip = reason && state !== 'online' ? `${s.tip} (${reason})` : s.tip;
+  return (
+    <span className={`live-status is-${state}`} role="status" aria-live="polite" data-tooltip={tip} tabIndex={0}>
+      {s.spin ? <Loader2 size={12} className="spin" aria-hidden="true" /> : <span className="live-dot" aria-hidden="true" />}
+      <span className="live-text">{s.text}</span>
+    </span>
+  );
+}
+
 export function DeviceChip() {
   return (
     <span

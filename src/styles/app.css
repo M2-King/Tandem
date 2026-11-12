@@ -6000,3 +6000,37 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   font-style: italic;
   white-space: pre-wrap;
 }
+
+/* Cowork live mode: the connection for who's online and cursors. */
+.live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: 16px;
+  white-space: nowrap;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+.live-status .live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.live-status.is-online .live-dot {
+  background: var(--success);
+}
+.live-status.is-reconnecting,
+.live-status.is-reconnecting svg {
+  color: var(--warning);
+}
+.live-status.is-unavailable .live-dot {
+  background: var(--warning);
+}
+@media (max-width: 600px) {
+  .cowork-strip .live-status.is-online .live-text {
+    display: none;
+  }
+}

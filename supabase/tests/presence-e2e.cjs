@@ -9,9 +9,11 @@
 // with Chromium and @supabase/supabase-js (a dependency of the app).
 //
 // Checks: B sees A online in the right file, and A's cursor in the same file
-// within 1 s; when A switches files B's view follows; when A's app is hidden
-// or A closes the project, A disappears; a member's client can join the
-// project's channel and a non-member's join is refused.
+// within 1 s; when A switches files B's view follows; A's cursor stays while
+// A's app is hidden for a few seconds, while A types for 30 s, and comes back
+// after A's network drops and after A reopens the project five times; when A
+// closes the project, A disappears; a member's client can join the project's
+// channel and a non-member's join is refused.
 
 const { chromium } = require('playwright');
 const crypto = require('node:crypto');
@@ -65,10 +67,30 @@ const peopleLabel = (p) => p.locator('.cowork-inline .avatar-stack').getAttribut
   const pa = await ctxA.newPage();
   const pb = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   const errs = [];
-  for (const p of [pa, pb]) p.on('pageerror', (e) => errs.push(e.message));
+  for (const p of [pa, pb]) p.on('pageerror', (e) => errs.push(process.env.DEBUG_WS ? `${e.message}\n${e.stack}` : e.message));
+  if (process.env.DEBUG_WS) {
+    const T0 = Date.now();
+    const ts = () => ((Date.now() - T0) / 1000).toFixed(1).padStart(6);
+    for (const [who, p] of [['A', pa], ['B', pb]]) {
+      p.on('websocket', (ws) => {
+        const show = (dir) => (f) => {
+          const t = typeof f.payload === 'string' ? f.payload : '';
+          if (/"(broadcast|presence|presence_diff|system|phx_close|phx_error)"/.test(t) && !/presence_state/.test(t)) console.log(ts(), who, dir, t.replace(/"access_token":"[^"]+"/, '').slice(0, 220));
+        };
+        ws.on('framesent', show('>>'));
+        ws.on('framereceived', show('<<'));
+      });
+    }
+  }
 
   await signUp(pa, A);
   await signUp(pb, B);
+  if (process.env.DEBUG_WS) {
+    for (const [who, p] of [['A', pa], ['B', pb]]) {
+      await p.evaluate(() => localStorage.setItem('tandem.coworkDebug', '1'));
+      p.on('console', (m) => /cowork live/.test(m.text()) && console.log('  ', who, m.text()));
+    }
+  }
   await pa.getByRole('button', { name: 'New shared project' }).first().click();
   await pa.locator('.dialog-new-shared input').fill(`Cursors ${tag}`);
   await pa.keyboard.press('Enter');
@@ -154,22 +176,74 @@ const peopleLabel = (p) => p.locator('.cowork-inline .avatar-stack').getAttribut
   await openFile(pa, 'b.py');
   await openFile(pb, 'b.py');
 
-  // A's app is hidden: A leaves the channel.
-  await pa.evaluate(() => {
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
-    document.dispatchEvent(new Event('visibilitychange'));
+  // A's app is hidden briefly (switching apps): A stays, for up to 2 minutes.
+  const setHidden = (p, hidden) =>
+    p.evaluate((h) => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, hidden);
+  const hasCursor = (p, name) => p.evaluate((n) => [...document.querySelectorAll('.remote-label')].some((l) => l.textContent === n), name);
+  // Every second for `secs` seconds: is A's cursor drawn for B? ('#' yes, '.' no)
+  const watch = async (secs, during) => {
+    let row = '';
+    for (let i = 0; i < secs; i++) {
+      if (during) await during(i);
+      row += (await hasCursor(pb, A)) ? '#' : '.';
+      await pa.waitForTimeout(1000);
+    }
+    return row;
+  };
+  await pa.locator('.monaco-editor .view-line', { hasText: 'other file' }).first().click();
+  await pa.keyboard.press('Home');
+  await pb.waitForFunction((name) => [...document.querySelectorAll('.remote-label')].some((l) => l.textContent === name), A, { timeout: 8000 }).catch(async (e) => {
+    console.log('   B people:', await peopleLabel(pb), '| A live:', await pa.locator('.live-status').first().innerText().catch(() => '-'));
+    await pb.screenshot({ path: `${out}/debug-b.png` });
+    await pa.screenshot({ path: `${out}/debug-a.png` });
+    throw e;
   });
-  await pb.waitForFunction((name) => ![...document.querySelectorAll('.remote-label')].some((l) => l.textContent === name), A, { timeout: 5000 }).then(
-    () => check(true, 'A’s app hidden: A’s cursor disappears for B'),
-    () => check(false, 'A’s app hidden: A’s cursor disappears for B')
+  await setHidden(pa, true);
+  let row = await watch(8);
+  check(!row.includes('.'), `A’s app hidden for 8 s: A’s cursor stays for B ${row}`);
+  await setHidden(pa, false);
+
+  // Typing for a while (presence updates are rate-limited by Supabase; cursors go as broadcasts).
+  row = await watch(30, async () => pa.keyboard.type('ab'));
+  check(!row.includes('.'), `A types for 30 s: A’s cursor stays for B ${row}`);
+  check(/Live/.test(await pa.locator('.live-status').first().innerText()), 'A’s Live indicator says Live');
+
+  // A's network drops for 6 s: A rejoins and B sees A's cursor again.
+  await ctxA.setOffline(true);
+  await pa.waitForTimeout(6000);
+  await ctxA.setOffline(false);
+  await pa.waitForFunction(() => /^Live$/.test(document.querySelector('.live-status')?.innerText || ''), null, { timeout: 30000 }).then(
+    () => check(true, 'A back online after a network drop: Live'),
+    () => check(false, 'A back online after a network drop: Live')
   );
-  await pa.evaluate(() => {
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
-  await pb.waitForFunction((u) => new RegExp(`${u}, in b\\.py`).test(document.querySelector('.cowork-inline .avatar-stack')?.getAttribute('aria-label') || ''), A, { timeout: 5000 }).then(
-    () => check(true, 'A visible again: back online in b.py'),
-    () => check(false, 'A visible again: back online in b.py')
+  await pa.keyboard.press('Home');
+  await pb.waitForFunction((name) => [...document.querySelectorAll('.remote-label')].some((l) => l.textContent === name), A, { timeout: 15000 }).then(
+    () => check(true, 'after the network drop B sees A’s cursor again'),
+    () => check(false, 'after the network drop B sees A’s cursor again')
+  );
+
+  // A leaves and reopens the project five times: still live, B sees A's cursor.
+  const projectHash = await pa.evaluate(() => location.hash);
+  for (let i = 0; i < 5; i++) {
+    await pa.evaluate(() => (location.hash = '#/shared'));
+    await pa.waitForSelector('.shared-page', { timeout: 10000 });
+    await pa.evaluate((h) => (location.hash = h), projectHash);
+    await pa.waitForSelector('.monaco-editor .view-lines', { timeout: 15000 }).catch(async (e) => {
+      await pa.screenshot({ path: `${out}/debug-reopen-a.png` });
+      console.log('   reopen', i, 'page errors:', errs.join(' | '));
+      throw e;
+    });
+  }
+  await pa.waitForFunction(() => /^Live$/.test(document.querySelector('.live-status')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+  await openFile(pa, 'b.py');
+  await pa.locator('.monaco-editor .view-line', { hasText: 'other file' }).first().click();
+  await pa.keyboard.press('End');
+  await pb.waitForFunction((name) => [...document.querySelectorAll('.remote-label')].some((l) => l.textContent === name), A, { timeout: 10000 }).then(
+    () => check(true, 'after reopening the project 5 times B sees A’s cursor'),
+    () => check(false, 'after reopening the project 5 times B sees A’s cursor')
   );
 
   // A closes the project.

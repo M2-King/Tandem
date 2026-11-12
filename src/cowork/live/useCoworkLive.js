@@ -49,6 +49,7 @@ export function useCoworkLive({ notify }) {
   const inflight = useRef(new Set());
   const failed = useRef(new Map()); // path -> { message, offline }
   const openedRef = useRef(null);
+  const openGen = useRef(0); // bumped each time a project is opened
   openedRef.current = opened;
   const meRef = useRef(null);
   meRef.current = me;
@@ -113,6 +114,7 @@ export function useCoworkLive({ notify }) {
     }
     if (openedRef.current?.id === projectId) return undefined;
     let live = true;
+    openGen.current += 1; // reloads started before this opening are dropped
     setOpened({ id: projectId, loading: true });
     api.openProject(projectId).then(
       (p) => {
@@ -276,9 +278,11 @@ export function useCoworkLive({ notify }) {
       return;
     }
     pulling.current = true;
+    const gen = openGen.current;
     try {
       const p = await api.openProject(id);
-      if (openedRef.current?.id !== id) return;
+      // Left, reopened or still opening meanwhile: this result is stale.
+      if (openedRef.current?.id !== id || openedRef.current.loading || openGen.current !== gen) return;
       const merged = mergeProject(
         { files: filesRef.current, base: base.current, conflicts: conflictsRef.current },
         p.files,
@@ -307,7 +311,7 @@ export function useCoworkLive({ notify }) {
       }
       setConflictsNow(merged.conflicts);
       setOpened((o) => {
-        if (!o || o.id !== id) return o;
+        if (!o || o.id !== id || o.loading) return o;
         const tabs = retab(o, merged.files, merged.events);
         return {
           ...o,
@@ -441,7 +445,7 @@ export function useCoworkLive({ notify }) {
         filesRef.current = files;
         delete base.current[path];
         failed.current.delete(path);
-        setOpened((o) => (o ? { ...o, files, ...retab(o, files, []) } : o));
+        setOpened((o) => (o && !o.loading ? { ...o, files, ...retab(o, files, []) } : o));
         settle();
       } else {
         const id = openedRef.current?.id;
@@ -847,6 +851,7 @@ export function useCoworkLive({ notify }) {
     reloadProject: pull,
     presence,
     presenceState: live.state,
+    presenceReason: live.reason,
     reportCursor: live.report,
     workspace,
     go,

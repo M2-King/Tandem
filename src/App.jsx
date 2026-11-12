@@ -54,7 +54,7 @@ import { COWORK_LIVE } from './cowork/live/api.js';
 import { createCoworkBackend } from './cowork/coworkBackend.js';
 import { createSharedBackend } from './cowork/live/sharedBackend.js';
 import { CursorReportContext } from './cowork/cursorReport.js';
-import { AvatarStack, CoworkTitle, DeviceChip, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
+import { AvatarStack, CoworkTitle, DeviceChip, LiveStatus, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
 import ProjectSettingsDialog from './cowork/ProjectSettingsDialog.jsx';
 import { RemoveFileDialog, RenameFileDialog } from './cowork/FileDialogs.jsx';
 import SharedProjectsPage from './cowork/SharedProjectsPage.jsx';
@@ -852,6 +852,7 @@ export default function App() {
     <>
       <AvatarStack entries={peopleEntries} onClick={openShare} offline={offline} arrivingId={arrivingId} />
       <SyncStatus sync={cowork.sync} />
+      {cowork.live && <LiveStatus state={cowork.presenceState} reason={cowork.presenceReason} />}
       <ShareButton onClick={openShare} />
       <SettingsButton onClick={() => setSettingsOpen(true)} />
     </>
@@ -983,6 +984,7 @@ export default function App() {
         <div className="cowork-strip" role="region" aria-label={`${cowork.project.name}: people and status`}>
           <AvatarStack entries={peopleEntries} onClick={openShare} offline={offline} arrivingId={arrivingId} />
           <SyncStatus sync={cowork.sync} />
+          {cowork.live && <LiveStatus state={cowork.presenceState} reason={cowork.presenceReason} />}
           {!cowork.live && <PreviewMenu cowork={cowork} inProject />}
           {!cowork.live && <DeviceChip />}
           <ShareButton onClick={openShare} />

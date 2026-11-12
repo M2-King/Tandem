@@ -144,6 +144,14 @@ export default function CodeEditor({
 
     editor.onDidChangeCursorSelection(reportSelection);
     editor.onDidChangeCursorSelection((e) => latest.current.reportCursor?.(latest.current.path, cursorOfSelection(e.selection)));
+    // Clicking back into the editor (or into a file opened again) where the caret
+    // already is moves nothing: say where it is anyway.
+    const reportHere = () => {
+      const selection = editor.getSelection();
+      if (selection) latest.current.reportCursor?.(latest.current.path, cursorOfSelection(selection));
+    };
+    editor.onDidFocusEditorText(reportHere);
+    editor.onDidChangeModel(() => setTimeout(() => editor.hasTextFocus() && reportHere(), 0));
     editor.onDidScrollChange(reportSelection);
     editor.onDidChangeModel(() => latest.current.onSelection(null));
     editor.onDidBlurEditorWidget(() => {

@@ -35,9 +35,10 @@ Run, Step through, Debug and notebook cells work in shared projects, each on the
 
 Each shared project has one private Supabase Realtime channel, `cowork:<project id>`. Only the project's members can join it: Realtime Authorization checks the policies on `realtime.messages` from [002_cowork_realtime.sql](../supabase/migrations/002_cowork_realtime.sql), so a non-member (or a member removed later, or anyone once the project is archived) is refused. Nothing sent on the channel is stored.
 
-- **Presence**: each member in the project shares their user id, username, the file they have open (and the notebook cell), their cursor and selection (line and column) and their colour. The avatars show who is online with a dot, and which file each person has open.
-- **Cursors**: caret and selection moves go as broadcasts, at most 10 a second, and are drawn in the same file in that person's colour with their name. If the text changed around a position, the cursor goes to the nearest valid spot.
-- The app leaves the channel while it is hidden and when the project is closed, so a person who leaves disappears for the others.
+- **Presence**: each member in the project shares their user id, username, the file they have open (and the notebook cell) and their colour. The avatars show who is online with a dot, and which file each person has open. Supabase limits presence updates per client (it closes the channel at about five in ten seconds), so presence is sent only when the file or cell changes, at most once every 5 seconds.
+- **Cursors**: caret and selection moves go as broadcasts, at most 8 a second, and are drawn in the same file in that person's colour with their name. They are sent again when someone joins, after each presence update, and when you click back into a file. If the text changed around a position, the cursor goes to the nearest valid spot.
+- **Staying connected**: the app stays in the channel while it is hidden for up to 2 minutes (switching apps, Stage Manager, a covered window), then leaves; a project closed is left at once. Anything the app didn't ask for (the server closing the channel, a network drop, a timeout) is rejoined after 1, 2, 5 and then every 15 seconds; a refused join (not a member, Realtime not set up) every 30 seconds.
+- **Live indicator** next to the sync status: Live, Connecting…, Reconnecting… or Live unavailable, with the reason in its tooltip. The console logs joins, leaves and closes as `[cowork live]`; set `localStorage['tandem.coworkDebug'] = '1'` to log every cursor sent and received too.
 - Typing still travels by saves: a teammate's saved text arrives with the 10-second sync (above). Live simultaneous typing is not part of this.
 
 Set up on a Supabase project (staging):
