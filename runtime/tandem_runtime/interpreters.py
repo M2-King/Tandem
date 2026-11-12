@@ -149,12 +149,15 @@ def _python_version(exe: Path) -> tuple[int, int] | None:
         return None
 
 
-def mac_candidates(path_env: str | None = None, places: tuple[str, ...] = MAC_PLACES) -> list[Path]:
+MAC_FRAMEWORKS = Path("/Library/Frameworks/Python.framework/Versions")  # python.org, each version
+
+
+def mac_candidates(path_env: str | None = None, places: tuple[str, ...] = MAC_PLACES,
+                   framework: Path | None = MAC_FRAMEWORKS) -> list[Path]:
     """Pythons to try on macOS, in order: PATH first, then the usual places."""
     dirs = [d for d in (os.environ.get("PATH", "") if path_env is None else path_env).split(os.pathsep) if d]
     dirs += [os.path.expanduser(d) for d in places]
-    framework = Path("/Library/Frameworks/Python.framework/Versions")
-    if framework.is_dir():
+    if framework is not None and framework.is_dir():
         dirs += [str(v / "bin") for v in sorted(framework.iterdir(), reverse=True) if v.name[:1].isdigit()]
     seen: set[str] = set()
     found: list[Path] = []
@@ -170,12 +173,14 @@ def mac_candidates(path_env: str | None = None, places: tuple[str, ...] = MAC_PL
     return found
 
 
-def _mac_python(path_env: str | None = None, places: tuple[str, ...] = MAC_PLACES) -> str | None:
+def _mac_python(path_env: str | None = None, places: tuple[str, ...] = MAC_PLACES,
+                 framework: Path | None = MAC_FRAMEWORKS) -> str | None:
     """The first Python 3.11 or newer on macOS (else the first Python 3 found)."""
-    if _MAC_CACHE and path_env is None and places == MAC_PLACES:
+    default = path_env is None and places == MAC_PLACES and framework == MAC_FRAMEWORKS
+    if _MAC_CACHE and default:
         return _MAC_CACHE[0]
     first = None
-    for exe in mac_candidates(path_env, places):
+    for exe in mac_candidates(path_env, places, framework):
         version = _python_version(exe)
         if not version or version[0] != 3:
             continue
@@ -183,7 +188,7 @@ def _mac_python(path_env: str | None = None, places: tuple[str, ...] = MAC_PLACE
         if version >= (3, 11):
             first = str(exe)
             break
-    if first and path_env is None and places == MAC_PLACES:
+    if first and default:
         _MAC_CACHE.append(first)
     return first
 

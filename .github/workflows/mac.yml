@@ -57,6 +57,10 @@ jobs:
       - name: Install the runtime
         run: python -m pip install -e "runtime[test]"
 
+      - name: Kernel processes (diagnostics)
+        continue-on-error: true
+        run: python packaging/mac/kernel-processes.py "$PWD/runtime/.test-envs/py312/bin/python"
+
       - name: Run the tests
         working-directory: runtime
         run: python -m pytest -v
