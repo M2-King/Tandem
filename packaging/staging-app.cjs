@@ -44,8 +44,9 @@ function toStaging(p, run) {
   b.nsis.uninstallDisplayName = 'Tandem';
   b.nsis.artifactName = 'Tandem-Setup-${version}.exe';
   b.portable.artifactName = 'Tandem-${version}-portable.exe';
-  // The Mac menu bar and Dock say Tandem too.
-  b.mac = { ...b.mac, extendInfo: { ...(b.mac?.extendInfo || {}), CFBundleName: 'Tandem', CFBundleDisplayName: 'Tandem' } };
+  // The Mac's shown name. Not CFBundleName: Electron finds its helper apps
+  // ("<CFBundleName> Helper.app") by it, so changing it stops the app starting.
+  b.mac = { ...b.mac, extendInfo: { ...(b.mac?.extendInfo || {}), CFBundleDisplayName: 'Tandem' } };
   // TODO(code signing): the installer isn't signed yet, so there is no
   // publisherName here (electron-updater would then require a signature that
   // matches it). Add win.signtoolOptions/azureSignOptions and publisherName

@@ -118,7 +118,8 @@ jobs:
           sleep 5
           npm install --no-save playwright@1.64.1
           npx playwright install webkit
-          node ipad/tests/web.cjs http://127.0.0.1:47831/ webkit --full
+          # The simulator on GitHub's Macs is slow to stop a busy loop (10-12 s seen; 1-2 s in browsers).
+          STOP_BUDGET_MS=30000 node ipad/tests/web.cjs http://127.0.0.1:47831/ webkit --full
           xcrun simctl io "$UDID" screenshot ipad-simulator-after.png || true
 
       - name: Build the .ipa (unsigned)

@@ -140,7 +140,9 @@ function fakeAnthropic() {
   await page.getByRole('button', { name: 'Stop' }).first().click();
   await run.waitFor({ timeout: 15000 });
   // Generous: CI simulators can be slow; Stop always ends the run within 1.5 s of reaching the app.
-  check(Date.now() - t0 < 10000, `Stop ended an endless loop in ${Date.now() - t0} ms`);
+  // STOP_BUDGET_MS: the iPad simulator on GitHub's Macs needs more (10-12 s seen).
+  const budget = Number(process.env.STOP_BUDGET_MS) || 10000;
+  check(Date.now() - t0 < budget, `Stop ended an endless loop in ${Date.now() - t0} ms (allowed ${budget} ms)`);
 
   await page.getByRole('treeitem', { name: 'stats.py' }).click();
   await page.getByRole('button', { name: 'More ways to run' }).click();

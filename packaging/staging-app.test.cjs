@@ -45,6 +45,7 @@ test('staging package: name, id, feed, channel; the source is untouched', () => 
   assert.equal(p.build.nsis.uninstallDisplayName, 'Tandem');
   assert.equal(p.build.productName, 'Tandem Staging');
   assert.equal(p.build.mac.extendInfo.CFBundleDisplayName, 'Tandem');
+  assert.equal(p.build.mac.extendInfo.CFBundleName, undefined); // Electron finds its helpers by it
   // One range per request (GitHub refuses several in one): small differential updates.
   assert.deepEqual(p.build.publish, [{ provider: 'generic', url: FEED_URL, channel: 'staging', useMultipleRangeRequest: false }]);
   assert.deepEqual(p.tandemUpdates, { channel: 'staging', url: FEED_URL });
