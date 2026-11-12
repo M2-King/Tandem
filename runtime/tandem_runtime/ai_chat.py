@@ -301,8 +301,9 @@ def parse_reply(text: str, request: dict, files: ProjectFiles) -> dict:
 def assist(settings: AISettings, files: ProjectFiles, request: dict, timeout: float = 300) -> dict:
     provider = active_provider(settings)
     shared = request.get("shared_ai")
-    if provider is None and isinstance(shared, dict):
-        # No AI of your own: the AI the project's owner shares.
+    if isinstance(shared, dict):
+        # The AI the project's owner shares: the app sends it when it is the
+        # one to use (no AI of your own, or chosen for this project).
         started = time.monotonic()
         answer = _ask_shared(shared, request, timeout)
         result = parse_reply(answer["text"], request, files)

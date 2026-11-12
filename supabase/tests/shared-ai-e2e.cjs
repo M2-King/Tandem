@@ -10,7 +10,8 @@
 // OpenAI-compatible provider runs on this computer.
 //
 // Checks: A shares from Share › AI for everyone and sees only the key's last
-// characters; B's assistant shows the shared model; B's question is answered
+// characters; B, who has an AI of their own, is asked from AI settings
+// whether to use the shared AI in this project, and then does; B's question is answered
 // by A's AI with A's key, about the shared project's files; a proposed change
 // can be reviewed; B sees how many requests are left and the limit holds;
 // after A stops sharing, B's assistant says no AI is connected.
@@ -70,6 +71,13 @@ const lastAnswer = (p) =>
     const all = [...document.querySelectorAll('.assistant-messages .msg-body, .assistant-messages .msg-error')];
     return (all.at(-1)?.innerText || '').replace(/\s+/g, ' ');
   });
+// B's own AI, set through the runtime (as AI settings does).
+const ownAI = (p, body) =>
+  p.evaluate(async (b) => {
+    const token = JSON.parse(document.getElementById('tandem-runtime').textContent).token;
+    const r = await fetch('/api/ai/settings', { method: 'PUT', headers: { 'x-tandem-token': token, 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    return r.ok;
+  }, body);
 const badge = (p) => p.locator('.assistant-inner .panel-header .sim-tag').first().innerText().catch(() => '');
 const openAssistant = async (p) => {
   if (!(await p.locator('.composer-input').count())) {
@@ -90,7 +98,10 @@ let pa, pb;
 
   await signUp(pa, APP_A, A);
   await signUp(pb, RUNTIME_B, B);
-  check(true, `owner ${A}, teammate ${B} (desktop runtime, no AI of their own)`);
+  check(await ownAI(pb, { provider: 'openai', base_url: FAKE, model: 'own-model', api_key: 'sk-own-key-refused', activate: true }), 'B has an AI of their own (OpenAI-compatible, own-model)');
+  await pb.reload();
+  await pb.waitForSelector('.shared-page .shared-list, .shared-page .shared-empty', { timeout: 20000 });
+  check(true, `owner ${A}, teammate ${B} (desktop runtime)`);
 
   // A: a project with a file, B invited.
   await pa.getByRole('button', { name: 'New shared project' }).first().click();
@@ -138,8 +149,21 @@ let pa, pb;
   await pb.waitForSelector('.monaco-editor .view-lines', { timeout: 60000 });
   await pb.locator('.file-sidebar, .sidebar').getByText('main.py', { exact: true }).first().click();
   await openAssistant(pb);
-  await pb.waitForFunction(() => /gpt-shared-test/.test(document.querySelector('.assistant-inner .panel-header')?.innerText || ''), null, { timeout: 15000 });
-  check(true, `B’s assistant shows the shared model: “${await badge(pb)}”`);
+  await pb.waitForFunction(() => /own-model/.test(document.querySelector('.assistant-inner .panel-header')?.innerText || ''), null, { timeout: 15000 });
+  check(true, 'with an AI of their own, B’s assistant uses it at first');
+
+  // AI settings asks which AI to use in this project.
+  await pb.locator('.assistant-inner .panel-header').getByRole('button', { name: 'AI settings' }).click();
+  const choice = pb.locator('.dialog-ai-choice');
+  await choice.waitFor({ timeout: 5000 });
+  const choiceText = (await choice.innerText()).replace(/\s+/g, ' ');
+  check(choiceText.includes('Use the shared AI in this project?') && choiceText.includes(`${A} shares gpt-shared-test`), `AI settings asks: “${choiceText.slice(0, 110)}…”`);
+  check(!(await pb.locator('.dialog-ai-settings, .dialog-ai').count()), '…before the AI settings themselves');
+  await pb.waitForTimeout(500); // the dialog eases in
+  await pb.screenshot({ path: `${out}/3a-member-choice.png` });
+  await choice.getByRole('button', { name: /Use the shared AI/ }).click();
+  await pb.waitForFunction(() => /gpt-shared-test/.test(document.querySelector('.assistant-inner .panel-header')?.innerText || ''), null, { timeout: 5000 });
+  check(true, `after “Use the shared AI”, B’s assistant shows the shared model: “${await badge(pb)}”`);
 
   // An edit typed just now: saved before asking, so the shared AI sees it.
   await pb.locator('.monaco-editor .view-lines').first().click();
@@ -181,6 +205,20 @@ let pa, pb;
   const limited = await lastAnswer(pb);
   check(/used today.s 3 requests on the shared AI/.test(limited), `fourth request: “${limited.slice(0, 110)}”`);
   await pb.screenshot({ path: `${out}/5-member-limit.png` });
+
+  // The choice can be changed back: "Use my own AI" opens AI settings.
+  await pb.locator('.assistant-inner .panel-header').getByRole('button', { name: 'AI settings' }).click();
+  await pb.locator('.dialog-ai-choice .ai-choice.is-current').filter({ hasText: 'Use the shared AI' }).waitFor({ timeout: 5000 });
+  check(true, 'AI settings shows the shared AI as the one in use');
+  await pb.locator('.dialog-ai-choice').getByRole('button', { name: /Use my own AI/ }).click();
+  await pb.getByRole('dialog', { name: /AI settings/ }).waitFor({ timeout: 5000 });
+  check(/own-model/.test(await badge(pb)), '“Use my own AI” goes back to own-model and opens AI settings');
+  await pb.keyboard.press('Escape');
+  // B's own AI is removed again (the runtime is shared by the tests).
+  await ownAI(pb, { provider: 'openai', activate: false });
+  await pb.reload();
+  await pb.waitForSelector('.monaco-editor .view-lines', { timeout: 30000 });
+  await openAssistant(pb);
 
   // A stops sharing; B's assistant goes back to "No AI connected".
   await pa.locator('.cowork-inline').getByRole('button', { name: 'Share', exact: true }).click();

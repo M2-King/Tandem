@@ -162,11 +162,18 @@ def test_without_own_ai_a_shared_project_uses_the_owners_shared_ai(client, proje
     assert not {"system", "messages", "max_tokens", "files"} & set(body)
 
 
-def test_own_ai_comes_before_the_shared_one(client, project, fake):
+def test_the_app_chooses_the_shared_ai_even_with_an_own_ai(client, project, fake):
+    # The app sends shared_ai only when the shared AI is the one to use here.
     client.put("/api/ai/settings", json={"provider": "ollama", "base_url": fake, "model": "llama3.2", "activate": True})
-    Fake.reply = "Mine."
+    Fake.reply = "Shared."
     result = client.post("/api/ai/assist", json=shared_request(project, fake)).json()
-    assert result["kind"] == "answer" and Fake.seen[-1][0] == "/api/chat" and "Shared" not in result.get("provider", "")
+    assert result["provider"] == "Shared by tim" and Fake.seen[-1][0] == "/functions/v1/cowork-ai"
+    # Without it, the own AI answers.
+    req = shared_request(project, fake)
+    del req["shared_ai"]
+    Fake.reply = "Mine."
+    result = client.post("/api/ai/assist", json=req).json()
+    assert result["text"] == "Mine." and Fake.seen[-1][0] == "/api/chat"
 
 
 def test_shared_ai_errors_are_shown_as_they_are(client, project, fake):

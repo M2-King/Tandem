@@ -183,8 +183,9 @@ export function createIpadAI({ api, token, settings }) {
     Array.isArray(request.file_list) ? request.file_list : (await (await api('/api/files')).json()).files.map((f) => f.path);
 
   async function assist(request, signal) {
+    // The app sends shared_ai when the project's shared AI is the one to use.
+    if (request.shared_ai) return assistShared(request, signal);
     const provider = await active();
-    if (!provider && request.shared_ai) return assistShared(request, signal);
     if (!provider) {
       return {
         kind: 'setup',

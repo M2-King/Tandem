@@ -35,6 +35,7 @@ import { isSqlFile } from './lib/fileTypes.js';
 import { isNotebook } from './lib/notebook.js';
 import { closeNotebookSession, notebookSession } from './state/notebookSession.js';
 import AISettingsDialog from './components/AISettingsDialog.jsx';
+import AIChoiceDialog from './cowork/AIChoiceDialog.jsx';
 import ProjectsDialog from './components/ProjectsDialog.jsx';
 import { createRealAssistant } from './services/realAI.js';
 import { useAssistant } from './state/useAssistant.js';
@@ -318,11 +319,12 @@ export default function App() {
         ? createRealAssistant({
             backend,
             getLastRun: (path) => runsRef.current.filter((r) => r.path === path).at(-1) || null,
-            getModelLabel: () => aiActiveRef.current?.model || sharedAIRef.current.share?.model,
+            getModelLabel: () =>
+              sharedAIRef.current.usesShared(!!aiActiveRef.current) ? sharedAIRef.current.share.model : aiActiveRef.current?.model,
             getShared: async () => {
               const s = sharedAIRef.current;
               if (!s.available) return null;
-              const useShared = !aiActiveRef.current && s.share;
+              const useShared = s.usesShared(!!aiActiveRef.current);
               // The shared AI reads the files from the project: save edits still waiting first.
               if (useShared) await coworkRef.current.flushSaves?.().catch(() => {});
               const shared_ai = useShared ? await s.access() : null;
@@ -335,8 +337,7 @@ export default function App() {
   );
   const share = sharedAI.share;
   const assistantModel =
-    aiActive ||
-    (share
+    (sharedAI.usesShared(!!aiActive)
       ? {
           label: `Shared by ${share.shared_by_me ? 'you' : share.shared_by}`,
           model: share.model,
@@ -345,7 +346,10 @@ export default function App() {
             ? 'You share this AI with the project. Your own requests have no limit.'
             : `${share.used_today} of ${share.daily_limit} requests used today.`,
         }
-      : null);
+      : null) || aiActive;
+  // In a shared project with a shared AI, "AI settings" first asks which AI to use here.
+  const [aiChoiceOpen, setAIChoiceOpen] = useState(false);
+  const openAISettings = useCallback(() => (sharedAIRef.current.share ? setAIChoiceOpen(true) : setAISettingsOpen(true)), []);
   const assistant = useAssistant({
     getFiles: useCallback(() => filesRef.current, []),
     getActivePath: useCallback(() => activeRef.current, []),
@@ -986,7 +990,7 @@ export default function App() {
         diffInline={prefs.diffInline}
         onDiffInline={(inline) => update({ diffInline: inline })}
         onReset={IS_LOCAL || inCowork || onSharedHome ? null : () => setConfirmReset(true)}
-        onAISettings={IS_LOCAL ? () => setAISettingsOpen(true) : null}
+        onAISettings={IS_LOCAL ? openAISettings : null}
         onAddFiles={IS_LOCAL && !inCowork ? handleAddFiles : null}
         desktop={{ ...desktop, setMaterial: (m) => desktop.setMaterial(m, { busy: !!exec.session }) }}
         onOpenFolder={
@@ -1265,13 +1269,13 @@ export default function App() {
             onCancel={assistant.cancel}
             onSuggestion={(text) => sendPrompt(text)}
             onAction={(action) =>
-              action.type === 'reset-file' ? resetFile(action.path) : action.type === 'open-ai-settings' && setAISettingsOpen(true)
+              action.type === 'reset-file' ? resetFile(action.path) : action.type === 'open-ai-settings' && openAISettings()
             }
             aiModel={assistantModel}
             onRetry={(r) => sendPrompt(r.prompt, { intent: r.intent, context: r.context })}
             composerRef={composerRef}
             onClose={closeAssistant}
-            onConnectAI={IS_LOCAL ? () => setAISettingsOpen(true) : null}
+            onConnectAI={IS_LOCAL ? openAISettings : null}
             composerSuggestions={composerSuggestions}
             onGoToCode={(chip) => {
               ws.openFile(chip.path);
@@ -1324,6 +1328,25 @@ export default function App() {
 
       {projectsOpen && <ProjectsDialog backend={backend} onClose={() => setProjectsOpen(false)} />}
 
+      {aiChoiceOpen && share && (
+        <AIChoiceDialog
+          share={share}
+          projectName={projectName}
+          usingShared={sharedAI.usesShared(!!aiActive)}
+          ownAI={aiActive}
+          onUseShared={() => {
+            sharedAI.choose('shared');
+            setAIChoiceOpen(false);
+            notify(`${projectName} uses the shared AI on this device.`);
+          }}
+          onUseOwn={() => {
+            sharedAI.choose('own');
+            setAIChoiceOpen(false);
+            setAISettingsOpen(true);
+          }}
+          onClose={() => setAIChoiceOpen(false)}
+        />
+      )}
       {aiSettingsOpen && (
         <AISettingsDialog
           backend={backend}

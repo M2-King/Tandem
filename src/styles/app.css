@@ -6572,3 +6572,60 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
 .ai-share-usage-table td.is-full {
   color: var(--warning, #e0a040);
 }
+
+/* "Use the shared AI in this project?" (AIChoiceDialog) */
+.ai-choice-options {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 6px;
+}
+.ai-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  text-align: left;
+  transition: background-color var(--t-select) var(--ease), border-color var(--t-select) var(--ease);
+}
+.ai-choice:hover {
+  background: var(--bg-hover);
+}
+.ai-choice.is-current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.ai-choice:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.ai-choice-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ai-choice-text {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.ai-choice-title {
+  font-weight: var(--fw-medium);
+}
+.ai-choice-detail {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.ai-choice-check {
+  flex: none;
+  color: var(--accent);
+}
