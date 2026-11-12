@@ -7,13 +7,15 @@
 //
 // Security: the page runs sandboxed with context isolation and no Node access.
 // It may only load the local runtime's own address; other links open in the
-// browser. The preload exposes a few window actions, nothing else.
+// browser. The preload exposes a few window actions and, in Tandem Staging,
+// the update state (updater.js), nothing else.
 
 const { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { setupUpdates } = require('./updater.js');
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -101,9 +103,17 @@ function startRuntime(folder) {
   });
 }
 
-function stopRuntime() {
-  if (runtime?.proc && runtime.proc.exitCode === null) runtime.proc.kill();
+// Resolves once the runtime has exited (or after `waitMs`).
+function stopRuntime(waitMs = 0) {
+  const proc = runtime?.proc;
   runtime = null;
+  if (!proc || proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve();
+  const exited = new Promise((resolve) => {
+    proc.once('exit', resolve);
+    if (waitMs) setTimeout(resolve, waitMs);
+  });
+  proc.kill();
+  return waitMs ? exited : Promise.resolve();
 }
 
 // ---------------------------------------------------------------- wallpaper brightness
@@ -276,6 +286,7 @@ handle('desktop:info', () => ({
   materials: MATERIALS,
   maximized: win?.isMaximized() ?? false,
   folder: runtime?.folder ?? null,
+  name: app.getName(),
   version: app.getVersion(),
   wallpaperLuminance: wallpaperLuminance(),
 }));
@@ -308,6 +319,21 @@ handle('desktop:open-folder', async () => {
 
 handle('desktop:restart-runtime', () => (runtime?.folder || loadSettings().lastFolder ? openFolder(runtime?.folder || loadSettings().lastFolder) : false));
 
+// Tandem Staging updates itself; in other builds these only report "off".
+const updates = setupUpdates({
+  app,
+  pkg: require('./package.json'),
+  handle,
+  send: (channel, value) => {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, value);
+  },
+  // Before the installer starts: stop the Python runtime, as quitting does.
+  prepareInstall: () => {
+    quitting = true;
+    return stopRuntime(5000);
+  },
+});
+
 handle('desktop:window', (action) => {
   if (!win) return;
   if (action === 'minimize') win.minimize();
@@ -329,6 +355,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     nativeTheme.themeSource = 'dark';
+    updates.start(); // first check after 10 s, in the background
     let folder = process.env.TANDEM_OPEN_FOLDER || loadSettings().lastFolder;
     if (!folder || !fs.existsSync(folder)) folder = await chooseFolder(null);
     if (!folder || !(await openFolder(folder))) {

@@ -7,7 +7,10 @@ name: Windows app
 #
 # The cowork branch builds "Tandem Staging": Cowork in live mode against the
 # staging Supabase project, installed beside the regular Tandem, kept as a
-# workflow artifact (no release).
+# workflow artifact. Each staging build has its own version
+# (0.3.1-staging.<run number>) and, once every check has passed, replaces the
+# files of the rolling prerelease windows-staging, which installed copies of
+# Tandem Staging update from (publish-staging).
 
 on:
   push:
@@ -69,6 +72,8 @@ jobs:
     name: Build the desktop app
     needs: test
     runs-on: windows-latest
+    outputs:
+      staging_version: ${{ steps.staging.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -99,9 +104,16 @@ jobs:
           smoke-project-env/Scripts/python.exe -m pip install --quiet numpy pandas matplotlib ipykernel
           python packaging/windows/smoke.py out/tandem-runtime/tandem-runtime.exe (Resolve-Path smoke-project-env/Scripts/python.exe).Path
 
-      - name: Name the staging app (installs beside Tandem)
+      - name: Update channel unit tests
         if: github.ref == 'refs/heads/cowork'
-        run: node packaging/staging-app.cjs desktop/package.json
+        run: |
+          npm ci --prefix desktop
+          node --test packaging/staging-app.test.cjs desktop/updater.test.cjs
+
+      - name: Name the staging app (installs beside Tandem, updates from windows-staging)
+        id: staging
+        if: github.ref == 'refs/heads/cowork'
+        run: node packaging/staging-app.cjs desktop/package.json ${{ github.run_number }}
 
       - name: Build the installer
         working-directory: desktop
@@ -139,6 +151,15 @@ jobs:
           Write-Output "App: $exe"
           node packaging/desktop-smoke.cjs $exe (Resolve-Path smoke-project-env/Scripts/python.exe).Path desktop-screen.jpg
 
+      - name: Check updates in an installed Tandem Staging
+        if: github.ref == 'refs/heads/cowork'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.staging.outputs.version }}
+        run: |
+          $setup = (Resolve-Path "desktop/release/Tandem-Staging-Setup-$env:VERSION.exe").Path
+          node packaging/staging-update-smoke.cjs $setup $env:VERSION (Resolve-Path smoke-project-env/Scripts/python.exe).Path
+
       # main and tags: one zip with both exes (the release job downloads it by name).
       - uses: actions/upload-artifact@v4
         if: github.ref != 'refs/heads/cowork'
@@ -159,6 +180,19 @@ jobs:
           path: desktop/release/Tandem-Staging-Setup-*.exe
           archive: false
           retention-days: 30
+          if-no-files-found: error
+
+      # cowork: the files for the update feed, for publish-staging.
+      - name: Keep the update files
+        if: github.ref == 'refs/heads/cowork'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-staging-feed
+          path: |
+            desktop/release/Tandem-Staging-Setup-${{ steps.staging.outputs.version }}.exe
+            desktop/release/Tandem-Staging-Setup-${{ steps.staging.outputs.version }}.exe.blockmap
+            desktop/release/staging.yml
+          retention-days: 7
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
@@ -198,3 +232,74 @@ jobs:
 
             Code runs on your computer with your permissions. Tandem is a local runtime for your own projects, not a sandbox.
             The exe isn't code-signed yet, so Windows SmartScreen may ask you to confirm ("More info" → "Run anyway").
+
+  # cowork: replace the files of the rolling prerelease windows-staging, the
+  # feed installed copies of Tandem Staging update from. Only after every
+  # build check has passed. Keeps the previous build's .blockmap (for
+  # differential downloads) and removes older installers. Never "latest".
+  publish-staging:
+    name: Publish the staging update
+    if: github.ref == 'refs/heads/cowork' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: windows-staging-feed
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: windows-staging
+      VERSION: ${{ needs.build.outputs.staging_version }}
+      FEED: https://github.com/M2-King/Tandem/releases/download/windows-staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packaging
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-staging-feed
+          path: feed
+
+      - name: Check the update files
+        run: node packaging/check-staging-feed.mjs feed "$VERSION"
+
+      - name: Publish to the windows-staging prerelease
+        id: publish
+        run: |
+          set -euo pipefail
+          EXE="Tandem-Staging-Setup-${VERSION}.exe"
+          NOTES="Tandem Staging for Windows ${VERSION} (cowork ${GITHUB_SHA::7}, run ${GITHUB_RUN_NUMBER}): the update feed for installed copies of Tandem Staging, replaced after every cowork build. Testers install it once from ${EXE}; later builds arrive inside the app. Not a release."
+          prev=""
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            prev=$(gh release download "$TAG" -p staging.yml -O - 2>/dev/null | sed -n 's/^version: *//p' | tr -d "'\"" || true)
+          else
+            gh release create "$TAG" --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "Tandem Staging (Windows, rolling)" --notes "$NOTES"
+          fi
+          echo "Feed now: ${prev:-empty}; this build: $VERSION"
+          # A late run never replaces a newer build.
+          if [ -n "$prev" ] && [ "$(printf '%s\n%s\n' "$prev" "$VERSION" | sort -V | tail -n1)" != "$VERSION" ]; then
+            echo "::notice::The feed already has $prev, newer than $VERSION; not replacing it."
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The installer and its blockmap first, then the channel file that points at them.
+          gh release upload "$TAG" "feed/$EXE" "feed/$EXE.blockmap" --clobber
+          gh release upload "$TAG" feed/staging.yml --clobber
+          keep=("$EXE" "$EXE.blockmap" "staging.yml")
+          [ -n "$prev" ] && [ "$prev" != "$VERSION" ] && keep+=("Tandem-Staging-Setup-${prev}.exe.blockmap")
+          gh release view "$TAG" --json assets -q '.assets[].name' | while read -r name; do
+            if ! printf '%s\n' "${keep[@]}" | grep -qxF "$name"; then
+              echo "Removing $name"
+              gh release delete-asset "$TAG" "$name" -y
+            fi
+          done
+          gh release edit "$TAG" --prerelease --latest=false --notes "$NOTES"
+          gh release view "$TAG" --json isPrerelease,assets -q '"prerelease: \(.isPrerelease)", (.assets[] | "  \(.name)  \(.size) bytes")'
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check the feed
+        if: steps.publish.outputs.published == 'true'
+        run: node packaging/check-staging-feed.mjs feed "$VERSION" "$FEED"

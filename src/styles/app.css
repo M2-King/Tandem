@@ -5918,3 +5918,53 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   color: var(--text-muted);
   font-size: var(--fs-xs);
 }
+
+/* ---------- in-app update (Tandem Staging) ---------- */
+.update-banner {
+  position: fixed;
+  top: calc(var(--toolbar-height) + 10px);
+  right: 16px;
+  z-index: 65;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 12px;
+  border-radius: var(--radius-float);
+  background: var(--material-3);
+  -webkit-backdrop-filter: var(--blur-3);
+  backdrop-filter: var(--blur-3);
+  border: 1px solid var(--border-float);
+  box-shadow: var(--shadow-menu);
+  color: var(--text-primary);
+  font-size: var(--fs-md);
+  animation: toast-in var(--t-menu) var(--ease-out);
+}
+.update-banner-icon {
+  flex: none;
+  color: var(--accent);
+}
+.update-banner-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+.update-banner .btn {
+  flex: none;
+}
+.menu-update-status {
+  padding: 0 10px 6px 36px;
+  font-size: var(--fs-sm);
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+.menu-update-status.is-error {
+  color: var(--warning, var(--text-secondary));
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-banner {
+    animation: none;
+  }
+}

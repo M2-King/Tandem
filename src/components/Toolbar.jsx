@@ -19,6 +19,8 @@ import {
   Code2,
   Database,
   Users,
+  RefreshCw,
+  Download,
 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import TandemMark from './TandemMark.jsx';
@@ -27,6 +29,7 @@ import Menu, { MenuItem } from './Menu.jsx';
 import RunControl from './RunControl.jsx';
 import WindowControls from './WindowControls.jsx';
 import { MATERIAL_LABELS } from '../state/useDesktop.js';
+import { updateStatusText } from '../state/useUpdates.js';
 import { IS_IPAD } from '../runtime/config.js';
 
 function SaveStatus({ state, onDisk }) {
@@ -57,6 +60,36 @@ function SaveStatus({ state, onDisk }) {
       )}
       {state === 'saving' ? 'Saving…' : onDisk ? 'Saved to disk' : 'Saved locally'}
     </span>
+  );
+}
+
+// The installed version and, in Tandem Staging, its updates.
+function AppVersion({ desktop, updates, close, onRestartToUpdate }) {
+  const s = updates?.state;
+  const name = s?.name || desktop.info?.name || 'Tandem';
+  const version = s?.version || desktop.info?.version;
+  if (!version) return null;
+  const busy = s && ['checking', 'downloading'].includes(s.status);
+  return (
+    <>
+      <div className="menu-sep" role="separator" />
+      <div className="menu-label">
+        {name} <span className="mono">{version}</span>
+      </div>
+      {s?.staging && (
+        <>
+          {s.status === 'ready' ? (
+            <MenuItem close={close} icon={Download} label="Restart to update" onSelect={onRestartToUpdate} />
+          ) : (
+            // Stays open so the status below shows the result.
+            <MenuItem icon={RefreshCw} label="Check for updates" disabled={!s.enabled || busy} onSelect={updates.check} />
+          )}
+          <div className={`menu-update-status ${s.status === 'error' ? 'is-error' : ''}`} role="status" aria-live="polite">
+            {updateStatusText(s)}
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -120,6 +153,8 @@ export default function Toolbar({
   beforeRun,
   hideWork = false,
   onSharedProjects,
+  updates,
+  onRestartToUpdate,
 }) {
   const fileInput = useRef(null);
   const addInput = useRef(null);
@@ -330,6 +365,7 @@ export default function Toolbar({
                         onSelect={() => desktop.setMaterial(m)}
                       />
                     ))}
+                    <AppVersion desktop={desktop} updates={updates} close={close} onRestartToUpdate={onRestartToUpdate} />
                   </>
                 ) : (
                 <>

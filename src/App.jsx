@@ -13,6 +13,8 @@ import Toasts, { useToasts } from './components/Toasts.jsx';
 import { usePrefs } from './state/usePrefs.js';
 import { useWallpaper } from './state/useWallpaper.js';
 import { useDesktop } from './state/useDesktop.js';
+import { useUpdates } from './state/useUpdates.js';
+import UpdateBanner from './components/UpdateBanner.jsx';
 import { DESKTOP } from './runtime/desktop.js';
 import { applyGlass } from './lib/glass.js';
 import { useWorkspace } from './state/useWorkspace.js';
@@ -120,6 +122,8 @@ export default function App() {
     usePrefs();
   const wall = useWallpaper(notify, IS_IPAD ? backend : null);
   const desktop = useDesktop(notify);
+  const updates = useUpdates();
+  const [updateConfirm, setUpdateConfirm] = useState(null); // reasons to confirm before restarting
   // In the desktop app the glass sits over the person's own wallpaper; its brightness comes from the system.
   const backdropLuminance = desktop.active ? (desktop.luminance ?? 0.3) : wall.luminance;
   useEffect(() => applyGlass(prefs.glass, prefs.frost, backdropLuminance), [prefs.glass, prefs.frost, backdropLuminance]);
@@ -264,6 +268,29 @@ export default function App() {
   const [revealRequest, setRevealRequest] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
+
+  // Restart into a downloaded update. Edits are saved first; anything that
+  // would be lost (a failed save, a shared file not yet saved, running code)
+  // is confirmed. The desktop app then stops the Python runtime, installs
+  // silently and reopens.
+  const restartToUpdate = async (confirmed = false) => {
+    const reasons = [];
+    if (exec.session && !exec.session.finished) reasons.push('The code that is running will stop.');
+    if (saveState === 'failed') reasons.push('A file couldn’t be saved to disk, so its latest changes will be lost.');
+    if (cowork.sync === 'unsaved' || cowork.sync === 'saving') reasons.push('A shared file has changes that aren’t saved yet. Copy them first if the save keeps failing.');
+    if (!confirmed && reasons.length) {
+      setUpdateConfirm(reasons);
+      return;
+    }
+    setUpdateConfirm(null);
+    try {
+      await deviceWs.flush?.();
+    } catch {
+      // the save status shows the failure
+    }
+    const started = await updates.install().catch(() => false);
+    if (!started) notify('The update isn’t ready to install. Try Check for updates in the ⋯ menu.');
+  };
   const composerRef = useRef(null);
   const assistantToggleRef = useRef(null);
   const centerRef = useRef(null);
@@ -857,7 +884,17 @@ export default function App() {
         wallpaper={wall.wallpaper}
         onWallpaper={wall.choose}
         onWallpaperFile={wall.pickImage}
+        updates={updates.supported ? updates : null}
+        onRestartToUpdate={() => restartToUpdate()}
       />
+      {updates.banner && (
+        <UpdateBanner
+          name={updates.state.name}
+          version={updates.state.available}
+          onLater={updates.later}
+          onRestart={() => restartToUpdate()}
+        />
+      )}
 
       {inCowork && (
         // Narrow windows: the project's people, status and Share sit under the toolbar.
@@ -1232,6 +1269,34 @@ export default function App() {
             if (id) notify(`Created ${name}. Invite people from Share.`);
           }}
         />
+      )}
+
+      {updateConfirm && (
+        <Dialog title="Restart to update" onClose={() => setUpdateConfirm(null)} className="dialog-confirm">
+          <h2 className="dialog-title">Restart to update now?</h2>
+          {updateConfirm.map((r) => (
+            <p key={r} className="dialog-text">
+              {r}
+            </p>
+          ))}
+          <p className="dialog-text">Choose Later to keep working; the update installs when you quit Tandem.</p>
+          <div className="dialog-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setUpdateConfirm(null);
+                updates.later();
+              }}
+              data-autofocus
+            >
+              Later
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => restartToUpdate(true)}>
+              Restart anyway
+            </button>
+          </div>
+        </Dialog>
       )}
 
       {confirmReset && (

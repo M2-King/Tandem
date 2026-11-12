@@ -148,6 +148,15 @@ async function seeThrough(app, win, label) {
   check(probe.shell === 'desktop', 'desktop mode is on');
   check(probe.wallpaper === 'none' && probe.background === 'rgba(0, 0, 0, 0)', 'the app draws no wallpaper: the desktop shows behind it');
   check(probe.node === 'undefined/undefined', 'the page has no Node access');
+  // Updates: the bridge offers only state/check/install/onState, and they are
+  // off here (this unpacked app wasn't installed by the installer).
+  const updates = await win.evaluate(async () => {
+    const u = window.tandemDesktop.updates;
+    return { keys: Object.keys(u).sort(), state: await u.state() };
+  });
+  console.log('     updates:', JSON.stringify(updates.state));
+  check(JSON.stringify(updates.keys) === JSON.stringify(['check', 'install', 'onState', 'state']), 'update bridge: state, check, install, onState only');
+  check(updates.state.enabled === false && updates.state.status === 'off', 'updates are off in the unpacked app');
   if (IS_WIN) check(['acrylic', 'mica', 'clear'].includes(probe.material), `window glass: ${probe.material}`);
 
   // Tandem's own layers must be see-through, whatever the system then does.
