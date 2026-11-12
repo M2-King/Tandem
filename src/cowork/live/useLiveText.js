@@ -106,6 +106,7 @@ export function useLiveText({ me, onText, getText, onSaved }) {
       if (!wait || !L.current) return;
       pending.current.delete(path);
       const here = getTextRef.current?.(path);
+      log('start', path, wait.revision, JSON.stringify((here || '').slice(0, 40)));
       L.current.seed(path, wait.content, wait.revision);
       // Typed here while it was waiting: keep that as an edit.
       if (here !== undefined && here !== wait.content && here !== L.current.text(path)) {
@@ -202,6 +203,7 @@ export function useLiveText({ me, onText, getText, onSaved }) {
       },
       // Text saved by an older build (no document): taken the same way everywhere.
       catchUp(path, content, revision) {
+        log('catch-up', path, revision, JSON.stringify(content.slice(0, 40)), 'from', JSON.stringify((L.current?.text(path) || '').slice(0, 40)));
         L.current?.catchUp(path, content, revision);
       },
       snapshot: (path) => L.current?.snapshot(path) || null,

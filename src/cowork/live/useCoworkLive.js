@@ -346,6 +346,7 @@ export function useCoworkLive({ notify }) {
       // Conflict); the text follows through liveTextRef. Files new here get
       // their documents too.
       let docs = {};
+      const plainSaves = []; // live files a build without live typing saved since: caught up below
       const behind = p.files.filter((f) => typing.isLive(f.path) && base.current[f.path] && f.revision > base.current[f.path].revision && !inflight.current.has(f.path));
       const appeared = p.files.filter((f) => typing.isLivePath(f.path) && !(f.path in base.current));
       if (typing.supported && (behind.length || appeared.length)) {
@@ -357,7 +358,12 @@ export function useCoworkLive({ notify }) {
         if (openedRef.current?.id !== id || openedRef.current.loading || openGen.current !== gen) return;
         for (const f of behind) {
           const d = docs[f.path];
-          if (!d || d.revision !== f.revision) continue; // saved by an older build: below
+          // (A document newer than this listing: a teammate saved again meanwhile;
+          // merging it is safe, and a save from here then catches up.)
+          if (!d || d.revision < f.revision) {
+            plainSaves.push(f); // saved by an older build: below
+            continue;
+          }
           typing.merge(f.path, d.doc);
           base.current[f.path] = { content: f.content, revision: f.revision };
           // Edits here (or a teammate's not saved yet) on top: save them.
@@ -397,10 +403,14 @@ export function useCoworkLive({ notify }) {
         if (e.type === 'removed') typing.drop(e.path);
         if (e.type === 'created') {
           const f = p.files.find((x) => x.path === e.path);
-          if (f) typing.add(f, docs[f.path] && docs[f.path].revision === f.revision ? docs[f.path] : null);
+          if (f) typing.add(f, docs[f.path] && docs[f.path].revision >= f.revision ? docs[f.path] : null);
         }
       }
-      for (const f of p.files) {
+      // Only files whose newer revision came without a document (an older
+      // build saved them) and that took the server's text (no edit here).
+      // Never a file that just appeared or is in step: its document is the
+      // newer copy (a teammate's live typing may not be saved yet).
+      for (const f of plainSaves) {
         if (typing.isLive(f.path) && merged.files[f.path] === f.content && typing.text(f.path) !== f.content) typing.catchUp(f.path, f.content, f.revision);
       }
       setOpened((o) => {

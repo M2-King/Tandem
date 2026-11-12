@@ -148,9 +148,10 @@ export function createLiveText({ onText = () => {}, onUpdate = () => {} } = {}) 
     load(path, file, saved) {
       const entry = entryFor(path);
       Y.applyUpdate(entry.doc, fromBase64(saved.doc), REMOTE);
-      // Saved since by an older build (or the copy is behind): catch up the
-      // same way on every device.
-      if (entry.ytext.toString() !== file.content) {
+      // Saved since by an older build (the copy is behind the file): catch up
+      // the same way on every device. (A copy newer than `file` is a save
+      // that landed after the file was read: it is the newer one.)
+      if (saved.revision < file.revision && entry.ytext.toString() !== file.content) {
         const sv = Y.encodeStateVector(entry.doc);
         deterministic(entry.doc, ['catch-up', file.revision, file.content, toBase64(sv)].join('\u0000'), CATCH_UP, () => applyDiff(entry.ytext, file.content));
       }

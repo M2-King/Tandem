@@ -120,6 +120,16 @@ test('opening from the saved copy, brought up to date the same way on every devi
   assert.equal(C.live.text('a.py'), '# B\nv1\nv2\nv3\n');
 });
 
+test('a saved copy newer than the file listing is kept, not taken back to the older text', () => {
+  const A = device();
+  A.live.seed('a.py', 'v1\n', 1);
+  type(A, 'a.py', 3, 'v2\n');
+  const saved = { revision: 3, doc: A.live.snapshot('a.py').doc }; // saved after the listing was read
+  const B = device();
+  B.live.load('a.py', { content: 'v1\n', revision: 2 }, saved);
+  assert.equal(B.live.text('a.py'), 'v1\nv2\n');
+});
+
 test('undo undoes only my own typing', () => {
   const A = device();
   const B = device();

@@ -70,7 +70,13 @@ const waitText = (p, test, ms = 8000) =>
     { timeout: ms }
   );
 const status = (p) => p.locator('.cowork-inline .sync-status').first().innerText().catch(() => '');
-const waitSaved = (p) => p.waitForFunction(() => /Saved/.test(document.querySelector('.cowork-inline .sync-status')?.innerText || ''), null, { timeout: 20000 });
+const waitSaved = (p) =>
+  p.waitForFunction(() => /Saved/.test(document.querySelector('.cowork-inline .sync-status')?.innerText || ''), null, { timeout: 20000 }).catch(async (e) => {
+    const s = await p.evaluate(() => [document.querySelector('.cowork-inline .sync-status')?.innerText, document.querySelector('.live-status')?.innerText, document.querySelector('.file-bar')?.innerText, [...document.querySelectorAll('.toast, [role=alert]')].map((t) => t.innerText).join(' / ')]);
+    console.log('   not Saved:', JSON.stringify(s));
+    await p.screenshot({ path: `${out}/not-saved-${Date.now()}.png` });
+    throw e;
+  });
 const waitLive = (p) => p.waitForFunction(() => /^Live$/.test(document.querySelector('.live-status')?.innerText || ''), null, { timeout: 20000 });
 const goEnd = async (p, lineText) => {
   await p.locator('.monaco-editor .view-line', { hasText: lineText }).first().click();
@@ -89,9 +95,14 @@ const count = (text, part) => text.split(part).length - 1;
   for (const p of [pa, pb]) p.on('pageerror', (e) => errs.push(e.message));
   const logs = [];
   pa.on('console', (m) => logs.push(m.text().slice(0, 200)));
+  const t0all = Date.now();
+  const alogs = [];
+  pa.on('console', (m) => /cowork live/.test(m.text()) && !/cursor|joining|online/.test(m.text()) && alogs.push(`${((Date.now() - t0all) / 1000).toFixed(1)} ${m.text().slice(0, 220)}`));
+  pa.on('requestfinished', async (r) => /rpc\/cowork_(save|create|file_docs|project)/.test(r.url()) && alogs.push(`${((Date.now() - t0all) / 1000).toFixed(1)} rpc ${r.url().split('/').pop()} ${(await r.response())?.status()}`));
 
   await signUp(pa, A);
   await signUp(pb, B);
+  if (process.env.LIVE_DEBUG) await pa.evaluate(() => localStorage.setItem('tandem.coworkDebug', '1'));
   await pa.getByRole('button', { name: 'New shared project' }).first().click();
   await pa.locator('.dialog-new-shared input').fill(`Typing ${tag}`);
   await pa.keyboard.press('Enter');
@@ -219,12 +230,23 @@ const count = (text, part) => text.split(part).length - 1;
   await pa.getByRole('button', { name: 'New file' }).click();
   await pa.locator('.dialog-newfile .newfile-name input').fill('new.py');
   await pa.keyboard.press('Enter');
+  // The file is created on the server first; type once its tab is the one open.
+  await pa.waitForFunction(() => /new\.py/.test(document.querySelector('.editor-tab.is-active, [role=tab][aria-selected=true]')?.innerText || ''), null, { timeout: 15000 });
   await pa.waitForSelector('.monaco-editor .view-lines');
   await pa.locator('.monaco-editor .view-lines').first().click();
   await pa.keyboard.type('made_by_a = 1', { delay: 20 });
   await pb.locator('.file-sidebar, .sidebar').getByText('new.py', { exact: true }).first().waitFor({ timeout: 20000 });
   await openFile(pb, 'new.py');
-  await waitText(pb, /made_by_a = 1/, 8000);
+  await waitText(pb, /made_by_a = 1/, 8000).catch(async (e) => {
+    const tabs = (p) => p.evaluate(() => [document.querySelector('.editor-tab.is-active, [role=tab][aria-selected=true]')?.innerText, document.querySelector('.live-status')?.innerText, document.querySelector('.cowork-inline .sync-status')?.innerText]);
+    console.log('   new.py on B:', JSON.stringify(await editorText(pb)), JSON.stringify(await tabs(pb)), '| on A:', JSON.stringify(await editorText(pa)), JSON.stringify(await tabs(pa)));
+    await pb.screenshot({ path: `${out}/newfile-b.png` });
+    await openFile(pa, 'fresh.py');
+    await pa.waitForTimeout(800);
+    console.log('   fresh.py on A now:', JSON.stringify(await editorText(pa)));
+    console.log('   A log:\n     ' + alogs.slice(-30).join('\n     '));
+    throw e;
+  });
   await pa.keyboard.type('\nstill_typing = 2', { delay: 30 });
   await waitText(pb, /still_typing = 2/, 3000).then(
     () => check(true, 'a new file is typed live too'),
