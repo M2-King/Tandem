@@ -5,7 +5,11 @@ Order of preference:
 2. The project's own virtual environment (.venv, venv or env).
 3. The interpreter given on the command line (--python).
 4. python3 on PATH (on Windows: the `py` launcher's default Python 3, then
-   python.exe on PATH, skipping the Microsoft Store placeholder).
+   python.exe on PATH, skipping the Microsoft Store placeholder; on macOS:
+   the first Python 3.11+ on PATH or where Homebrew, python.org and pyenv
+   install it, since an app opened from the Finder gets only the system
+   PATH. Apple's /usr/bin/python3 is too old and may ask to install the
+   developer tools, so it is never tried).
 
 The runtime's own interpreter is never used for project code: it holds the
 runtime's dependencies, not the project's.
@@ -81,7 +85,12 @@ def resolve_interpreter(root: Path, cli_python: str | None = None) -> tuple[Path
             return py, f"project environment ({name})"
     if cli_python and Path(cli_python).exists():
         return Path(cli_python), "command line"
-    found = _windows_python() if sys.platform == "win32" else (shutil.which("python3") or shutil.which("python"))
+    if sys.platform == "win32":
+        found = _windows_python()
+    elif sys.platform == "darwin":
+        found = _mac_python()
+    else:
+        found = shutil.which("python3") or shutil.which("python")
     if found and Path(found).resolve() != Path(sys.executable).resolve():
         return Path(found), "PATH"
     return None, "none"
@@ -117,6 +126,68 @@ def _windows_python() -> str | None:
     return found
 
 
+# macOS: where Python is usually installed, beyond the PATH an app opened
+# from the Finder gets (/usr/bin:/bin:/usr/sbin:/sbin).
+MAC_PLACES = (
+    "/opt/homebrew/bin",  # Homebrew, Apple silicon
+    "/usr/local/bin",  # Homebrew (Intel) and python.org links
+    "/Library/Frameworks/Python.framework/Versions/Current/bin",  # python.org
+    "~/.pyenv/shims",
+    "~/.local/bin",
+)
+MAC_NAMES = ("python3", "python3.14", "python3.13", "python3.12", "python3.11")
+_MAC_CACHE: list = []
+
+
+def _python_version(exe: Path) -> tuple[int, int] | None:
+    try:
+        out = subprocess.run([str(exe), "-c", "import sys; print('%d %d' % sys.version_info[:2])"],
+                             capture_output=True, text=True, timeout=10)
+        major, minor = out.stdout.strip().splitlines()[-1].split()
+        return int(major), int(minor)
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return None
+
+
+def mac_candidates(path_env: str | None = None, places: tuple[str, ...] = MAC_PLACES) -> list[Path]:
+    """Pythons to try on macOS, in order: PATH first, then the usual places."""
+    dirs = [d for d in (os.environ.get("PATH", "") if path_env is None else path_env).split(os.pathsep) if d]
+    dirs += [os.path.expanduser(d) for d in places]
+    framework = Path("/Library/Frameworks/Python.framework/Versions")
+    if framework.is_dir():
+        dirs += [str(v / "bin") for v in sorted(framework.iterdir(), reverse=True) if v.name[:1].isdigit()]
+    seen: set[str] = set()
+    found: list[Path] = []
+    for d in dirs:
+        if d.rstrip("/") == "/usr/bin":  # Apple's: old, and may ask to install the developer tools
+            continue
+        for name in MAC_NAMES:
+            exe = Path(d) / name
+            key = str(exe)
+            if key not in seen and exe.is_file() and os.access(exe, os.X_OK):
+                seen.add(key)
+                found.append(exe)
+    return found
+
+
+def _mac_python(path_env: str | None = None, places: tuple[str, ...] = MAC_PLACES) -> str | None:
+    """The first Python 3.11 or newer on macOS (else the first Python 3 found)."""
+    if _MAC_CACHE and path_env is None and places == MAC_PLACES:
+        return _MAC_CACHE[0]
+    first = None
+    for exe in mac_candidates(path_env, places):
+        version = _python_version(exe)
+        if not version or version[0] != 3:
+            continue
+        first = first or str(exe)
+        if version >= (3, 11):
+            first = str(exe)
+            break
+    if first and path_env is None and places == MAC_PLACES:
+        _MAC_CACHE.append(first)
+    return first
+
+
 def child_env(python: Path, extra: dict[str, str]) -> dict[str, str]:
     """Environment for a child process: the user's environment, minus runtime
     secrets, with the virtual environment activated when there is one."""
@@ -124,6 +195,12 @@ def child_env(python: Path, extra: dict[str, str]) -> dict[str, str]:
     # their shell stay: their programs may rely on them.
     env = {k: v for k, v in os.environ.items() if not k.startswith("TANDEM_")}
     env.pop("PYTHONHOME", None)
+    if sys.platform == "darwin":
+        # An app opened from the Finder has only the system PATH: add the
+        # usual places, so the project's code finds pip, Homebrew tools etc.
+        have = env.get("PATH", "").split(os.pathsep)
+        extra_dirs = [str(python.parent)] + [os.path.expanduser(d) for d in MAC_PLACES]
+        env["PATH"] = os.pathsep.join([d for d in extra_dirs if d not in have] + [d for d in have if d])
     if is_venv(python):
         env["VIRTUAL_ENV"] = str(python.parent.parent)
         env["PATH"] = str(python.parent) + os.pathsep + env.get("PATH", "")

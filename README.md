@@ -41,6 +41,19 @@ Build it yourself (on Windows): `npm ci && npm run build`; `pip install ./runtim
 runtime from `runtime/.venv`. The `Windows app` GitHub workflow builds and tests all of this on Windows
 and publishes releases.
 
+### Mac app (Apple silicon)
+
+The `Mac app` workflow builds Tandem for Macs with Apple silicon (M1 and later) as a `.dmg`: open it and
+drag Tandem to Applications. As on Windows, the Python runtime is bundled inside and your project code runs
+with your own Python 3.11+ (python.org or `brew install python`); Tandem finds it on the PATH or where
+Homebrew, python.org and pyenv install it, even when the app is opened from the Finder. The window is glass
+over your desktop (macOS vibrancy, or *Clear*).
+
+The app isn't signed with an Apple Developer ID yet (it is signed ad hoc), so the first time macOS says it
+can't verify it: open **System Settings → Privacy & Security** and choose **Open Anyway** (or run
+`xattr -dr com.apple.quarantine "/Applications/Tandem Staging.app"`). In-app updates need a Developer ID
+on macOS, so for now each new version is installed from its `.dmg`.
+
 ### iPad (branch `ipad`)
 
 Tandem for iPad is a separate build on the `ipad` branch; the Windows app is unaffected. Python runs

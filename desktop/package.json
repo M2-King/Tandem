@@ -57,6 +57,21 @@
       ],
       "icon": "build/icon.ico"
     },
+    "mac": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon-mac.png",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,

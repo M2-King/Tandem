@@ -3,6 +3,7 @@
 # Build from the repository root after `npm run build`:
 #     pyinstaller --noconfirm --distpath out packaging/tandem-runtime.spec
 import os
+import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
@@ -27,6 +28,8 @@ a = Analysis(
     excludes=["pytest", "numpy", "pandas", "matplotlib", "IPython", "tkinter"],
 )
 pyz = PYZ(a.pure)
+# The .ico is for Windows; elsewhere the runtime is a plain command inside the app.
+ICON = os.path.join(SPECPATH, "windows", "tandem.ico") if sys.platform == "win32" else None
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="tandem-runtime",
-          icon=os.path.join(SPECPATH, "windows", "tandem.ico"), console=True, upx=False)
+          icon=ICON, console=True, upx=False)
 coll = COLLECT(exe, a.binaries, a.datas, name="tandem-runtime", upx=False)

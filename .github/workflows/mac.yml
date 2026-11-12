@@ -1,0 +1,158 @@
+name: Mac app
+
+# Tests the runtime on macOS, builds the Tandem desktop app for Apple silicon
+# (arm64) with the Python runtime inside, checks it end to end, and packs a
+# .dmg.
+#
+# The cowork branch builds "Tandem Staging": Cowork in live mode against the
+# staging Supabase project, kept as a workflow artifact (the .dmg itself, not
+# zipped).
+#
+# Not signed with an Apple Developer ID yet (and so not notarized): the app is
+# signed ad hoc, which Apple silicon needs to run it at all, and macOS asks
+# once before opening it (System Settings → Privacy & Security → Open Anyway).
+# In-app updates need a Developer ID on macOS, so they are off here.
+
+on:
+  push:
+    branches: [cowork]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cowork staging (docs/cowork-backend.md): repository variables for the app
+# build. On the cowork branch the build stops unless all three are set; the
+# key must be the Supabase publishable key, never a secret one.
+env:
+  VITE_COWORK_MODE: ${{ vars.VITE_COWORK_MODE }}
+  VITE_TANDEM_SUPABASE_URL: ${{ vars.VITE_TANDEM_SUPABASE_URL }}
+  VITE_TANDEM_SUPABASE_KEY: ${{ vars.VITE_TANDEM_SUPABASE_KEY }}
+  VITE_TANDEM_ACCOUNT_DOMAIN: ${{ vars.VITE_TANDEM_ACCOUNT_DOMAIN }} # optional
+
+jobs:
+  test:
+    name: Runtime tests (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        id: py311
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-python@v5
+        id: py312
+        with:
+          python-version: "3.12"
+
+      - name: Project environments for the tests (3.11 and 3.12)
+        run: |
+          "${{ steps.py311.outputs.python-path }}" -m venv runtime/.test-envs/py311
+          "${{ steps.py312.outputs.python-path }}" -m venv runtime/.test-envs/py312
+          for v in py311 py312; do
+            "runtime/.test-envs/$v/bin/python" -m pip install --quiet numpy pandas matplotlib ipykernel
+          done
+
+      - name: Install the runtime
+        run: python -m pip install -e "runtime[test]"
+
+      - name: Run the tests
+        working-directory: runtime
+        run: python -m pytest -v
+
+  build:
+    name: Build the Mac app (Apple silicon)
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Cowork staging settings
+        if: github.ref == 'refs/heads/cowork'
+        run: node packaging/check-cowork-staging.mjs
+      - name: Build the UI
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Bundle the Python runtime
+        run: |
+          python -m pip install ./runtime "pyinstaller==6.11.1"
+          pyinstaller --noconfirm --distpath out --workpath build-pyi packaging/tandem-runtime.spec
+
+      - name: Check the bundled runtime
+        run: |
+          python -m venv smoke-project-env
+          smoke-project-env/bin/python -m pip install --quiet numpy pandas matplotlib ipykernel
+          python packaging/windows/smoke.py out/tandem-runtime/tandem-runtime "$PWD/smoke-project-env/bin/python"
+
+      - name: Name the staging app
+        id: staging
+        if: github.ref == 'refs/heads/cowork'
+        run: node packaging/staging-app.cjs desktop/package.json ${{ github.run_number }}
+
+      # The app icon is 256 px; macOS wants at least 512.
+      - name: App icon
+        run: sips -z 1024 1024 desktop/build/icon.png --out desktop/build/icon-mac.png
+
+      - name: Build the app
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npm ci
+          npx electron-builder --mac dir --arm64 --publish never
+
+      - name: Sign ad hoc and check
+        id: app
+        run: |
+          app=$(ls -d desktop/release/mac*/*.app | head -n 1)
+          echo "App: $app"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          echo "path=$app" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$app" .app)" >> "$GITHUB_OUTPUT"
+
+      - name: Check the desktop app
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          npm install --no-save "playwright@1.64.1"
+          node packaging/desktop-smoke.cjs "${{ steps.app.outputs.path }}/Contents/MacOS/${{ steps.app.outputs.name }}" "$PWD/smoke-project-env/bin/python" desktop-screen-mac.png
+
+      - name: Pack the .dmg
+        id: dmg
+        run: |
+          version=$(node -p "require('./desktop/package.json').version")
+          base=$(echo "${{ steps.app.outputs.name }}" | tr ' ' '-')
+          dmg="$base-$version-arm64.dmg"
+          mkdir dmg-root
+          cp -R "${{ steps.app.outputs.path }}" dmg-root/
+          ln -s /Applications dmg-root/Applications
+          hdiutil create -volname "${{ steps.app.outputs.name }}" -srcfolder dmg-root -ov -format UDZO "$dmg"
+          ls -la "$dmg"
+          echo "file=$dmg" >> "$GITHUB_OUTPUT"
+
+      # The .dmg itself, not zipped: the artifact link downloads it directly.
+      - name: Upload the .dmg (not zipped)
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.dmg.outputs.file }}
+          archive: false
+          retention-days: 30
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-desktop-screenshot
+          path: desktop-screen-mac.png
+          if-no-files-found: ignore
