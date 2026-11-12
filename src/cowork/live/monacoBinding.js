@@ -16,7 +16,14 @@ import { LOCAL, textDiff } from './liveText.js';
 export function bindModel({ monaco, editor, model, entry }) {
   const { doc, ytext } = entry;
   const binding = { applying: false };
-  let saved = null; // carets as relative positions, taken before a change from elsewhere
+  // Carets as relative positions, taken once before a change from elsewhere
+  // (`capturedFor`), and dropped when that transaction is over. Reading a
+  // Yjs event's delta runs a small transaction of its own (after the text
+  // changed, before the editor shows it): it must not take the carets again,
+  // or they'd be read from the old text against the new document and come
+  // back as far to the left as the teammate just typed.
+  let saved = null;
+  let capturedFor = null;
 
   // Start from the document's text (the model may hold an older copy).
   if (model.getValue() !== ytext.toString()) {
@@ -31,7 +38,8 @@ export function bindModel({ monaco, editor, model, entry }) {
   const ownsModel = () => editor.getModel() === model;
 
   const beforeTransaction = (tr) => {
-    if (tr.origin === LOCAL || !ownsModel()) return;
+    if (tr.origin === LOCAL || binding.applying || capturedFor || !ownsModel()) return;
+    capturedFor = tr;
     const selections = editor.getSelections() || [];
     // A caret sticks to the text on its left (my own typing), so a teammate
     // typing at the same spot goes after it instead of carrying it along. A
@@ -67,7 +75,7 @@ export function bindModel({ monaco, editor, model, entry }) {
       }
       // A safety net: if the model drifted, take the document's text.
       if (model.getValue() !== ytext.toString()) model.setValue(ytext.toString());
-      if (saved && ownsModel()) {
+      if (saved && capturedFor === tr && ownsModel()) {
         const toPos = (rel) => {
           const abs = Y.createAbsolutePositionFromRelativePosition(rel, doc);
           return model.getPositionAt(abs ? abs.index : 0);
@@ -112,12 +120,21 @@ export function bindModel({ monaco, editor, model, entry }) {
     }
   });
 
+  // The change from elsewhere is over (with or without a text change): forget its carets.
+  const afterTransaction = (tr) => {
+    if (tr !== capturedFor) return;
+    capturedFor = null;
+    saved = null;
+  };
+
   doc.on('beforeTransaction', beforeTransaction);
+  doc.on('afterTransaction', afterTransaction);
   ytext.observe(observer);
 
   binding.dispose = () => {
     typed.dispose();
     doc.off('beforeTransaction', beforeTransaction);
+    doc.off('afterTransaction', afterTransaction);
     ytext.unobserve(observer);
   };
   return binding;

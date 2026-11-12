@@ -21,6 +21,11 @@ contextBridge.exposeInMainWorld('tandemDesktop', {
   onMaximized: listen('desktop:maximized'),
   onWallpaper: listen('desktop:wallpaper'),
   onRuntimeExit: listen('desktop:runtime-exit'),
+  // The Cowork sign-in ("Keep me signed in"), encrypted by the operating system.
+  secure: Object.freeze({
+    get: (name) => ipcRenderer.invoke('desktop:secure-get', name),
+    set: (name, value) => ipcRenderer.invoke('desktop:secure-set', name, value),
+  }),
   updates: Object.freeze({
     state: () => ipcRenderer.invoke('desktop:updates-state'),
     check: () => ipcRenderer.invoke('desktop:updates-check'),

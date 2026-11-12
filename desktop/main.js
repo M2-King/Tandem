@@ -10,12 +10,13 @@
 // browser. The preload exposes a few window actions and, in Tandem Staging,
 // the update state (updater.js), nothing else.
 
-const { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { setupUpdates } = require('./updater.js');
+const { createSecureStore } = require('./secureStore.js');
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -275,12 +276,19 @@ function fromOurPage(event) {
   return runtime && win && event.sender === win.webContents && event.senderFrame?.url.startsWith(runtime.origin + '/');
 }
 
+// The Cowork sign-in, kept between launches (encrypted by the operating system).
+let secureStore = null;
+const secure = () => (secureStore ??= createSecureStore({ safeStorage, dir: app.getPath('userData') }));
+
 function handle(channel, fn) {
   ipcMain.handle(channel, (event, ...args) => {
     if (!fromOurPage(event)) throw new Error('Not allowed');
     return fn(...args);
   });
 }
+
+handle('desktop:secure-get', (name) => secure().get(name));
+handle('desktop:secure-set', (name, value) => secure().set(name, value));
 
 handle('desktop:info', () => ({
   platform: process.platform,

@@ -1345,7 +1345,7 @@ body.is-resizing .resizer:active::after {
 }
 .glass-slider input {
   min-width: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
 }
 .glass-slider input:focus-visible {
   box-shadow: none;
@@ -2722,7 +2722,7 @@ button.proposal-head:focus-visible {
 .runs-table input[type='checkbox'] {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
   margin: 0;
 }
 
@@ -5378,6 +5378,22 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
 .signin-submit {
   width: 100%;
   margin-top: 4px;
+}
+.signin-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 2px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.signin-remember input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent-fill);
 }
 .signin-links {
   display: flex;

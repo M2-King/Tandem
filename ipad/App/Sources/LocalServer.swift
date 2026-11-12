@@ -16,6 +16,7 @@ final class LocalServer {
 
     let store: ProjectStore
     let ai: AISettingsStore
+    let secure = SecureStore() // the Cowork sign-in, kept between launches
     let token: String
     let selftest: Bool
     private(set) var port: UInt16 = 0
@@ -237,6 +238,15 @@ final class LocalServer {
             return json(ai.publicSettings())
         case ("PUT", "/api/ai/settings"):
             return json(try ai.update(bodyJSON(r)))
+        case ("GET", "/api/secure"):
+            // A value the page saved (the Cowork sign-in), or null.
+            if let value = try secure.get(r.query["name"] ?? "") { return json(["value": value]) }
+            return json(["value": NSNull()])
+        case ("PUT", "/api/secure"):
+            // { name, value }; value null removes it.
+            let b = bodyJSON(r)
+            try secure.set(b["name"] as? String ?? "", b["value"] as? String)
+            return json(["ok": true])
         case ("GET", "/api/wallpaper"):
             // The person's wallpaper photo, kept in the app (not in the page's storage).
             guard let data = try? Data(contentsOf: Self.wallpaperFile) else { return json([:]) }

@@ -11,7 +11,8 @@
 // after saving, reopening shows that text once (nothing doubled); typing
 // while offline merges when back online; undo takes back only your own
 // typing; a file neither has typed in live yet, opened by both at once, isn't
-// doubled; a new file is live too; a 50 KB paste arrives.
+// doubled; a new file is live too; a 50 KB paste arrives; my caret stays with
+// my typing while a teammate types elsewhere (through saves and reloads).
 
 const { chromium } = require('playwright');
 const crypto = require('node:crypto');
@@ -204,6 +205,20 @@ const count = (text, part) => text.split(part).length - 1;
     () => check(true, 'A undoes: A’s “# undo_a” goes on both sides, B’s “# keep_b” stays'),
     async () => check(false, `A undoes: ${JSON.stringify(await editorText(pb))}`)
   );
+
+  // 5b. My caret stays with my typing while a teammate types elsewhere,
+  // through pauses (saves, "saved" messages and reloads in between).
+  await goEnd(pb, 'from_b_offline = 1');
+  await goEnd(pa, 'first = 1');
+  const letters = 'abcdefghij';
+  await Promise.all([
+    (async () => { for (let r = 0; r < letters.length; r++) { await pb.keyboard.type(letters[r].repeat(3), { delay: 50 }); await pb.waitForTimeout(r % 3 === 0 ? 1500 : 350); } })(),
+    (async () => { for (let r = 0; r < 10; r++) { await pa.keyboard.type(String(r).repeat(3), { delay: 50 }); await pa.waitForTimeout(r % 2 === 0 ? 1400 : 450); } })(),
+  ]);
+  await pb.waitForTimeout(2500);
+  const kept = await editorText(pb);
+  check(kept.includes([...letters].map((c) => c.repeat(3)).join('')), `B's caret stays with B's typing while A types elsewhere (${JSON.stringify(kept.split('\n').find((l) => l.includes('from_b_offline')))})`);
+  check(kept === (await editorText(pa)), '…and both sides have the same text');
 
   // 6. A file nobody typed in live yet, opened by both at the same moment: not doubled.
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });

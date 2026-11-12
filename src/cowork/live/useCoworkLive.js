@@ -41,6 +41,8 @@ const at = (iso) => (iso ? Date.parse(iso) : Date.now());
 export function useCoworkLive({ notify }) {
   const { route, go } = useCoworkRoute();
   const [me, setMe] = useState(null); // { id, username }
+  // Signing in with the account kept from last time ("Keep me signed in").
+  const [restoring, setRestoring] = useState(!api.LIVE_PROBLEM);
   const [overview, setOverview] = useState(null); // from cowork_overview
   const [loading, setLoading] = useState(false);
   const [opened, setOpened] = useState(null); // the open project
@@ -233,7 +235,7 @@ export function useCoworkLive({ notify }) {
   }, [roleIn]);
 
   const screen =
-    route.screen === 'local' ? 'local' : !me ? 'signin' : route.screen === 'project' ? (project ? 'project' : 'opening') : 'home';
+    route.screen === 'local' ? 'local' : !me ? (restoring ? 'restoring' : 'signin') : route.screen === 'project' ? (project ? 'project' : 'opening') : 'home';
 
   // ------------------------------------------------------------ saving
   const settle = useCallback(() => {
@@ -829,8 +831,17 @@ export function useCoworkLive({ notify }) {
     return username;
   };
   const asAccount = (user) => ({ ...personForUsername(user.username), id: user.id });
-  const signInWithPassword = useCallback(async (value, password) => asAccount(await api.signInWithPassword(checked(value, password), password)), []);
-  const signUp = useCallback(async (value, password) => asAccount(await api.signUp(checked(value, password), password)), []);
+  // { remember }: "Keep me signed in on this device" (on unless turned off).
+  const signInWithPassword = useCallback(async (value, password, { remember = true } = {}) => {
+    const username = checked(value, password);
+    api.setRemember(remember);
+    return asAccount(await api.signInWithPassword(username, password));
+  }, []);
+  const signUp = useCallback(async (value, password, { remember = true } = {}) => {
+    const username = checked(value, password);
+    api.setRemember(remember);
+    return asAccount(await api.signUp(username, password));
+  }, []);
   const completeSignIn = useCallback(
     async (user) => {
       setMe({ id: user.id, username: user.username });
@@ -838,6 +849,23 @@ export function useCoworkLive({ notify }) {
     },
     [refresh]
   );
+
+  // At start: sign in with the account kept from last time, if any.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !restoring) return;
+    restoredRef.current = true;
+    api
+      .restoreSession()
+      .then((user) => {
+        if (!user) return null;
+        setMe({ id: user.id, username: user.username });
+        return refresh({ quiet: true });
+      })
+      .catch(() => {})
+      .finally(() => setRestoring(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const searchPeople = useCallback(async (query) => {
     try {
       return (await api.searchAccounts(normalizeUsername(query))).map((x) => ({ username: x.username, name: x.username }));

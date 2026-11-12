@@ -8,10 +8,12 @@
 //
 // Optional: VITE_TANDEM_ACCOUNT_DOMAIN (see below).
 //
-// The session lives in memory only for this milestone: reloading or
-// restarting the app asks to sign in again.
+// The session is kept between launches when "Keep me signed in on this
+// device" is on (sessionStore.js: encrypted by the operating system on
+// Windows and Mac, the Keychain on iPad); otherwise in memory only.
 
 import { createClient } from '@supabase/supabase-js';
+import { createSessionStore } from './sessionStore.js';
 
 const env = import.meta.env;
 export const COWORK_LIVE = env.VITE_COWORK_MODE === 'live';
@@ -45,18 +47,41 @@ export const LIVE_PROBLEM = !COWORK_LIVE
       : keyProblem(KEY);
 
 let client = null;
+const sessionStore = createSessionStore();
 function supabase() {
   if (LIVE_PROBLEM) throw new CoworkError(`Cowork isn’t configured: ${LIVE_PROBLEM}`, 'config');
   if (!client) {
     client = createClient(URL_, KEY, {
       auth: {
-        persistSession: false, // in memory for this milestone
+        persistSession: true,
+        storage: sessionStore,
         autoRefreshToken: true,
         detectSessionInUrl: false,
       },
     });
   }
   return client;
+}
+
+// "Keep me signed in on this device" (on unless the person turns it off).
+export const setRemember = (on) => sessionStore.setRemember(on);
+
+// The account kept from last time, or null. A kept sign-in the server no
+// longer accepts (signed out elsewhere, expired) is forgotten; without a
+// connection it is used as it is, and checked again once online.
+export async function restoreSession() {
+  if (LIVE_PROBLEM) return null;
+  const { data } = await supabase().auth.getSession();
+  const session = data?.session;
+  if (!session?.user) return null;
+  const { error } = await supabase().auth.getUser();
+  // Refused by the server (4xx), not merely unreachable (AuthRetryableFetchError).
+  if (error && error.name !== 'AuthRetryableFetchError' && error.status >= 400 && error.status < 500) {
+    await supabase().auth.signOut({ scope: 'local' }).catch(() => {});
+    return null;
+  }
+  const meta = session.user.user_metadata || {};
+  return { id: session.user.id, username: meta.username || (session.user.email || '').split('@')[0] };
 }
 
 export class CoworkError extends Error {
@@ -136,7 +161,8 @@ export async function signInWithPassword(username, password) {
 
 export async function signOut() {
   try {
-    await supabase().auth.signOut();
+    // This device only: the same account stays signed in on the others.
+    await supabase().auth.signOut({ scope: 'local' });
   } catch {
     // signed out locally either way
   }

@@ -35,6 +35,8 @@ env:
   VITE_TANDEM_SUPABASE_URL: ${{ vars.VITE_TANDEM_SUPABASE_URL }}
   VITE_TANDEM_SUPABASE_KEY: ${{ vars.VITE_TANDEM_SUPABASE_KEY }}
   VITE_TANDEM_ACCOUNT_DOMAIN: ${{ vars.VITE_TANDEM_ACCOUNT_DOMAIN }} # optional
+  # Staging opens on the projects page (shared projects, and this device's project).
+  VITE_COWORK_START: ${{ github.ref == 'refs/heads/cowork' && 'shared' || '' }}
 
 jobs:
   test:
@@ -108,7 +110,7 @@ jobs:
         if: github.ref == 'refs/heads/cowork'
         run: |
           npm ci --prefix desktop
-          node --test packaging/staging-app.test.cjs desktop/updater.test.cjs
+          node --test packaging/staging-app.test.cjs desktop/updater.test.cjs desktop/secureStore.test.cjs
 
       - name: Name the staging app (installs beside Tandem, updates from windows-staging)
         id: staging

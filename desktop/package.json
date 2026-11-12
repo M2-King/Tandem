@@ -26,6 +26,7 @@
       "main.js",
       "preload.js",
       "updater.js",
+      "secureStore.js",
       "build/icon.ico",
       "build/icon.png",
       "package.json"

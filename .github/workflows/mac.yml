@@ -29,6 +29,8 @@ env:
   VITE_TANDEM_SUPABASE_URL: ${{ vars.VITE_TANDEM_SUPABASE_URL }}
   VITE_TANDEM_SUPABASE_KEY: ${{ vars.VITE_TANDEM_SUPABASE_KEY }}
   VITE_TANDEM_ACCOUNT_DOMAIN: ${{ vars.VITE_TANDEM_ACCOUNT_DOMAIN }} # optional
+  # Staging opens on the projects page (shared projects, and this device's project).
+  VITE_COWORK_START: ${{ github.ref == 'refs/heads/cowork' && 'shared' || '' }}
 
 jobs:
   test:

@@ -24,6 +24,7 @@ export default function SignInPage({ cowork, localName, notify }) {
   const [error, setError] = useState(null); // { field, message }
   const [shakes, setShakes] = useState(0);
   const [welcome, setWelcome] = useState(null);
+  const [remember, setRemember] = useState(true); // "Keep me signed in on this device"
   const userRef = useRef(null);
   const passRef = useRef(null);
   const confirmRef = useRef(null);
@@ -65,7 +66,8 @@ export default function SignInPage({ cowork, localName, notify }) {
     setError(null);
     setBusy(true);
     try {
-      const person = mode === 'signup' ? await cowork.signUp(u, password) : await cowork.signInWithPassword(u, password);
+      const person =
+        mode === 'signup' ? await cowork.signUp(u, password, { remember }) : await cowork.signInWithPassword(u, password, { remember });
       if (!alive.current) return;
       setBusy(false);
       finish(person);
@@ -224,6 +226,12 @@ export default function SignInPage({ cowork, localName, notify }) {
 
           {!cowork.live && (
             <p className="field-hint">Preview: sample accounts sign in with any password of 8+ characters.</p>
+          )}
+          {cowork.live && (
+            <label className="signin-remember">
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              <span>Keep me signed in on this device</span>
+            </label>
           )}
           <button type="submit" className="btn btn-primary signin-submit" disabled={busy}>
             {busy && <Loader2 size={16} className="spin" aria-hidden="true" />}

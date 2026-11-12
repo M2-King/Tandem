@@ -15,6 +15,7 @@ the iPad build can be tested without an iPad.
 * /api/projects          list / create / open projects
 * /api/wallpaper         the person's wallpaper photo (kept by the app)
 * /api/ai/settings       provider settings; keys are kept here, never returned
+* /api/secure            small secrets the page keeps between launches (the Cowork sign-in)
 * /api/ai/proxy/<p>/...  requests to the AI provider, with the key added here
 
 Every response is cross-origin isolated (COOP/COEP), which the page needs for
@@ -49,6 +50,7 @@ ISOLATION = {
     "Cross-Origin-Embedder-Policy": "require-corp",
     "Cross-Origin-Resource-Policy": "same-origin",
 }
+SECURE_NAME = re.compile(r"^[A-Za-z0-9._:-]{1,120}$")
 STARTER = 'name = input("What is your name? ")\nprint(f"Hello, {name}!")\n'
 
 
@@ -62,6 +64,7 @@ class State:
         self.port = port
         self.config = config
         self.ai = AISettings(config)
+        self.secure: dict[str, str] = {}  # the app keeps these in the iPad Keychain (SecureStore.swift)
         self.projects.mkdir(parents=True, exist_ok=True)
         existing = sorted(p.name for p in projects.iterdir() if p.is_dir() and not p.name.startswith("."))
         if not existing:
@@ -218,6 +221,25 @@ def make_handler(state: State):
                 (state.projects / ".selftest.json").write_bytes(body)
                 print("TANDEM-SELFTEST " + body.decode("utf-8", "replace"), flush=True)
                 return self.json({"ok": True})
+            if path == "/api/secure":
+                # Small secrets the page keeps between launches (the Cowork sign-in).
+                if method == "GET":
+                    name = query.get("name", "")
+                    if not SECURE_NAME.match(name):
+                        return self.error(400, "That name can't be stored.")
+                    return self.json({"value": state.secure.get(name)})
+                if method == "PUT":
+                    d = json.loads(self.body() or b"{}")
+                    name, value = d.get("name", ""), d.get("value")
+                    if not isinstance(name, str) or not SECURE_NAME.match(name):
+                        return self.error(400, "That name can't be stored.")
+                    if value is None:
+                        state.secure.pop(name, None)
+                    elif not isinstance(value, str) or len(value.encode()) > 32 * 1024:
+                        return self.error(400, "That value is too large to store.")
+                    else:
+                        state.secure[name] = value
+                    return self.json({"ok": True})
             if path == "/api/ai/settings":
                 if method == "GET":
                     return self.json({**state.ai.public(), "stored_in": "iPad Keychain"})

@@ -53,6 +53,7 @@ import { useCoworkLive } from './cowork/live/useCoworkLive.js';
 import { COWORK_LIVE } from './cowork/live/api.js';
 import { createCoworkBackend } from './cowork/coworkBackend.js';
 import { createSharedBackend } from './cowork/live/sharedBackend.js';
+import { Loader2 } from 'lucide-react';
 import { CursorReportContext, LiveTextContext } from './cowork/cursorReport.js';
 import { AvatarStack, CoworkTitle, DeviceChip, LiveStatus, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
 import ProjectSettingsDialog from './cowork/ProjectSettingsDialog.jsx';
@@ -165,7 +166,7 @@ export default function App() {
   // same layout with its own files, and runs on "this device" (sample results).
   const cowork = useCoworkMode({ notify });
   const inCowork = cowork.screen === 'project';
-  const onSharedHome = ['home', 'signin', 'opening'].includes(cowork.screen);
+  const onSharedHome = ['home', 'signin', 'opening', 'restoring'].includes(cowork.screen);
   const coworkRef = useRef(cowork);
   coworkRef.current = cowork;
   // The first run in a shared project on this device asks first.
@@ -998,6 +999,14 @@ export default function App() {
           <main className="center shared-center">
             {cowork.screen === 'signin' ? (
               <SignInPage cowork={cowork} localName={deviceProjectName} notify={notify} />
+            ) : cowork.screen === 'restoring' ? (
+              <div className="shared-page">
+                <div className="shared-inner">
+                  <p className="shared-opening" role="status">
+                    <Loader2 size={14} className="spin" aria-hidden="true" /> Signing in…
+                  </p>
+                </div>
+              </div>
             ) : (
               <SharedProjectsPage
                 cowork={cowork}
