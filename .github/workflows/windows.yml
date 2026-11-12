@@ -150,21 +150,13 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      # cowork (Tandem Staging): each exe is its own download, not zipped, so
-      # the artifact link downloads Tandem-Staging-Setup-<version>.exe itself.
+      # cowork (Tandem Staging): just the installer, not zipped, so the
+      # artifact link downloads Tandem-Staging-Setup-<version>.exe itself.
       - name: Upload the staging installer (.exe, not zipped)
         if: github.ref == 'refs/heads/cowork'
         uses: actions/upload-artifact@v7
         with:
           path: desktop/release/Tandem-Staging-Setup-*.exe
-          archive: false
-          retention-days: 30
-          if-no-files-found: error
-      - name: Upload the staging portable app (.exe, not zipped)
-        if: github.ref == 'refs/heads/cowork'
-        uses: actions/upload-artifact@v7
-        with:
-          path: desktop/release/Tandem-Staging-*-portable.exe
           archive: false
           retention-days: 30
           if-no-files-found: error
