@@ -55,6 +55,9 @@ function check(ok, message) {
     timeout: 120000,
   });
   const win = await app.firstWindow();
+  // Staging opens on sign-in / the projects page; this device's project is at #/device.
+  await win.locator('.runtime-status, #signin-username, .shared-page').first().waitFor({ timeout: 90000 });
+  if (!(await win.locator('.runtime-status').count())) await win.evaluate(() => { window.location.hash = '#/device'; });
   await win.locator('.runtime-status.tone-up').waitFor({ timeout: 90000 });
 
   const bridge = await win.evaluate(async () => {
