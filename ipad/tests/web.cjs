@@ -58,7 +58,8 @@ function fakeAnthropic() {
       bodies.push(await r.text());
     } catch {}
   });
-  await page.goto(base);
+  // Staging builds open on the projects page; this device's project is at #/device.
+  await page.goto(base + '#/device');
   const token = await page.evaluate(() => JSON.parse(document.getElementById('tandem-runtime').textContent).token);
   const api = (path, method = 'GET', body) =>
     page.evaluate(

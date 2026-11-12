@@ -14,7 +14,7 @@ import { usePrefs } from './state/usePrefs.js';
 import { useWallpaper } from './state/useWallpaper.js';
 import { useDesktop } from './state/useDesktop.js';
 import { useUpdates } from './state/useUpdates.js';
-import UpdateBanner from './components/UpdateBanner.jsx';
+import UpdateBanner, { UpdatingOverlay } from './components/UpdateBanner.jsx';
 import { DESKTOP } from './runtime/desktop.js';
 import { applyGlass } from './lib/glass.js';
 import { useWorkspace } from './state/useWorkspace.js';
@@ -54,6 +54,8 @@ import { COWORK_LIVE } from './cowork/live/api.js';
 import { createCoworkBackend } from './cowork/coworkBackend.js';
 import { createSharedBackend } from './cowork/live/sharedBackend.js';
 import { Loader2 } from 'lucide-react';
+import { useSharedPython } from './cowork/useSharedPython.js';
+import PreparePythonDialog from './cowork/PreparePythonDialog.jsx';
 import { CursorReportContext, LiveTextContext } from './cowork/cursorReport.js';
 import { AvatarStack, CoworkTitle, DeviceChip, LiveStatus, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
 import ProjectSettingsDialog from './cowork/ProjectSettingsDialog.jsx';
@@ -151,7 +153,7 @@ export default function App() {
     usePrefs();
   const wall = useWallpaper(notify, IS_IPAD ? backend : null);
   const desktop = useDesktop(notify);
-  const updates = useUpdates();
+  const updates = useUpdates({ notify });
   const [updateConfirm, setUpdateConfirm] = useState(null); // reasons to confirm before restarting
   // In the desktop app the glass sits over the person's own wallpaper; its brightness comes from the system.
   const backdropLuminance = desktop.active ? (desktop.luminance ?? 0.3) : wall.luminance;
@@ -191,6 +193,17 @@ export default function App() {
     setTrustAsk(null);
   };
   const coworkExec = useExecution({ onSave, backend: coworkBackend, real: true });
+  // Getting this computer ready to run shared projects ("Preparing Python").
+  const pythonPrep = useSharedPython({ backend, enabled: !!cowork.live && IS_LOCAL });
+  const preparePython = (title = 'Preparing Python') => pythonPrep.ensure({ title });
+  // A shared project's run that couldn't start for lack of Python: offer to prepare it.
+  const coworkNotice = coworkExec.notice;
+  useEffect(() => {
+    if (cowork.live && IS_LOCAL && /No Python interpreter/i.test(coworkNotice?.detail || '')) {
+      notify('Shared projects need Python on this computer.', { label: 'Prepare Python', onClick: () => preparePython() });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coworkNotice]);
   const ws = inCowork ? cowork.workspace : deviceWs;
   const exec = inCowork ? coworkExec : deviceExec;
   const projectName = inCowork ? cowork.project.name : deviceProjectName;
@@ -974,12 +987,14 @@ export default function App() {
       />
       {updates.banner && (
         <UpdateBanner
-          name={updates.state.name}
-          version={updates.state.available}
+          kind={updates.banner}
+          state={updates.state}
           onLater={updates.later}
+          onDismiss={updates.dismiss}
           onRestart={() => restartToUpdate()}
         />
       )}
+      {updates.installing && <UpdatingOverlay name={updates.state?.name || 'Tandem'} version={updates.installing} />}
 
       {inCowork && (
         // Narrow windows: the project's people, status and Share sit under the toolbar.
@@ -1010,6 +1025,9 @@ export default function App() {
             ) : (
               <SharedProjectsPage
                 cowork={cowork}
+                prepare={(name, then) =>
+                  pythonPrep.ensure({ title: `Getting ready for ${name}`, quiet: true, final: then ? { label: `Opening “${name}”`, run: then } : null })
+                }
                 localName={deviceProjectName}
                 onOpenLocal={() => cowork.go('local')}
                 onNew={() => setNewSharedOpen(true)}
@@ -1363,11 +1381,25 @@ export default function App() {
           startsEmpty={!!cowork.live}
           onCreate={async (name) => {
             setNewSharedOpen(false);
-            const id = await cowork.createProject(name);
-            if (id) notify(`Created ${name}. Invite people from Share.`);
+            // Get this computer ready (once), then create the project.
+            let id = null;
+            const ok = await pythonPrep.ensure({
+              title: `Setting up ${name}`,
+              final: {
+                label: `Creating “${name}”`,
+                run: async () => {
+                  id = await cowork.createProject(name);
+                  return !!id;
+                },
+                failed: 'The project couldn’t be created. Try again.',
+              },
+            });
+            if (ok && id) notify(`Created ${name}. Invite people from Share.`);
           }}
         />
       )}
+
+      <PreparePythonDialog prep={pythonPrep.state} onRetry={pythonPrep.retry} onSkip={pythonPrep.skip} onCancel={pythonPrep.cancel} />
 
       {trustAsk && (
         <Dialog title="Run shared code on this device" onClose={() => answerTrust(false)} className="dialog-confirm">

@@ -92,11 +92,12 @@ def test_working_directory_is_the_project(client, project, python):
 
 def test_output_streams_before_the_run_ends(client, project, python):
     use_python(project, python)
-    (project / "slow.py").write_text("import time\nprint('first', flush=True)\ntime.sleep(1.5)\nprint('second')\n")
+    (project / "slow.py").write_text("import time\nprint('first', flush=True)\ntime.sleep(3)\nprint('second')\n")
     events, _ = run_script(client, "slow.py")
-    kinds = [(e["type"], e.get("text")) for e in events]
-    first_out = kinds.index(("run.output", "first\n"))
-    assert first_out < len(kinds) - 2  # 'first' arrived as its own message, well before exit
+    outputs = [e.get("text") or "" for e in events if e["type"] == "run.output"]
+    first = next(i for i, t in enumerate(outputs) if "first" in t)
+    second = next(i for i, t in enumerate(outputs) if "second" in t)
+    assert first < second, outputs  # 'first' arrived in its own message, before the script finished
 
 
 def test_stop_ends_a_long_running_script_and_its_children(client, project, python, tmp_path):

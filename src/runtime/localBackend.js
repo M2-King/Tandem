@@ -104,6 +104,9 @@ export function createLocalBackend(config, { socket = true } = {}) {
     envs: (refresh = false) => client.api(`/api/envs${refresh ? '?refresh=1' : ''}`),
     selectEnv: (python) => client.api('/api/envs/select', { method: 'PUT', body: { python } }),
     packages: () => client.api('/api/packages'),
+    // Tandem Cowork: is this computer ready to run shared projects (Python and
+    // the usual packages)? Read by the "Preparing Python" step.
+    sharedPython: (refresh = false) => client.api(`/api/shared/python${refresh ? '?refresh=1' : ''}`),
     previewJob: (job) => client.api('/api/jobs/preview', { method: 'POST', body: job }),
     // job: { kind: 'create-env', base, name } | { kind: 'install', packages } | { kind: 'install', requirements: true }
     // onOutput(text), onFinish({ status, exitCode, message, ... }). Returns { cancel }.

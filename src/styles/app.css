@@ -5970,6 +5970,150 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
 .update-banner .btn {
   flex: none;
 }
+.update-banner {
+  animation: banner-in 0.3s ease both;
+}
+.update-banner.is-downloading {
+  padding: 8px 12px 10px;
+  min-width: 320px;
+}
+.update-banner-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.update-banner-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.update-banner-percent {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.update-banner-bar {
+  position: relative;
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--accent-soft);
+}
+.update-banner-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-fill), var(--accent));
+  background-size: 200% 100%;
+  transition: width 0.4s ease;
+  animation: update-sheen 1.6s linear infinite;
+}
+.update-banner-bob {
+  animation: update-bob 1.2s ease-in-out infinite;
+}
+.update-banner-check {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--success);
+  animation: prep-pop 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.update-banner-icon.is-error {
+  color: var(--error);
+}
+.updating-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg, #0f1218) 70%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  animation: fade-in 0.3s ease both;
+}
+.updating-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 360px;
+  padding: 28px 28px 24px;
+  text-align: center;
+  border-radius: var(--radius-float);
+  background: var(--material-3);
+}
+.updating-ring {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.updating-ring svg {
+  animation: spin 1.4s linear infinite;
+}
+.updating-title {
+  margin: 4px 0 0;
+  font-size: var(--fs-lg, 17px);
+}
+.updating-text {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.updating-bar {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--accent-soft);
+}
+.updating-bar > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: prep-slide 1.2s ease-in-out infinite;
+}
+@keyframes update-sheen {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+@keyframes update-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-banner-bob,
+  .update-banner-bar > span,
+  .updating-ring svg,
+  .updating-bar > span {
+    animation: none;
+  }
+}
 .menu-update-status {
   padding: 0 10px 6px 36px;
   font-size: var(--fs-sm);
@@ -6048,5 +6192,247 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
 @media (max-width: 600px) {
   .cowork-strip .live-status.is-online .live-text {
     display: none;
+  }
+}
+
+/* Tandem Cowork: "Preparing Python" (PreparePythonDialog). */
+.dialog-prepare {
+  width: 460px;
+  gap: 12px;
+}
+.prep-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.prep-sub {
+  margin-top: 2px;
+}
+.prep-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+.prep-badge.is-done {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  animation: prep-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.prep-badge.is-error {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+}
+.prep-progress {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+}
+.prep-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--accent-fill);
+  transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.dialog-prepare.is-done .prep-progress-fill {
+  background: var(--success);
+}
+.prep-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.prep-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  transition: opacity 0.3s ease;
+}
+.prep-step.is-waiting {
+  opacity: 0.5;
+}
+.prep-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+}
+.prep-icon.is-waiting {
+  border: 1.5px solid color-mix(in srgb, var(--text-muted) 55%, transparent);
+  width: 16px;
+  height: 16px;
+  margin: 3px 2px 0;
+}
+.prep-icon.is-active {
+  color: var(--accent);
+}
+.prep-icon.is-done {
+  color: #fff;
+  background: var(--success);
+  animation: prep-pop 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.prep-icon.is-error {
+  color: var(--error);
+}
+.prep-step-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.prep-step-label {
+  color: var(--text-primary);
+}
+.prep-step.is-active .prep-step-label {
+  font-weight: 600;
+}
+.prep-step-detail {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  animation: fade-in 0.3s ease both;
+}
+.prep-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.prep-bar {
+  position: relative;
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--accent-soft);
+}
+.prep-bar > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: prep-slide 1.3s ease-in-out infinite;
+}
+.prep-activity-text {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prep-error {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  animation: fade-in 0.25s ease both;
+}
+.prep-error-text {
+  margin: 0;
+  color: var(--text-primary);
+}
+.prep-howto p {
+  margin: 8px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.prep-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 6px 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+.prep-command code {
+  font-size: var(--fs-sm);
+  overflow-x: auto;
+}
+.prep-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.prep-details-toggle svg {
+  transition: transform 0.2s ease;
+  transform: rotate(-90deg);
+}
+.prep-details-toggle svg.is-open {
+  transform: none;
+}
+.prep-log {
+  margin: 6px 0 0;
+  max-height: 120px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+}
+.prep-actions {
+  align-items: center;
+}
+.prep-elapsed {
+  margin-right: auto;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+@keyframes prep-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes prep-slide {
+  from {
+    left: -35%;
+  }
+  to {
+    left: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prep-bar > span {
+    animation: none;
+    left: 0;
+    width: 100%;
+    opacity: 0.6;
+  }
+  .prep-icon.is-done,
+  .prep-badge.is-done {
+    animation: none;
   }
 }

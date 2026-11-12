@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import platform
 import shutil
 from pathlib import Path
@@ -276,6 +277,37 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
             env_error(exc)
         python, source = scope_python(scope)
         return envs.environments(scope_settings_root(scope), python, source)
+
+    # Tandem Cowork: is this computer ready to run shared projects? The app's
+    # "Preparing Python" step reads this, then creates Tandem's own
+    # environment for shared projects (create-env, scope shared) from `base`
+    # and installs `missing` into it (install, scope shared).
+    @app.get("/api/shared/python")
+    def get_shared_python(refresh: bool = False):
+        python, source = shared.interpreter_and_source()
+        shared.root.mkdir(parents=True, exist_ok=True)
+        own = envs.venv_python(shared.root / ".venv")
+        same = lambda a, b: os.path.normcase(os.path.abspath(str(a))) == os.path.normcase(os.path.abspath(str(b)))
+        info = describe(python) if python else {"ok": False}
+        missing = list(envs.SHARED_PACKAGES)
+        if info.get("ok"):
+            try:
+                names = {p["name"].lower() for p in envs.installed_packages(python)}
+                missing = [p for p in envs.SHARED_PACKAGES if p not in names]
+            except envs.EnvError:
+                pass
+        found = envs.interpreters(refresh=refresh)
+        return {
+            "python": str(python) if python else None,
+            "version": info.get("version") if info.get("ok") else None,
+            "source": source,
+            "own_env": bool(own and python and same(own, python)),
+            "packages": list(envs.SHARED_PACKAGES),
+            "missing": missing,
+            "ready": bool(info.get("ok")) and not missing,
+            "base": envs.preferred_base(found),
+            "interpreters": found,
+        }
 
     @app.get("/api/packages")
     def get_packages(scope: str | None = None, project: str | None = None):

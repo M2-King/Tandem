@@ -56,3 +56,22 @@ def test_child_env_adds_the_usual_places_on_macos(tmp_path, monkeypatch):
     parts = env["PATH"].split(os.pathsep)
     assert parts[0] == str(tmp_path / "bin")
     assert "/opt/homebrew/bin" in parts and parts[-2:] == ["/usr/bin", "/bin"]
+
+
+def test_windows_python_org_folders_newest_first(tmp_path):
+    for v in ("310", "312", "39"):
+        d = tmp_path / "Programs" / "Python" / f"Python3{v[1:]}"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "python.exe").write_text("")
+    found = interpreters._windows_installed([str(tmp_path)])
+    assert found.endswith(os.path.join("Python312", "python.exe"))
+    assert interpreters._windows_installed([str(tmp_path / "nothing")]) is None
+
+
+def test_preferred_base_for_shared_projects():
+    from tandem_runtime import envs
+
+    found = [{"path": "/a", "version": "3.14.0"}, {"path": "/b", "version": "3.13.2"}, {"path": "/c", "version": "3.12.7"}]
+    assert envs.preferred_base(found)["path"] == "/c"
+    assert envs.preferred_base([{"path": "/a", "version": "3.14.0"}])["path"] == "/a"
+    assert envs.preferred_base([{"path": "/o", "version": "3.8.10"}]) is None

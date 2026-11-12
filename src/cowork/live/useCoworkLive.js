@@ -349,6 +349,7 @@ export function useCoworkLive({ notify }) {
       // their documents too.
       let docs = {};
       const plainSaves = []; // live files a build without live typing saved since: caught up below
+      const liveSaves = []; // live files a teammate saved since: "Sara saved helper.py"
       const behind = p.files.filter((f) => typing.isLive(f.path) && base.current[f.path] && f.revision > base.current[f.path].revision && !inflight.current.has(f.path));
       const appeared = p.files.filter((f) => typing.isLivePath(f.path) && !(f.path in base.current));
       if (typing.supported && (behind.length || appeared.length)) {
@@ -368,6 +369,7 @@ export function useCoworkLive({ notify }) {
           }
           typing.merge(f.path, d.doc);
           base.current[f.path] = { content: f.content, revision: f.revision };
+          liveSaves.push({ type: 'saved', path: f.path, by: f.updated_by });
           // Edits here (or a teammate's not saved yet) on top: save them.
           if (filesRef.current[f.path] !== f.content && !timers.current.has(f.path)) timers.current.set(f.path, setTimeout(() => save(f.path), LIVE_SAVE_DELAY));
         }
@@ -431,7 +433,7 @@ export function useCoworkLive({ notify }) {
         };
       });
       const me = meRef.current?.username;
-      const note = describeEvents(merged.events, me);
+      const note = describeEvents([...liveSaves, ...merged.events], me);
       if (note) notify(`${note}.`);
       for (const e of merged.events) {
         if (e.type === 'conflict') {

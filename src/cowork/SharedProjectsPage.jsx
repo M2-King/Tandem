@@ -19,11 +19,14 @@ const firstName = (person) => person.name.split(' ')[0];
 
 // An invitation. Join: "Joining…", then a short "You're in", then the
 // project opens. Decline: the card folds away.
-function InviteCard({ cowork, project, invite, from, people }) {
+function InviteCard({ cowork, project, invite, from, people, prepare }) {
   const [state, setState] = useState('open'); // open | joining | joined | leaving
   const alive = useRef(true);
   useEffect(() => () => (alive.current = false), []);
   const join = async () => {
+    // This computer ready to run it first (once; quietly when it already is).
+    if (prepare && !(await prepare(project.name))) return;
+    if (!alive.current) return;
     setState('joining');
     const [ok] = await Promise.all([cowork.join(project.id), pause(500)]);
     if (!alive.current) return;
@@ -83,7 +86,7 @@ function InviteCard({ cowork, project, invite, from, people }) {
 
 // Shared projects: invitations, the projects you're in (with your role), and
 // a way back to this device's project.
-export default function SharedProjectsPage({ cowork, localName, onOpenLocal, onNew }) {
+export default function SharedProjectsPage({ cowork, localName, onOpenLocal, onNew, prepare }) {
   const { projects, archived, invitations, people, viewer, roleIn } = cowork;
   const entriesOf = (p) => p.members.map((m) => ({ person: people[m.id], you: m.id === viewer.id }));
 
@@ -118,7 +121,7 @@ export default function SharedProjectsPage({ cowork, localName, onOpenLocal, onN
               Invitations
             </h2>
             {invitations.map(({ project, invite, from }) => (
-              <InviteCard key={project.id} cowork={cowork} project={project} invite={invite} from={from} people={entriesOf(project)} />
+              <InviteCard key={project.id} cowork={cowork} project={project} invite={invite} from={from} people={entriesOf(project)} prepare={prepare} />
             ))}
           </section>
         )}
@@ -134,7 +137,11 @@ export default function SharedProjectsPage({ cowork, localName, onOpenLocal, onN
                 const editor = people[p.edited.by];
                 return (
                   <li key={p.id}>
-                    <button type="button" className="shared-row" onClick={() => cowork.go('project', p.id)}>
+                    <button
+                      type="button"
+                      className="shared-row"
+                      onClick={() => (prepare ? prepare(p.name, () => cowork.go('project', p.id)) : cowork.go('project', p.id))}
+                    >
                       <span className="shared-row-icon" aria-hidden="true">
                         <FolderOpen size={18} />
                       </span>

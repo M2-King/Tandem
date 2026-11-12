@@ -162,6 +162,26 @@ def interpreters(refresh: bool = False) -> list[dict]:
     return items
 
 
+# What shared projects get by default ("Preparing Python" in the app): the
+# usual data science packages, and the kernel for notebooks.
+SHARED_PACKAGES = ("numpy", "pandas", "matplotlib", "ipykernel")
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", version or "")[:2])
+
+
+def preferred_base(found: list[dict]) -> dict | None:
+    """The Python to make an environment from: 3.12, then 3.13, 3.11, 3.10 (the
+    newest versions may not have ready-made packages yet), else the newest 3.9+."""
+    usable = [i for i in found if _version_tuple(i.get("version", "")) >= (3, 9)]
+    for wanted in ((3, 12), (3, 13), (3, 11), (3, 10)):
+        for item in usable:
+            if _version_tuple(item["version"]) == wanted:
+                return item
+    return usable[0] if usable else None
+
+
 def project_envs(root: Path) -> list[dict]:
     """Virtual environments directly inside the project folder."""
     out = []

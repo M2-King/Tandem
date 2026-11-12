@@ -187,10 +187,13 @@ let pa;
   // Reopen (a new session): still no question for this project.
   await pa.goto('about:blank');
   await pa.goto(shared(RUNTIME));
-  await pa.waitForSelector('#signin-username');
-  await pa.locator('#signin-username').fill(A);
-  await pa.locator('#signin-password').fill(PASS);
-  await pa.keyboard.press('Enter');
+  // (Kept signed in on this device: no sign-in page then.)
+  await pa.waitForSelector('#signin-username, .shared-page .shared-list', { timeout: 20000 });
+  if (await pa.locator('#signin-username').count()) {
+    await pa.locator('#signin-username').fill(A);
+    await pa.locator('#signin-password').fill(PASS);
+    await pa.keyboard.press('Enter');
+  }
   await pa.waitForSelector('.shared-page .shared-list', { timeout: 20000 });
   await pa.getByRole('button', { name: new RegExp(`^Run ${tag}`) }).click();
   await pa.waitForSelector('.monaco-editor .view-lines', { timeout: 15000 });

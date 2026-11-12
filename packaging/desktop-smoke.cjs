@@ -115,6 +115,17 @@ async function seeThrough(app, win, label) {
   return result;
 }
 
+// Staging builds open on sign-in / the projects page (VITE_COWORK_START=shared);
+// this device's project is then at #/device. Waits for its runtime to be up.
+async function deviceProject(w, timeout) {
+  await w.locator('.runtime-status, #signin-username, .shared-page').first().waitFor({ timeout });
+  if (!(await w.locator('.runtime-status').count())) {
+    console.log('     starts on the projects page; opening this device’s project');
+    await w.evaluate(() => { window.location.hash = '#/device'; });
+  }
+  await w.locator('.runtime-status.tone-up').waitFor({ timeout });
+}
+
 (async () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-desktop-'));
   fs.mkdirSync(path.join(project, '.tandem'));
@@ -134,8 +145,8 @@ async function seeThrough(app, win, label) {
     timeout: 120000,
   });
   let win = await app.firstWindow();
-  await win.locator('.runtime-status.tone-up').waitFor({ timeout: 90000 });
-  check(/^http:\/\/127\.0\.0\.1:\d+\/$/.test(win.url()), 'app window shows the bundled runtime (127.0.0.1 only)');
+  await deviceProject(win, 90000);
+  check(/^http:\/\/127\.0\.0\.1:\d+\/(#\/device)?$/.test(win.url()), 'app window shows the bundled runtime (127.0.0.1 only)');
 
   const probe = await win.evaluate(() => ({
     shell: document.documentElement.dataset.shell,
@@ -220,7 +231,7 @@ async function seeThrough(app, win, label) {
       const next = app.waitForEvent('window', { timeout: 30000 });
       await current.evaluate((m) => window.tandemDesktop.setMaterial(m), material);
       current = await next;
-      await current.locator('.runtime-status.tone-up').waitFor({ timeout: 60000 });
+      await deviceProject(current, 60000);
       const shown = await current.evaluate(() => document.documentElement.dataset.material);
       const buttons = await current.locator('.window-controls button').count();
       const windows = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);

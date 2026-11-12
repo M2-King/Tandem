@@ -263,6 +263,12 @@ export function createIpadBackend(config) {
     },
 
     // ---- Environment and packages (iPad: one built-in Python) ----
+    // Shared projects: Python, numpy, pandas, matplotlib and notebooks are built
+    // in, so there's nothing to prepare.
+    async sharedPython() {
+      return { ready: true, builtin: true, version: 'Pyodide', missing: [], packages: ['numpy', 'pandas', 'matplotlib', 'ipykernel'] };
+    },
+
     async envs() {
       const status = await backend.status();
       const p = status.python;

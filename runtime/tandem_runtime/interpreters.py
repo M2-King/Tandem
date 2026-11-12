@@ -121,9 +121,31 @@ def _windows_python() -> str | None:
             if exe and "windowsapps" not in exe.lower():
                 found = exe
                 break
+    if found is None:
+        # Installed from python.org without the launcher or PATH: the usual folders, newest first.
+        found = _windows_installed()
     if found:
         _WIN_CACHE.append(found)
     return found
+
+
+def _windows_installed(bases: list[str | None] | None = None) -> str | None:
+    import glob
+    import re
+
+    if bases is None:
+        bases = [os.environ.get("LOCALAPPDATA"), os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")]
+    found: list[str] = []
+    for base in filter(None, bases):
+        found += glob.glob(os.path.join(base, "Programs", "Python", "Python3*", "python.exe"))
+        found += glob.glob(os.path.join(base, "Python3*", "python.exe"))
+
+    def version(path: str) -> int:
+        m = re.search(r"Python3(\d+)", path, re.IGNORECASE)
+        return int(m.group(1)) if m else 0
+
+    found.sort(key=version, reverse=True)
+    return found[0] if found else None
 
 
 # macOS: where Python is usually installed, beyond the PATH an app opened
