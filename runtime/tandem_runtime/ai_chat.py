@@ -213,13 +213,25 @@ def _ask_ollama(cfg: dict, messages: list[dict], timeout: float) -> str:
         raise AssistError("Ollama's answer had no message in it.") from None
 
 
-def _ask_shared(shared: dict, messages: list[dict], timeout: float) -> dict:
+def _ask_shared(shared: dict, request: dict, timeout: float) -> dict:
     """A shared project's AI, shared by its owner: the cowork-ai Edge Function
-    adds the owner's key on the server (supabase/functions/cowork-ai)."""
+    (supabase/functions/cowork-ai) writes the instructions, reads the files
+    from the project and adds the owner's key on the server. This sends only
+    the question and what it points at; the app has saved its edits first."""
     url = str(shared.get("url") or "")
     if not re.match(r"^(https://|http://(127\.0\.0\.1|localhost)(:\d+)?/)", url):
         raise AssistError("The shared AI's address isn't valid.")
-    body = {"project_id": shared.get("project_id"), "system": SYSTEM, "messages": messages, "max_tokens": MAX_TOKENS}
+    body = {
+        "project_id": shared.get("project_id"),
+        "mode": "python",
+        "prompt": request.get("prompt", ""),
+        "intent": request.get("intent") or "chat",
+        "context": request.get("context") or [],
+        "active_path": request.get("active_path"),
+        "paths": list((request.get("files") or {}).keys())[:6],
+        "last_run": request.get("last_run"),
+        "history": [{"role": m.get("role"), "text": m.get("text")} for m in (request.get("history") or [])][-8:],
+    }
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method="POST", headers={
         "Content-Type": "application/json", "Accept": "application/json",
         "Authorization": f"Bearer {shared.get('token') or ''}", "apikey": str(shared.get("apikey") or ""),
@@ -291,9 +303,8 @@ def assist(settings: AISettings, files: ProjectFiles, request: dict, timeout: fl
     shared = request.get("shared_ai")
     if provider is None and isinstance(shared, dict):
         # No AI of your own: the AI the project's owner shares.
-        messages = _history(request) + [{"role": "user", "content": _context_message(request, files)}]
         started = time.monotonic()
-        answer = _ask_shared(shared, messages, timeout)
+        answer = _ask_shared(shared, request, timeout)
         result = parse_reply(answer["text"], request, files)
         result["model"] = answer.get("model") or ""
         result["provider"] = f"Shared by {answer.get('shared_by') or 'the owner'}"

@@ -230,14 +230,25 @@ export function createIpadAI({ api, token, settings }) {
   // No AI of your own: the AI the project's owner shares, through the
   // cowork-ai Edge Function, which adds the owner's key on the server.
   async function assistShared(request, signal) {
+    // The function writes the instructions and reads the files from the
+    // project; this sends the question and what it points at.
     const shared = request.shared_ai;
-    const messages = [...history(request), { role: 'user', content: contextMessage(request, await projectPaths(request)) }];
     let response;
     try {
       response = await fetch(shared.url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${shared.token}`, apikey: shared.apikey },
-        body: JSON.stringify({ project_id: shared.project_id, system: SYSTEM, messages, max_tokens: MAX_TOKENS }),
+        body: JSON.stringify({
+          project_id: shared.project_id,
+          mode: 'ipad',
+          prompt: request.prompt,
+          intent: request.intent || 'chat',
+          context: request.context || [],
+          active_path: request.active_path,
+          paths: Object.keys(request.files || {}).slice(0, 6),
+          last_run: request.last_run,
+          history: (request.history || []).slice(-8).map((m) => ({ role: m.role, text: m.text })),
+        }),
         signal,
       });
     } catch (e) {

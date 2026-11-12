@@ -195,8 +195,17 @@ export const saveFileDoc = (id, path, content, revision, doc) =>
 // goes in once and never comes back; members' assistants use it through the
 // cowork-ai Edge Function, which adds it on the server.
 export const aiShare = (id) => rpc('cowork_ai_share', { p_project: id });
-export const setAiShare = (id, { provider, model, baseUrl = '', apiKey = '', dailyLimit }) =>
-  rpc('cowork_set_ai_share', { p_project: id, p_provider: provider, p_model: model, p_base_url: baseUrl, p_api_key: apiKey, p_daily_limit: dailyLimit });
+export const setAiShare = (id, { provider, model, baseUrl = '', apiKey = '', dailyLimit, projectDailyLimit, extraRules = '' }) =>
+  rpc('cowork_set_ai_share', {
+    p_project: id,
+    p_provider: provider,
+    p_model: model,
+    p_base_url: baseUrl,
+    p_api_key: apiKey,
+    p_daily_limit: dailyLimit,
+    p_project_daily_limit: projectDailyLimit,
+    p_extra_rules: extraRules,
+  });
 export const stopAiShare = (id) => rpc('cowork_stop_ai_share', { p_project: id });
 // Where the assistant sends a request for the shared AI, signed in as you.
 export async function sharedAIEndpoint() {

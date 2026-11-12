@@ -322,7 +322,10 @@ export default function App() {
             getShared: async () => {
               const s = sharedAIRef.current;
               if (!s.available) return null;
-              const shared_ai = !aiActiveRef.current && s.share ? await s.access() : null;
+              const useShared = !aiActiveRef.current && s.share;
+              // The shared AI reads the files from the project: save edits still waiting first.
+              if (useShared) await coworkRef.current.flushSaves?.().catch(() => {});
+              const shared_ai = useShared ? await s.access() : null;
               return { file_list: Object.keys(filesRef.current), ...(shared_ai ? { shared_ai } : {}) };
             },
             onShared: (used) => sharedAIRef.current.noteUse(used),

@@ -155,9 +155,11 @@ def test_without_own_ai_a_shared_project_uses_the_owners_shared_ai(client, proje
     path, headers, body = Fake.seen[-1]
     # The member's sign-in goes to the function; no provider key is involved here.
     assert headers.get("Authorization") == "Bearer member-token" and {k.lower(): v for k, v in headers.items()}.get("apikey") == "publishable"
-    assert body["project_id"].endswith("0001") and "Tandem" in body["system"] and body["max_tokens"] <= 16000
-    sent = json.dumps(body["messages"])
-    assert "data/prices.csv" in sent and "EOFError" in sent  # the shared project's file list, the traceback
+    # Only the question and what it points at: the function writes the instructions and reads the files.
+    assert body["project_id"].endswith("0001") and body["mode"] == "python"
+    assert body["prompt"] == "Fix the EOFError in test.py." and body["intent"] == "fix" and body["paths"] == ["test.py"]
+    assert body["last_run"]["error"]["type"] == "EOFError" and body["active_path"] == "test.py"
+    assert not {"system", "messages", "max_tokens", "files"} & set(body)
 
 
 def test_own_ai_comes_before_the_shared_one(client, project, fake):

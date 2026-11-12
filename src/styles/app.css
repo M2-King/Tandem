@@ -6518,3 +6518,57 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
     flex-wrap: wrap;
   }
 }
+.ai-share-limits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+}
+.ai-share-rules {
+  height: auto;
+  min-height: 56px;
+  padding: 8px 10px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.45;
+}
+.ai-share-rules-text {
+  font-style: italic;
+}
+.ai-share-usage {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.ai-share-usage-head {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.ai-share-usage-head strong {
+  color: var(--text-primary);
+}
+.ai-share-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.ai-share-usage-table th,
+.ai-share-usage-table td {
+  padding: 4px 0;
+  text-align: left;
+  font-weight: var(--fw-regular, 400);
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+}
+.ai-share-usage-table thead th {
+  border-top: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+.ai-share-usage-table tbody th {
+  color: var(--text-primary);
+}
+.ai-share-usage-table td.is-full {
+  color: var(--warning, #e0a040);
+}

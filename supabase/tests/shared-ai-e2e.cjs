@@ -118,11 +118,14 @@ let pa, pb;
   await section.getByLabel('API address').fill(FAKE);
   await section.getByLabel('API key').fill(KEY);
   await section.getByLabel('Requests per person per day').fill('3');
+  await section.getByLabel('For the whole project per day').fill('50');
+  await section.getByLabel('Also allow (optional)').fill('Also help with statistics questions for our course.');
   await pa.screenshot({ path: `${out}/1-owner-shares.png` });
   await section.getByRole('button', { name: 'Share with this project' }).click();
   await pa.waitForSelector('.ai-share-card:not(.is-empty)', { timeout: 10000 });
   const card = (await pa.locator('.ai-share-card').innerText()).replace(/\s+/g, ' ');
-  check(/You share an OpenAI-compatible model · gpt-shared-test/.test(card) && card.includes(`Key ends in ${KEY.slice(-4)}`) && card.includes('3 requests a day'), `the owner sees: “${card.slice(0, 140)}…”`);
+  check(/You share an OpenAI-compatible model · gpt-shared-test/.test(card) && card.includes(`Key ends in ${KEY.slice(-4)}`) && card.includes('3 requests a day each and 50 for the project'), `the owner sees: “${card.slice(0, 160)}…”`);
+  check(card.includes('Also allowed: Also help with statistics questions for our course.'), '…and the “Also allow” rule');
   check(!(await pa.content()).includes(KEY), 'the key isn’t anywhere on the owner’s page after saving');
   await pa.screenshot({ path: `${out}/2-owner-shared.png` });
   await pa.keyboard.press('Escape');
@@ -138,14 +141,21 @@ let pa, pb;
   await pb.waitForFunction(() => /gpt-shared-test/.test(document.querySelector('.assistant-inner .panel-header')?.innerText || ''), null, { timeout: 15000 });
   check(true, `B’s assistant shows the shared model: “${await badge(pb)}”`);
 
+  // An edit typed just now: saved before asking, so the shared AI sees it.
+  await pb.locator('.monaco-editor .view-lines').first().click();
+  await pb.keyboard.press('Control+End');
+  await pb.keyboard.type('# note from B');
   await ask(pb, 'Explain main.py');
   const answer = await lastAnswer(pb);
   check(answer.includes('main.py prints a greeting.'), 'B’s question is answered by the shared AI');
   const req = seen.at(-1);
   check(req?.auth === `Bearer ${KEY}` && req?.path === '/v1/chat/completions', '…the provider got the owner’s key, added on the server');
   const sent = JSON.stringify(req?.body.messages || []);
-  check(sent.includes('hello from the shared project') && sent.includes('Explain main.py'), '…about the shared project’s main.py');
-  check(req?.body.messages[0].role === 'system' && /Tandem/.test(req.body.messages[0].content), '…with Tandem’s instructions');
+  check(sent.includes('hello from the shared project') && sent.includes('Explain main.py'), '…about the shared project’s main.py, read on the server');
+  check(sent.includes('# note from B'), '…including the edit typed just before asking (saved first)');
+  const system = req?.body.messages[0];
+  check(system?.role === 'system' && /inside Tandem/.test(system.content) && /for this project only/.test(system.content), '…with the server’s instructions and the topic rule');
+  check(/statistics questions for our course/.test(system?.content || ''), '…and the owner’s “Also allow”');
   check(!(await pb.content()).includes(KEY), 'the key never reaches the teammate’s page');
   await pb.screenshot({ path: `${out}/3-member-answer.png` });
 
@@ -174,6 +184,10 @@ let pa, pb;
 
   // A stops sharing; B's assistant goes back to "No AI connected".
   await pa.locator('.cowork-inline').getByRole('button', { name: 'Share', exact: true }).click();
+  await pa.waitForFunction((u) => /3 \/ 3/.test([...document.querySelectorAll('.ai-share-usage-table tbody tr')].find((r) => r.innerText.includes(u))?.innerText || ''), B, { timeout: 15000 });
+  const usage = (await pa.locator('.ai-share-usage').innerText()).replace(/\s+/g, ' ');
+  check(usage.includes('Used today: 3 of 50 for the project') && /Counts only/.test(usage), `the owner sees who used it: “${usage.slice(0, 150)}…”`);
+  await pa.screenshot({ path: `${out}/6-owner-usage.png` });
   await pa.locator('.ai-share').getByRole('button', { name: 'Stop sharing' }).click();
   await pa.waitForSelector('.ai-share-card.is-empty', { timeout: 10000 });
   check(true, 'the owner stops sharing');

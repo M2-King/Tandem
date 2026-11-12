@@ -1020,6 +1020,7 @@ export function useCoworkLive({ notify }) {
     conflicts,
     resolveConflict,
     reloadProject: pull,
+    flushSaves: flush, // save edits still waiting (the shared AI reads saved files)
     presence,
     presenceState: live.state,
     presenceReason: live.reason,
