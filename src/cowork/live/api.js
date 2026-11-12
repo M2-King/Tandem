@@ -1,13 +1,15 @@
-// Cowork live mode: Supabase (Auth for sign-in codes; the cowork_*
-// database functions for everything else).
+// Cowork live mode: Supabase (Auth for username + password accounts; the
+// cowork_* database functions for everything else).
 //
 // Configured at build time (.env.local, see .env.example):
 //   VITE_COWORK_MODE=live
 //   VITE_TANDEM_SUPABASE_URL=https://<project>.supabase.co
 //   VITE_TANDEM_SUPABASE_KEY=<publishable key>
 //
+// Optional: VITE_TANDEM_ACCOUNT_DOMAIN (see below).
+//
 // The session lives in memory only for this milestone: reloading or
-// restarting the app asks for a new sign-in code.
+// restarting the app asks to sign in again.
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -32,11 +34,15 @@ function keyProblem(key) {
   return null;
 }
 
+const DOMAIN_SETTING = (env.VITE_TANDEM_ACCOUNT_DOMAIN || '').trim().toLowerCase();
+
 export const LIVE_PROBLEM = !COWORK_LIVE
   ? null
   : !/^https?:\/\/\S+$/.test(URL_)
     ? 'VITE_TANDEM_SUPABASE_URL is not set to the staging project’s URL.'
-    : keyProblem(KEY);
+    : DOMAIN_SETTING === 'tandem.org'
+      ? 'VITE_TANDEM_ACCOUNT_DOMAIN can’t be tandem.org (its mail isn’t yours).'
+      : keyProblem(KEY);
 
 let client = null;
 function supabase() {
@@ -83,20 +89,49 @@ async function rpc(fn, args = {}) {
   return result.data;
 }
 
-// ------------------------------------------------------------------ sign in
+// ------------------------------------------------------------------ accounts
+//
+// A username and password. Supabase Auth needs an email, so each account is
+// stored as <username>@<ACCOUNT_DOMAIN>, a domain that never receives mail
+// (".invalid" is reserved for exactly that). People never see it: the app
+// shows the Tandem address username@tandem.org. Using a real domain here
+// would let whoever reads that domain's mail sign in as anyone.
 
-export async function sendCode(email) {
-  const { error } = await supabase().auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
-  if (error) throw toError(error, 'Couldn’t send a code.');
+const ACCOUNT_DOMAIN = DOMAIN_SETTING || 'accounts.tandem.invalid';
+const accountEmail = (username) => `${username}@${ACCOUNT_DOMAIN}`;
+
+const CONFIRM_OFF =
+  'Tandem Cowork accounts can’t be confirmed by email. Ask the admin to turn off “Confirm email” in the Supabase project (Authentication → Sign In / Providers → Email).';
+
+export async function signUp(username, password) {
+  const { data, error } = await supabase().auth.signUp({ email: accountEmail(username), password, options: { data: { username } } });
+  if (error) {
+    const m = error.message || '';
+    if (error.code === 'user_already_exists' || /already registered|already exists/i.test(m)) {
+      throw new CoworkError(`The username ${username} is taken. Choose another.`, 'taken');
+    }
+    if (error.code === 'weak_password' || /password/i.test(m)) throw new CoworkError(m || 'Choose a stronger password.', 'password');
+    if (error.code === 'signup_disabled' || /signups not allowed/i.test(m)) throw new CoworkError('Creating accounts is turned off for Tandem Cowork right now.', 'closed');
+    if (/database error saving new user/i.test(m)) throw new CoworkError('That username can’t be used. Use 3 to 24 letters, numbers or _, starting with a letter.', 'username');
+    if (error.code === 'email_address_invalid' || /email.*invalid|invalid.*email/i.test(m)) {
+      throw new CoworkError('Tandem Cowork can’t create accounts with this setup: the sign-in service refused the account address. Ask the admin to check VITE_TANDEM_ACCOUNT_DOMAIN.', 'config');
+    }
+    throw toError(error, 'Couldn’t create the account.');
+  }
+  if (!data.session) throw new CoworkError(CONFIRM_OFF, 'confirm');
+  return { id: data.user.id, username };
 }
 
-export async function verifyCode(email, token) {
-  const { data, error } = await supabase().auth.verifyOtp({ email, token, type: 'email' });
+export async function signInWithPassword(username, password) {
+  const { data, error } = await supabase().auth.signInWithPassword({ email: accountEmail(username), password });
   if (error) {
-    if (/expired|invalid|otp/i.test(error.message || '')) throw new CoworkError('That code doesn’t match or has expired. Check the latest email, or send a new code.', 'otp');
+    if (error.code === 'invalid_credentials' || /invalid login credentials/i.test(error.message || '')) {
+      throw new CoworkError('Wrong username or password.', 'credentials');
+    }
+    if (error.code === 'email_not_confirmed' || /not confirmed/i.test(error.message || '')) throw new CoworkError(CONFIRM_OFF, 'confirm');
     throw toError(error, 'Couldn’t sign in.');
   }
-  return data.user;
+  return { id: data.user.id, username: data.user.user_metadata?.username || username };
 }
 
 export async function signOut() {
@@ -114,7 +149,8 @@ export const openProject = (id) => rpc('cowork_project', { p_project: id });
 export const createProject = (name) => rpc('cowork_create_project', { p_name: name });
 export const renameProject = (id, name) => rpc('cowork_rename_project', { p_project: id, p_name: name });
 export const setArchived = (id, archived) => rpc('cowork_set_archived', { p_project: id, p_archived: archived });
-export const invite = (id, email, role) => rpc('cowork_invite', { p_project: id, p_email: email, p_role: role });
+export const invite = (id, username, role) => rpc('cowork_invite', { p_project: id, p_username: username, p_role: role });
+export const searchAccounts = (query) => rpc('cowork_search_accounts', { p_query: query });
 export const cancelInvitation = (invitationId) => rpc('cowork_cancel_invitation', { p_invitation: invitationId });
 export const acceptInvitation = (invitationId) => rpc('cowork_accept_invitation', { p_invitation: invitationId });
 export const declineInvitation = (invitationId) => rpc('cowork_decline_invitation', { p_invitation: invitationId });

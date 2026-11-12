@@ -20,8 +20,9 @@ npx vite preview
 
 ## What's in it
 
-- **Sign in**: email and a 6-digit code (preview code `246810`), or a sample
-  person (Wei Lin, owner; Sara Kim, invited).
+- **Sign in**: a Tandem account (username + password; in the preview any
+  password of 8+ characters), or a sample person (Wei Lin, owner; Sara Kim,
+  invited). Create account needs no email.
 - **Shared projects**: invitations (Join / Decline), your projects and role,
   an empty state, New shared project, archived projects, this device's project.
 - **Workspace**: the usual layout with a teammate's cursor in code, a
@@ -61,8 +62,8 @@ this preview.
 ### Testing live mode without a staging project
 
 `supabase/tests/local-supabase.mjs` stands in for Supabase's sign-in and API
-on a local Postgres, running the real migration and access rules (codes are
-read from `/__test/code?email=…` instead of email):
+on a local Postgres, running the real migration and access rules (accounts
+and passwords are checked by the stand-in):
 
 ```sh
 # Postgres on 127.0.0.1:54329, then:

@@ -5,38 +5,18 @@
 
 import { newNotebookText } from '../lib/notebook.js';
 
-// People. `hue` gives each one a colour (avatars, cursors, cell badges).
+// People: sample Tandem accounts (username = id). `hue` gives each one a
+// colour (avatars, cursors, cell badges).
 export const PEOPLE = {
-  wei: { id: 'wei', name: 'Wei Lin', email: 'wei.lin@example.edu', hue: 212 },
-  priya: { id: 'priya', name: 'Priya Nair', email: 'priya.nair@example.edu', hue: 330 },
-  tom: { id: 'tom', name: 'Tom Okafor', email: 'tom.okafor@example.edu', hue: 150 },
-  sara: { id: 'sara', name: 'Sara Kim', email: 'sara.kim@example.edu', hue: 36 },
-  marco: { id: 'marco', name: 'Marco Rossi', email: 'marco.rossi@example.edu', hue: 268 },
-  ana: { id: 'ana', name: 'Ana Silva', email: 'ana.silva@example.edu', hue: 190 },
+  wei: { id: 'wei', username: 'wei', name: 'Wei Lin', hue: 212 },
+  priya: { id: 'priya', username: 'priya', name: 'Priya Nair', hue: 330 },
+  tom: { id: 'tom', username: 'tom', name: 'Tom Okafor', hue: 150 },
+  sara: { id: 'sara', username: 'sara', name: 'Sara Kim', hue: 36 },
+  marco: { id: 'marco', username: 'marco', name: 'Marco Rossi', hue: 268 },
+  ana: { id: 'ana', username: 'ana', name: 'Ana Silva', hue: 190 },
 };
 
-export const initialsOf = (name) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join('');
-
-// A person for an email that isn't one of the sample people (a new invite).
-export function personForEmail(email) {
-  const known = Object.values(PEOPLE).find((p) => p.email === email);
-  if (known) return known;
-  const local = email.split('@')[0] || email;
-  const name = local
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(' ');
-  let hash = 0;
-  for (const ch of email) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
-  return { id: email, name: name || email, email, hue: hash };
-}
+export { initialsOf } from './accounts.js';
 
 // ---------------------------------------------------------------- Data Study
 
@@ -192,7 +172,7 @@ export function initialProjects() {
         { id: 'priya', role: 'member' },
         { id: 'tom', role: 'member' },
       ],
-      invites: [{ email: PEOPLE.sara.email, role: 'member', by: 'wei', at: ago(60 * 26) }],
+      invites: [{ username: 'sara', role: 'member', by: 'wei', at: ago(60 * 26) }],
       files: { ...DATA_STUDY_FILES },
       open: ['clean_data.py', 'analysis.ipynb'],
       edited: { by: 'priya', at: ago(4) },
@@ -219,7 +199,7 @@ export function initialProjects() {
         { id: 'marco', role: 'owner' },
         { id: 'ana', role: 'member' },
       ],
-      invites: [{ email: PEOPLE.wei.email, role: 'member', by: 'marco', at: ago(60 * 3) }],
+      invites: [{ username: 'wei', role: 'member', by: 'marco', at: ago(60 * 3) }],
       files: { ...THESIS_FILES },
       open: ['responses.py'],
       edited: { by: 'marco', at: ago(60 * 3) },

@@ -5857,3 +5857,64 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
     display: inline;
   }
 }
+
+/* Accounts: Sign in / Create account, and finding people to invite. */
+.signin-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 6px;
+}
+.signin-tabs button {
+  justify-content: center;
+}
+.share-find {
+  position: relative;
+  display: block;
+}
+.share-find .field-input {
+  width: 100%;
+}
+.share-found {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border-radius: var(--radius-lg);
+  background: var(--surface-3-solid);
+  border: 1px solid var(--border-float);
+  box-shadow: var(--shadow-menu);
+}
+.share-found-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.share-found-row:hover,
+.share-found-row.is-active {
+  background: var(--bg-hover);
+}
+.share-found-row.is-taken {
+  cursor: default;
+  opacity: 0.6;
+}
+.share-found-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  font-size: var(--fs-sm);
+}
+.share-found-text .mono {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+.share-found-note {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}

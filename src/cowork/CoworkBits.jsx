@@ -1,6 +1,6 @@
 import { Check, ChevronLeft, CloudOff, Laptop, Loader2, LogOut, RefreshCw, RotateCcw, Settings, Share2, UserRound, WifiOff } from 'lucide-react';
 import Menu, { MenuItem } from '../components/Menu.jsx';
-import { initialsOf } from './fixtures.js';
+import { addressOf, initialsOf } from './accounts.js';
 
 // Small pieces of the Cowork preview UI used in the toolbar, the narrow
 // project strip and the Shared projects page.
@@ -132,7 +132,7 @@ export function PreviewMenu({ cowork, inProject, className = '' }) {
                   You are signed in as <strong>{viewer.name}</strong>.
                 </>
               ) : (
-                <>Sign in with any email; the page shows the code.</>
+                <>Sign in as a sample person, or with any username and a password of 8+ characters.</>
               )}
             </p>
           </div>
@@ -154,7 +154,7 @@ export function PreviewMenu({ cowork, inProject, className = '' }) {
             description={asOwner ? 'A new member with an invitation to Data Study' : 'Back to the project owner'}
             onSelect={() => cowork.viewAs(asOwner ? 'sara' : 'wei')}
           />
-          {cowork.signedIn && <MenuItem close={close} icon={LogOut} label="Sign out" description={viewer.email} onSelect={cowork.signOut} />}
+          {cowork.signedIn && <MenuItem close={close} icon={LogOut} label="Sign out" description={addressOf(viewer.username)} onSelect={cowork.signOut} />}
           <MenuItem close={close} icon={RotateCcw} label="Reset preview" description="Sample projects and people; signed out" onSelect={cowork.resetPreview} />
         </>
       )}

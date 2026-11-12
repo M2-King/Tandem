@@ -30,10 +30,14 @@ else if (key.split('.').length === 3) {
   }
 }
 
+const domain = (process.env.VITE_TANDEM_ACCOUNT_DOMAIN || '').trim().toLowerCase();
+if (domain && !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) problems.push('VITE_TANDEM_ACCOUNT_DOMAIN must be a domain name (or leave it unset).');
+if (domain === 'tandem.org') problems.push('VITE_TANDEM_ACCOUNT_DOMAIN can’t be tandem.org: that domain’s mail isn’t yours, so its owner could take over accounts.');
+
 if (problems.length) {
   console.error('Cowork staging settings are incomplete. Set these as repository variables');
   console.error('(GitHub → Settings → Secrets and variables → Actions → Variables):');
   for (const p of problems) console.error(`  - ${p}`);
   process.exit(1);
 }
-console.log(`Cowork staging: live mode, project ${host}, publishable key …${key.slice(-4)}`);
+console.log(`Cowork staging: live mode, project ${host}, publishable key …${key.slice(-4)}, accounts @${domain || 'accounts.tandem.invalid'}`);

@@ -1,9 +1,11 @@
 // A local stand-in for the two Supabase services Cowork uses, for tests and
 // development without a staging project:
 //
-//   /auth/v1/otp, /auth/v1/verify, /auth/v1/logout, /auth/v1/user
-//       Email sign-in codes. No email is sent: the latest code for an
-//       address is at /__test/code?email=... (this stand-in only).
+//   /auth/v1/signup, /auth/v1/token?grant_type=password, /auth/v1/logout,
+//   /auth/v1/user
+//       Accounts with a password, "Confirm email" off: sign-up returns a
+//       session at once. Users are rows in auth.users (so the migration's
+//       username trigger runs); passwords are kept in memory (scrypt).
 //   /rest/v1/rpc/cowork_*
 //       The migration's functions, run in Postgres as the signed-in user
 //       (role authenticated, JWT claims set), as PostgREST does, so the
@@ -15,13 +17,16 @@
 // VITE_TANDEM_SUPABASE_URL=http://127.0.0.1:54400 and any VITE_TANDEM_SUPABASE_KEY.
 
 import http from 'node:http';
-import { createHmac, randomInt, randomUUID } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import pg from 'pg';
 
 const PORT = Number(process.env.PORT || 54400);
 const SECRET = 'local-stand-in-secret';
 const pool = new pg.Pool({ connectionString: process.env.COWORK_TEST_DB || 'postgres://postgres@127.0.0.1:54329/cowork_e2e' });
-const codes = new Map(); // email -> { code, expires }
+const passwords = new Map(); // email -> { salt, hash }
+const hashOf = (password, salt) => scryptSync(password, salt, 32);
+// GoTrue's error shape: { code: <http status>, error_code, msg }.
+const authError = (res, status, error_code, msg) => send(res, status, { code: status, error_code, msg });
 
 const b64 = (v) => Buffer.from(typeof v === 'string' ? v : JSON.stringify(v)).toString('base64url');
 function sign(claims) {
@@ -59,14 +64,9 @@ function pgError(e) {
   return [status, { code: e.code, message: e.message, details: null, hint: null }];
 }
 
-async function session(email) {
-  const { rows } = await pool.query(
-    'insert into auth.users (id, email) values ($1, $2) on conflict (email) do update set email = excluded.email returning id',
-    [randomUUID(), email]
-  );
-  const id = rows[0].id;
+async function session(id, email, meta) {
   const exp = Math.floor(Date.now() / 1000) + 3600;
-  const user = { id, aud: 'authenticated', role: 'authenticated', email, email_confirmed_at: new Date().toISOString(), app_metadata: { provider: 'email' }, user_metadata: {}, created_at: new Date().toISOString() };
+  const user = { id, aud: 'authenticated', role: 'authenticated', email, email_confirmed_at: new Date().toISOString(), app_metadata: { provider: 'email' }, user_metadata: meta || {}, created_at: new Date().toISOString() };
   return {
     access_token: sign({ sub: id, email, role: 'authenticated', aud: 'authenticated', exp }),
     token_type: 'bearer',
@@ -104,21 +104,31 @@ http
     const url = new URL(req.url, 'http://local');
     const path = url.pathname;
     try {
-      if (path === '/auth/v1/otp' && req.method === 'POST') {
-        const { email } = await readBody(req);
-        if (!email) return send(res, 400, { code: 400, msg: 'Email is required', error_code: 'validation_failed' });
-        const code = String(randomInt(0, 1e6)).padStart(6, '0');
-        codes.set(email.toLowerCase(), { code, expires: Date.now() + 10 * 60 * 1000 });
-        return send(res, 200, {});
-      }
-      if (path === '/auth/v1/verify' && req.method === 'POST') {
-        const { email, token } = await readBody(req);
-        const entry = codes.get((email || '').toLowerCase());
-        if (!entry || entry.code !== token || entry.expires < Date.now()) {
-          return send(res, 403, { code: 403, error_code: 'otp_expired', msg: 'Token has expired or is invalid' });
+      if (path === '/auth/v1/signup' && req.method === 'POST') {
+        const { email: raw, password, data } = await readBody(req);
+        const email = (raw || '').toLowerCase();
+        if (!email || !password) return authError(res, 400, 'validation_failed', 'Signup requires a valid password');
+        if (password.length < 8) return authError(res, 422, 'weak_password', 'Password should be at least 8 characters.');
+        const exists = await pool.query('select 1 from auth.users where email = $1', [email]);
+        if (exists.rows.length) return authError(res, 422, 'user_already_exists', 'User already registered');
+        const id = randomUUID();
+        try {
+          await pool.query('insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)', [id, email, JSON.stringify(data || {})]);
+        } catch {
+          return authError(res, 500, 'unexpected_failure', 'Database error saving new user');
         }
-        codes.delete(email.toLowerCase());
-        return send(res, 200, await session(email.toLowerCase()));
+        const salt = randomBytes(16);
+        passwords.set(email, { salt, hash: hashOf(password, salt) });
+        return send(res, 200, await session(id, email, data));
+      }
+      if (path === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password' && req.method === 'POST') {
+        const { email: raw, password } = await readBody(req);
+        const email = (raw || '').toLowerCase();
+        const stored = passwords.get(email);
+        const ok = stored && password && timingSafeEqual(stored.hash, hashOf(password, stored.salt));
+        if (!ok) return authError(res, 400, 'invalid_credentials', 'Invalid login credentials');
+        const { rows } = await pool.query('select id, raw_user_meta_data from auth.users where email = $1', [email]);
+        return send(res, 200, await session(rows[0].id, email, rows[0].raw_user_meta_data));
       }
       if (path === '/auth/v1/logout') return send(res, 204);
       const claims = verify((req.headers.authorization || '').replace(/^Bearer /, ''));
@@ -131,7 +141,6 @@ http
         const [status, body] = await rpc(m[1], await readBody(req), claims);
         return send(res, status, body);
       }
-      if (path === '/__test/code') return send(res, 200, { code: codes.get((url.searchParams.get('email') || '').toLowerCase())?.code || null });
       return send(res, 404, { message: 'Not found' });
     } catch (e) {
       return send(res, 500, { message: e.message });

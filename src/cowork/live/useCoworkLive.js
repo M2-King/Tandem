@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from './api.js';
 import { PERMISSIONS, useCoworkRoute } from '../useCowork.js';
-import { personForEmail } from '../fixtures.js';
+import { normalizeUsername, passwordProblem, personForUsername, usernameProblem } from '../accounts.js';
 import { safeFileName, uniqueFileName } from '../../state/useDiskWorkspace.js';
 
 // Cowork live mode: the same interface as the preview (useCowork), backed by
@@ -16,7 +16,7 @@ const at = (iso) => (iso ? Date.parse(iso) : Date.now());
 
 export function useCoworkLive({ notify }) {
   const { route, go } = useCoworkRoute();
-  const [me, setMe] = useState(null); // { id, email }
+  const [me, setMe] = useState(null); // { id, username }
   const [overview, setOverview] = useState(null); // from cowork_overview
   const [loading, setLoading] = useState(false);
   const [opened, setOpened] = useState(null); // the open project
@@ -34,23 +34,23 @@ export function useCoworkLive({ notify }) {
   openedRef.current = opened;
 
   // ------------------------------------------------------------ people
-  // Everyone is known by email; members also by their user id.
+  // Everyone is known by username; members also by their user id.
   const people = useMemo(() => {
     const all = {};
-    const add = (email, id) => {
-      if (!email) return;
-      const person = { ...personForEmail(email), ...(id ? { id } : {}) };
-      all[email] = all[email] && !id ? all[email] : person;
+    const add = (username, id) => {
+      if (!username) return;
+      const person = { ...personForUsername(username), ...(id ? { id } : {}) };
+      all[username] = all[username] && !id ? all[username] : person;
       if (id) all[id] = person;
     };
-    if (me) add(me.email, me.id);
-    for (const p of overview?.projects || []) for (const m of p.members || []) add(m.email, m.user_id);
+    if (me) add(me.username, me.id);
+    for (const p of overview?.projects || []) for (const m of p.members || []) add(m.username, m.user_id);
     for (const i of overview?.invitations || []) {
-      add(i.invited_by_email);
-      for (const m of i.members || []) add(m.email);
+      add(i.invited_by);
+      for (const m of i.members || []) add(m.username);
     }
-    for (const m of opened?.members || []) add(m.email, m.user_id);
-    for (const i of opened?.invitations || []) add(i.email);
+    for (const m of opened?.members || []) add(m.username, m.user_id);
+    for (const i of opened?.invitations || []) add(i.username);
     return all;
   }, [me, overview, opened]);
   const viewer = me ? people[me.id] : null;
@@ -136,9 +136,9 @@ export function useCoworkLive({ notify }) {
       name: p.name,
       role: p.role,
       members: (p.members || []).map((m) => ({ id: m.user_id, role: m.role })),
-      invites: (p.invitations || []).map((i) => ({ id: i.id, email: i.email, role: i.role, by: i.invited_by_email, at: at(i.created_at) })),
-      edited: { by: p.updated_by_email, at: at(p.updated_at) },
-      archived: p.archived_at ? { by: p.archived_by_email, at: at(p.archived_at) } : null,
+      invites: (p.invitations || []).map((i) => ({ id: i.id, username: i.username, role: i.role, by: i.invited_by, at: at(i.created_at) })),
+      edited: { by: p.updated_by, at: at(p.updated_at) },
+      archived: p.archived_at ? { by: p.archived_by, at: at(p.archived_at) } : null,
     }),
     []
   );
@@ -148,9 +148,9 @@ export function useCoworkLive({ notify }) {
   const invitations = useMemo(
     () =>
       (overview?.invitations || []).map((i) => ({
-        project: { id: i.project_id, name: i.project_name, members: (i.members || []).map((m) => ({ id: m.email, role: m.role })) },
-        invite: { id: i.id, role: i.role, at: at(i.created_at), email: me?.email },
-        from: people[i.invited_by_email] || personForEmail(i.invited_by_email || 'someone@unknown'),
+        project: { id: i.project_id, name: i.project_name, members: (i.members || []).map((m) => ({ id: m.username, role: m.role })) },
+        invite: { id: i.id, role: i.role, at: at(i.created_at), username: me?.username },
+        from: people[i.invited_by] || personForUsername(i.invited_by || 'someone'),
       })),
     [overview, people, me]
   );
@@ -397,18 +397,31 @@ export function useCoworkLive({ notify }) {
   }, [project, opened, openFile, closeTab, setFile, createFile, uploadFiles, renameFile, removeFile, flush]);
 
   // ------------------------------------------------------------ sign in
-  const sendCode = useCallback((email) => api.sendCode(email), []);
-  const verifyCode = useCallback(async (email, code) => {
-    const user = await api.verifyCode(email, code);
-    return { id: user.id, email: (user.email || email).toLowerCase(), name: personForEmail((user.email || email).toLowerCase()).name };
-  }, []);
+  // Both return the account ({ id, username, name }) or throw with a
+  // message to show; completeSignIn then loads Shared projects.
+  const checked = (value, password) => {
+    const username = normalizeUsername(value);
+    const problem = usernameProblem(username) || passwordProblem(password);
+    if (problem) throw new Error(problem);
+    return username;
+  };
+  const asAccount = (user) => ({ ...personForUsername(user.username), id: user.id });
+  const signInWithPassword = useCallback(async (value, password) => asAccount(await api.signInWithPassword(checked(value, password), password)), []);
+  const signUp = useCallback(async (value, password) => asAccount(await api.signUp(checked(value, password), password)), []);
   const completeSignIn = useCallback(
     async (user) => {
-      setMe({ id: user.id, email: user.email });
+      setMe({ id: user.id, username: user.username });
       await refresh();
     },
     [refresh]
   );
+  const searchPeople = useCallback(async (query) => {
+    try {
+      return (await api.searchAccounts(normalizeUsername(query))).map((x) => ({ username: x.username, name: x.username }));
+    } catch {
+      return [];
+    }
+  }, []);
   const signOut = useCallback(async () => {
     await flush();
     await api.signOut();
@@ -476,9 +489,9 @@ export function useCoworkLive({ notify }) {
 
   // Returns an error message, or null.
   const invite = useCallback(
-    async (projectId, email, role) => {
+    async (projectId, value, role) => {
       try {
-        await api.invite(projectId, email, role);
+        await api.invite(projectId, normalizeUsername(value), role);
         await reloadPeople();
         return null;
       } catch (e) {
@@ -489,8 +502,8 @@ export function useCoworkLive({ notify }) {
     [reloadPeople, lostAccess]
   );
   const cancelInvite = useCallback(
-    (projectId, email) => {
-      const inv = (openedRef.current?.invitations || []).find((i) => i.email === email);
+    (projectId, username) => {
+      const inv = (openedRef.current?.invitations || []).find((i) => i.username === username);
       if (inv) run(() => api.cancelInvitation(inv.id), { after: reloadPeople });
     },
     [run, reloadPeople]
@@ -569,9 +582,10 @@ export function useCoworkLive({ notify }) {
     restoreProject,
     arrival,
     signedIn: !!me,
-    sendCode,
-    verifyCode,
+    signInWithPassword,
+    signUp,
     completeSignIn,
+    searchPeople,
     signOut,
   };
 }

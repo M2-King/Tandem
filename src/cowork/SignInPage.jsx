@@ -1,109 +1,88 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, HardDrive, Loader2, Mail } from 'lucide-react';
+import { HardDrive, Loader2 } from 'lucide-react';
 import TandemMark from '../components/TandemMark.jsx';
 import { Avatar } from './CoworkBits.jsx';
 import { SuccessCheck, pause } from './motion.jsx';
-import { personForEmail } from './fixtures.js';
+import { TANDEM_DOMAIN, USERNAME_RULE, addressOf, normalizeUsername } from './accounts.js';
 
-// Sign in to Shared projects: an email, then a 6-digit code sent to it.
-// Preview: no email is sent; the sample code is shown on the page.
+// Sign in to Shared projects with a Tandem account: a username and a
+// password. Creating an account needs nothing else (no email to confirm);
+// the account's Tandem address, username@tandem.org, is how people find and
+// invite each other inside the app.
 //
-// Motion: the card rises in; each step slides in; a wrong code shakes the
-// field; a correct one draws a check before the projects appear.
-export const SAMPLE_CODE = '246810';
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Motion: the card rises in; switching between Sign in and Create account
+// slides; a refused attempt shakes the field; success draws a check before
+// the projects appear.
 
 export default function SignInPage({ cowork, localName, notify }) {
-  const [step, setStep] = useState('email'); // email | code | done
+  const [mode, setMode] = useState('signin'); // signin | signup
+  const [step, setStep] = useState('form'); // form | done
   const [busy, setBusy] = useState(false);
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [error, setError] = useState(null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState(null); // { field, message }
   const [shakes, setShakes] = useState(0);
-  const [welcome, setWelcome] = useState(null); // the person signing in
-  const emailRef = useRef(null);
-  const codeRef = useRef(null);
+  const [welcome, setWelcome] = useState(null);
+  const userRef = useRef(null);
+  const passRef = useRef(null);
+  const confirmRef = useRef(null);
   const alive = useRef(true);
   useEffect(() => () => (alive.current = false), []);
 
   useEffect(() => {
-    if (step === 'email') emailRef.current?.focus();
-    if (step === 'code') codeRef.current?.focus();
-  }, [step]);
+    if (step === 'form') userRef.current?.focus();
+  }, [mode, step]);
 
-  // After a shake the field is new; put the cursor back in it.
+  // After a shake, put the cursor back in the field that needs fixing.
   useEffect(() => {
-    if (!shakes) return;
-    const el = (step === 'code' ? codeRef : emailRef).current;
+    if (!shakes || !error) return;
+    const el = { username: userRef, confirm: confirmRef }[error.field]?.current || passRef.current;
     el?.focus();
-    el?.select();
-  }, [shakes, step]);
+    el?.select?.();
+  }, [shakes, error]);
 
-  const fail = (message) => {
-    setError(message);
+  const fail = (message, field = 'password') => {
+    setError({ field, message });
     setShakes((n) => n + 1);
   };
 
-  // Show the check, then the projects. Live mode passes the signed-in user.
-  const finish = async (idOrEmail, user = null) => {
-    const person =
-      user || cowork.people[idOrEmail] || Object.values(cowork.people).find((p) => p.email === idOrEmail) || personForEmail(idOrEmail);
+  // Show the check, then the projects.
+  const finish = async (person) => {
     setWelcome(person);
     setStep('done');
-    await Promise.all([pause(900), user ? cowork.completeSignIn(user) : null]);
+    await pause(900); // the welcome, then the projects
     if (!alive.current) return;
-    if (user) notify(`Signed in as ${user.email}.`);
-    else notify(`Signed in as ${cowork.signIn(idOrEmail).name}.`);
+    await cowork.completeSignIn(person);
+    notify(`Signed in as ${addressOf(person.username)}.`);
   };
 
-  const submitEmail = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
-    const address = email.trim().toLowerCase();
-    if (!EMAIL.test(address)) return fail('Enter your email address, like name@example.edu.');
-    setEmail(address);
+    const u = normalizeUsername(username);
+    if (mode === 'signup' && password !== confirm) return fail('The passwords don’t match.', 'confirm');
     setError(null);
     setBusy(true);
     try {
-      // Live: the code is emailed by the sign-in service. Preview: a pause.
-      await (cowork.live ? cowork.sendCode(address) : pause(650));
+      const person = mode === 'signup' ? await cowork.signUp(u, password) : await cowork.signInWithPassword(u, password);
+      if (!alive.current) return;
+      setBusy(false);
+      finish(person);
     } catch (err) {
       if (!alive.current) return;
       setBusy(false);
-      return fail(err.message);
+      const field = /username|account called|taken/i.test(err.message) ? 'username' : 'password';
+      fail(err.message, field);
     }
-    if (!alive.current) return;
-    setBusy(false);
-    setCode('');
-    setStep('code');
   };
 
-  const submitCode = async (e) => {
-    e.preventDefault();
-    if (busy) return;
-    const typed = code.replace(/\s/g, '');
-    if (typed.length !== 6) return fail('Enter the 6-digit code from the email.');
-    setBusy(true);
-    if (cowork.live) {
-      try {
-        const user = await cowork.verifyCode(email, typed);
-        if (!alive.current) return;
-        setBusy(false);
-        return finish(user.email, user);
-      } catch (err) {
-        if (!alive.current) return;
-        setBusy(false);
-        return fail(err.message);
-      }
-    }
-    await pause(450); // "checking"
-    if (!alive.current) return;
-    setBusy(false);
-    if (typed !== SAMPLE_CODE) {
-      fail('That code doesn’t match. Check the latest email, or send a new code.');
-      return;
-    }
-    finish(email);
+  const switchMode = (next) => {
+    setMode(next);
+    setError(null);
+    setShakes(0);
+    setPassword('');
+    setConfirm('');
   };
 
   if (step === 'done') {
@@ -112,11 +91,23 @@ export default function SignInPage({ cowork, localName, notify }) {
         <div className="signin-card signin-done" role="status" aria-live="polite">
           <SuccessCheck size={56} />
           <h1 className="signin-title">Welcome, {welcome.name.split(' ')[0]}</h1>
-          <p className="signin-sub">Signed in. Opening your shared projects…</p>
+          <p className="signin-sub">
+            Signed in as <span className="mono">{addressOf(welcome.username)}</span>. Opening your shared projects…
+          </p>
         </div>
       </div>
     );
   }
+
+  const signup = mode === 'signup';
+  const errorFor = (field) =>
+    error?.field === field ? (
+      <p className="field-error" id={`signin-${field}-error`} role="alert">
+        {error.message}
+      </p>
+    ) : null;
+  const shake = (field) => (shakes && error?.field === field ? 'cw-shake' : undefined);
+  const preview = normalizeUsername(username);
 
   return (
     <div className="shared-page signin-page">
@@ -124,123 +115,121 @@ export default function SignInPage({ cowork, localName, notify }) {
         <span className="signin-mark" aria-hidden="true">
           <TandemMark size={22} />
         </span>
-        <h1 className="signin-title">Sign in to Shared projects</h1>
+        <h1 className="signin-title">{signup ? 'Create a Tandem account' : 'Sign in to Shared projects'}</h1>
         <p className="signin-sub">
-          Shared projects use a Tandem Cowork account, separate from your other accounts. Only people invited to a project can open it.
+          Tandem accounts are their own: a username and a password, nothing to confirm. Only people invited to a project can open it.
         </p>
 
-        {step === 'email' ? (
-          <form key="email" className="signin-form signin-step" onSubmit={submitEmail} noValidate>
-            <label className="field" htmlFor="signin-email">
-              <span className="field-label">Email</span>
-            </label>
-            <div key={`shake-${shakes}`} className={shakes ? 'cw-shake' : undefined}>
-              <input
-                id="signin-email"
-                ref={emailRef}
-                className="field-input"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                value={email}
-                disabled={busy}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  setError(null);
-                }}
-                placeholder="name@example.edu"
-                aria-invalid={!!error}
-                aria-describedby={error ? 'signin-error' : undefined}
-              />
-            </div>
-            {error && (
-              <p className="field-error" id="signin-error" role="alert">
-                {error}
-              </p>
-            )}
-            <button type="submit" className="btn btn-primary signin-submit" disabled={busy}>
-              {busy ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <Mail size={16} aria-hidden="true" />}
-              {busy ? 'Sending code…' : 'Email me a sign-in code'}
+        <div className="segmented signin-tabs" role="tablist" aria-label="Account">
+          {[
+            ['signin', 'Sign in'],
+            ['signup', 'Create account'],
+          ].map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={mode === id} className={mode === id ? 'is-active' : ''} onClick={() => switchMode(id)}>
+              {label}
             </button>
-          </form>
-        ) : (
-          <form key="code" className="signin-form signin-step" onSubmit={submitCode} noValidate>
-            <p className="signin-sent">
-              We sent a 6-digit code to <strong>{email}</strong>. It works for 10 minutes.
+          ))}
+        </div>
+
+        <form key={mode} className="signin-form signin-step" onSubmit={submit} noValidate>
+          <label className="field" htmlFor="signin-username">
+            <span className="field-label">Username</span>
+          </label>
+          <div key={`u-${shakes}`} className={shake('username')}>
+            <input
+              id="signin-username"
+              ref={userRef}
+              className="field-input"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              value={username}
+              disabled={busy}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                setError(null);
+              }}
+              placeholder="priya"
+              aria-invalid={error?.field === 'username'}
+              aria-describedby={error?.field === 'username' ? 'signin-username-error' : 'signin-username-hint'}
+            />
+          </div>
+          {errorFor('username') || (
+            <p className="field-hint" id="signin-username-hint">
+              {signup ? (
+                <>
+                  {USERNAME_RULE[0].toUpperCase() + USERNAME_RULE.slice(1)}. Your Tandem address:{' '}
+                  <span className="mono">{preview ? addressOf(preview) : `name@${TANDEM_DOMAIN}`}</span>
+                </>
+              ) : (
+                <>
+                  Or your Tandem address, like <span className="mono">priya@{TANDEM_DOMAIN}</span>.
+                </>
+              )}
             </p>
-            <label className="field" htmlFor="signin-code">
-              <span className="field-label">Code</span>
-            </label>
-            <div key={`shake-${shakes}`} className={shakes ? 'cw-shake' : undefined}>
-              <input
-                id="signin-code"
-                ref={codeRef}
-                className="field-input mono signin-code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={7}
-                value={code}
-                disabled={busy}
-                onChange={(e) => {
-                  setCode(e.target.value.replace(/[^\d ]/g, ''));
-                  setError(null);
-                }}
-                placeholder="000000"
-                aria-invalid={!!error}
-                aria-describedby={error ? 'signin-error' : 'signin-code-hint'}
-              />
-            </div>
-            {error ? (
-              <p className="field-error" id="signin-error" role="alert">
-                {error}
+          )}
+
+          <label className="field" htmlFor="signin-password">
+            <span className="field-label">Password</span>
+          </label>
+          <div key={`p-${shakes}`} className={shake('password')}>
+            <input
+              id="signin-password"
+              ref={passRef}
+              className="field-input"
+              type="password"
+              autoComplete={signup ? 'new-password' : 'current-password'}
+              value={password}
+              disabled={busy}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setError(null);
+              }}
+              aria-invalid={error?.field === 'password'}
+              aria-describedby={error?.field === 'password' ? 'signin-password-error' : signup ? 'signin-password-hint' : undefined}
+            />
+          </div>
+          {errorFor('password') ||
+            (signup && (
+              <p className="field-hint" id="signin-password-hint">
+                At least 8 characters. There’s no email to reset it, so keep it somewhere safe.
               </p>
-            ) : (
-              <p className="field-hint" id="signin-code-hint">
-                {cowork.live ? (
-                  'The email comes from Tandem’s sign-in service. Check spam if it isn’t there in a minute.'
-                ) : (
-                  <>
-                    Preview: no email is sent. The code is <span className="mono">{SAMPLE_CODE}</span>.
-                  </>
-                )}
-              </p>
-            )}
-            <button type="submit" className="btn btn-primary signin-submit" disabled={busy}>
-              {busy && <Loader2 size={16} className="spin" aria-hidden="true" />}
-              {busy ? 'Checking…' : 'Sign in'}
-            </button>
-            <div className="signin-links">
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  setStep('email');
-                  setError(null);
-                  setShakes(0);
-                }}
-              >
-                <ArrowLeft size={14} aria-hidden="true" /> Use a different email
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                disabled={busy}
-                onClick={async () => {
-                  if (!cowork.live) return notify(`Preview: a new code would be sent to ${email}.`);
-                  try {
-                    await cowork.sendCode(email);
-                    notify(`Sent a new code to ${email}.`);
-                  } catch (err) {
-                    fail(err.message);
-                  }
-                  return undefined;
-                }}
-              >
-                Send a new code
-              </button>
-            </div>
-          </form>
-        )}
+            ))}
+
+          {signup && (
+            <>
+              <label className="field" htmlFor="signin-confirm">
+                <span className="field-label">Password again</span>
+              </label>
+              <div key={`c-${shakes}`} className={shake('confirm')}>
+                <input
+                  id="signin-confirm"
+                  ref={confirmRef}
+                  className="field-input"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirm}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setConfirm(e.target.value);
+                    setError(null);
+                  }}
+                  aria-invalid={error?.field === 'confirm'}
+                  aria-describedby={error?.field === 'confirm' ? 'signin-confirm-error' : undefined}
+                />
+              </div>
+              {errorFor('confirm')}
+            </>
+          )}
+
+          {!cowork.live && (
+            <p className="field-hint">Preview: sample accounts sign in with any password of 8+ characters.</p>
+          )}
+          <button type="submit" className="btn btn-primary signin-submit" disabled={busy}>
+            {busy && <Loader2 size={16} className="spin" aria-hidden="true" />}
+            {busy ? (signup ? 'Creating account…' : 'Signing in…') : signup ? 'Create account' : 'Sign in'}
+          </button>
+        </form>
 
         {cowork.configProblem && (
           <p className="field-error signin-config" role="alert">
@@ -248,7 +237,7 @@ export default function SignInPage({ cowork, localName, notify }) {
           </p>
         )}
 
-        {step === 'email' && !cowork.live && (
+        {!cowork.live && !signup && (
           <div className="signin-samples" role="group" aria-labelledby="signin-samples-title">
             <p className="signin-samples-title" id="signin-samples-title">
               Preview: sign in as a sample person
@@ -257,10 +246,12 @@ export default function SignInPage({ cowork, localName, notify }) {
               ['wei', 'Owner of Data Study'],
               ['sara', 'Invited to Data Study'],
             ].map(([id, note]) => (
-              <button key={id} type="button" className="signin-sample" onClick={() => finish(id)} disabled={busy}>
+              <button key={id} type="button" className="signin-sample" onClick={() => finish(cowork.people[id])} disabled={busy}>
                 <Avatar person={cowork.people[id]} size="sm" />
                 <span className="signin-sample-text">
-                  <span>{cowork.people[id].name}</span>
+                  <span>
+                    {cowork.people[id].name} <span className="signin-sample-note mono">{addressOf(id)}</span>
+                  </span>
                   <span className="signin-sample-note">{note}</span>
                 </span>
               </button>

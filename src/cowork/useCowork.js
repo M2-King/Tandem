@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PEOPLE, PRESENCE_SCRIPT, initialProjects, personForEmail, starterFiles } from './fixtures.js';
+import { PEOPLE, PRESENCE_SCRIPT, initialProjects, starterFiles } from './fixtures.js';
+import { addressOf, normalizeUsername, passwordProblem, personForUsername, usernameProblem } from './accounts.js';
 import { safeFileName, uniqueFileName } from '../state/useDiskWorkspace.js';
 
 // Who can do what in a shared project. The UI reads this table, so the
@@ -65,14 +66,14 @@ const slug = (name) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '') || 'project';
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function useCowork({ notify }) {
   const [projects, setProjects] = useState(initialProjects);
   const [people, setPeople] = useState(PEOPLE);
   const [viewerId, setViewerId] = useState('wei');
   // Shared projects need a Cowork account (separate from anything else).
-  // The preview starts signed out; any email signs in with the sample code.
+  // The preview starts signed out; sample accounts sign in with any password
+  // of 8+ characters.
   const [signedIn, setSignedIn] = useState(false);
   // Who just joined which project (their avatar arrives in the people list).
   const [arrival, setArrival] = useState(null);
@@ -100,7 +101,7 @@ export function useCowork({ notify }) {
     () =>
       projects
         .filter((p) => !roleIn(p))
-        .flatMap((p) => p.invites.filter((i) => i.email === viewer.email).map((invite) => ({ project: p, invite, from: people[invite.by] }))),
+        .flatMap((p) => p.invites.filter((i) => i.username === viewer.username).map((invite) => ({ project: p, invite, from: people[invite.by] }))),
     [projects, roleIn, viewer, people]
   );
   const project = route.screen === 'project' ? mine.find((p) => p.id === route.id) || null : null;
@@ -361,7 +362,7 @@ export function useCowork({ notify }) {
   const enter = useCallback(
     (id) => {
       const p = projects.find((x) => x.id === id);
-      const invite = p?.invites.find((i) => i.email === viewer.email);
+      const invite = p?.invites.find((i) => i.username === viewer.username);
       if (!invite) return;
       updateProject(id, (x) => ({
         ...x,
@@ -379,31 +380,46 @@ export function useCowork({ notify }) {
   const decline = useCallback(
     (id) => {
       const p = projects.find((x) => x.id === id);
-      updateProject(id, (x) => ({ ...x, invites: x.invites.filter((i) => i.email !== viewer.email) }));
+      updateProject(id, (x) => ({ ...x, invites: x.invites.filter((i) => i.username !== viewer.username) }));
       if (p) notify(`Declined the invitation to ${p.name}.`);
     },
     [projects, viewer, updateProject, notify]
   );
 
+  // Owners invite an existing account by username or Tandem address.
   // Returns an error message, or null when the invitation was added.
   const invite = useCallback(
-    (id, email, role) => {
-      const address = email.trim().toLowerCase();
-      if (!EMAIL.test(address)) return 'Enter an email address, like name@example.edu.';
+    (id, value, role) => {
+      const u = normalizeUsername(value);
+      const problem = usernameProblem(u);
+      if (problem) return `Enter a username or Tandem address, like priya or priya@tandem.org.`;
       const p = projects.find((x) => x.id === id);
-      const person = personForEmail(address);
-      if (p.members.some((m) => people[m.id]?.email === address)) return `${person.name} is already in ${p.name}.`;
-      if (p.invites.some((i) => i.email === address)) return `${address} is already invited.`;
-      setPeople((all) => (all[person.id] ? all : { ...all, [person.id]: person }));
-      updateProject(id, (x) => ({ ...x, invites: [...x.invites, { email: address, role, by: viewerId, at: Date.now() }] }));
+      const person = people[u];
+      if (!person) return `There’s no Tandem account called ${addressOf(u)}. Ask them to create one first.`;
+      if (p.members.some((m) => m.id === u)) return `${person.name} is already in ${p.name}.`;
+      if (p.invites.some((i) => i.username === u)) return `${addressOf(u)} is already invited.`;
+      updateProject(id, (x) => ({ ...x, invites: [...x.invites, { username: u, role, by: viewerId, at: Date.now() }] }));
       return null;
     },
     [projects, people, viewerId, updateProject]
   );
 
   const cancelInvite = useCallback(
-    (id, email) => updateProject(id, (x) => ({ ...x, invites: x.invites.filter((i) => i.email !== email) })),
+    (id, username) => updateProject(id, (x) => ({ ...x, invites: x.invites.filter((i) => i.username !== username) })),
     [updateProject]
+  );
+
+  // Finding people to invite: accounts whose username starts with the text.
+  const searchPeople = useCallback(
+    async (query) => {
+      const q = normalizeUsername(query);
+      if (q.length < 2) return [];
+      return Object.values(people)
+        .filter((x) => x.username && x.username.startsWith(q) && x.id !== viewerId)
+        .slice(0, 8)
+        .map((x) => ({ username: x.username, name: x.name }));
+    },
+    [people, viewerId]
   );
 
   const setRole = useCallback(
@@ -421,18 +437,42 @@ export function useCowork({ notify }) {
     [updateProject]
   );
 
-  // Signing in as an email: one of the sample people, or a new person (who
-  // sees any invitations sent to that address).
-  const signIn = useCallback(
-    (idOrEmail) => {
-      const key = String(idOrEmail).trim().toLowerCase();
-      const person = people[key] || personForEmail(key);
-      setPeople((all) => (all[person.id] ? all : { ...all, [person.id]: person }));
-      setViewerId(person.id);
-      setSignedIn(true);
-      return person;
+  // Accounts (preview): the sample people, plus any created here. Any
+  // password of 8+ characters works; nothing leaves the page.
+  const signInWithPassword = useCallback(
+    async (value, password) => {
+      const u = normalizeUsername(value);
+      const problem = usernameProblem(u) || passwordProblem(password);
+      if (problem) throw new Error(problem);
+      if (!people[u]) throw new Error(`There’s no account called ${u}. Check the spelling, or create an account.`);
+      return people[u];
     },
     [people]
+  );
+  const signUp = useCallback(
+    async (value, password) => {
+      const u = normalizeUsername(value);
+      const problem = usernameProblem(u) || passwordProblem(password);
+      if (problem) throw new Error(problem);
+      if (people[u]) throw new Error(`The username ${u} is taken. Choose another.`);
+      return personForUsername(u);
+    },
+    [people]
+  );
+  const completeSignIn = useCallback(async (person) => {
+    setPeople((all) => (all[person.id] ? all : { ...all, [person.id]: person }));
+    setViewerId(person.id);
+    setSignedIn(true);
+  }, []);
+  // Sample people (and Preview → View as): straight in.
+  const signIn = useCallback(
+    (value) => {
+      const u = normalizeUsername(value);
+      const person = people[u] || personForUsername(u);
+      completeSignIn(person);
+      return person;
+    },
+    [people, completeSignIn]
   );
 
   const signOut = useCallback(() => {
@@ -490,6 +530,10 @@ export function useCowork({ notify }) {
     arrival,
     signedIn,
     signIn,
+    signInWithPassword,
+    signUp,
+    completeSignIn,
+    searchPeople,
     signOut,
     dropConnection,
     reconnect,

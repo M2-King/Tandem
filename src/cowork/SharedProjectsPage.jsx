@@ -2,6 +2,7 @@ import { Archive, ArchiveRestore, ChevronRight, FolderOpen, HardDrive, Loader2, 
 import { useEffect, useRef, useState } from 'react';
 import { Avatar, AvatarStack } from './CoworkBits.jsx';
 import { SuccessCheck, pause } from './motion.jsx';
+import { addressOf } from './accounts.js';
 
 const ROLE = { owner: 'Owner', member: 'Member' };
 
@@ -228,7 +229,8 @@ export default function SharedProjectsPage({ cowork, localName, onOpenLocal, onN
         <div className="shared-foot">
           <Avatar person={viewer} size="sm" />
           <span className="shared-foot-text">
-            Signed in as {viewer.email}
+            Signed in as {viewer.name !== viewer.username ? `${viewer.name} · ` : ''}
+            <span className="mono">{addressOf(viewer.username)}</span>
           </span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={cowork.signOut}>
             <LogOut size={14} aria-hidden="true" /> Sign out
