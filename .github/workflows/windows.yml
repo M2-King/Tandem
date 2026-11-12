@@ -139,12 +139,33 @@ jobs:
           Write-Output "App: $exe"
           node packaging/desktop-smoke.cjs $exe (Resolve-Path smoke-project-env/Scripts/python.exe).Path desktop-screen.jpg
 
+      # main and tags: one zip with both exes (the release job downloads it by name).
       - uses: actions/upload-artifact@v4
+        if: github.ref != 'refs/heads/cowork'
         with:
-          name: ${{ github.ref == 'refs/heads/cowork' && 'Tandem-Staging-windows-x64' || 'Tandem-windows-x64' }}
+          name: Tandem-windows-x64
           path: |
-            desktop/release/Tandem*-Setup-*.exe
+            desktop/release/Tandem-Setup-*.exe
             desktop/release/Tandem-*-portable.exe
+          retention-days: 30
+          if-no-files-found: error
+
+      # cowork (Tandem Staging): each exe is its own download, not zipped, so
+      # the artifact link downloads Tandem-Staging-Setup-<version>.exe itself.
+      - name: Upload the staging installer (.exe, not zipped)
+        if: github.ref == 'refs/heads/cowork'
+        uses: actions/upload-artifact@v7
+        with:
+          path: desktop/release/Tandem-Staging-Setup-*.exe
+          archive: false
+          retention-days: 30
+          if-no-files-found: error
+      - name: Upload the staging portable app (.exe, not zipped)
+        if: github.ref == 'refs/heads/cowork'
+        uses: actions/upload-artifact@v7
+        with:
+          path: desktop/release/Tandem-Staging-*-portable.exe
+          archive: false
           retention-days: 30
           if-no-files-found: error
 
