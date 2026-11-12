@@ -16,6 +16,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { setupUpdates } = require('./updater.js');
+const { showUpdatingWindow } = require('./updatingWindow.js');
 const { createSecureStore } = require('./secureStore.js');
 
 const IS_WIN = process.platform === 'win32';
@@ -342,6 +343,12 @@ const updates = setupUpdates({
     quitting = true;
     return stopRuntime(5000);
   },
+  // Then a small "Updating Tandem" window that stays while the installer runs.
+  showProgress: (version) =>
+    showUpdatingWindow({
+      appName: require('./package.json').tandemDisplayName || app.getName(),
+      version: String(version || '').replace(/-staging\.(\d+)$/, ' (build $1)'),
+    }),
 });
 
 handle('desktop:window', (action) => {

@@ -81,7 +81,7 @@ export function UpdatingOverlay({ name, version }) {
         </span>
         <h2 className="updating-title">Updating {name}</h2>
         <p className="updating-text">
-          Installing <span className="mono">{version}</span>. Tandem closes, installs it and opens again by itself, in about half a minute.
+          Installing <span className="mono">{version}</span>. {name} closes and a small window shows the progress; {name} opens again by itself in about half a minute.
         </p>
         <span className="updating-bar" aria-hidden="true">
           <span />

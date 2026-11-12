@@ -82,6 +82,7 @@ function harness(overrides = {}) {
   const timers = { timeouts: [], intervals: [] };
   const u = fakeUpdater();
   let prepared = 0;
+  const shown = [];
   const app = { isPackaged: true, getName: () => 'Tandem Staging', getVersion: () => '0.3.1-staging.57' };
   const updates = setupUpdates({
     app,
@@ -90,6 +91,10 @@ function harness(overrides = {}) {
     send: (channel, value) => sent.push([channel, value]),
     prepareInstall: async () => {
       prepared += 1;
+    },
+    showProgress: async (version) => {
+      shown.push([version, prepared]);
+      return true;
     },
     env: {},
     platform: 'win32',
@@ -101,13 +106,13 @@ function harness(overrides = {}) {
     log: { warn() {}, info() {}, error() {} },
     ...overrides,
   });
-  return { updates, handlers, sent, timers, u, prepared: () => prepared };
+  return { updates, handlers, sent, timers, u, prepared: () => prepared, shown };
 }
 
 test('updater: fixed feed and settings; checks at 10 s and every 4 h', () => {
   const h = harness();
   h.updates.start();
-  assert.deepEqual(h.u.calls[0], ['feed', { provider: 'generic', url: FEED, channel: 'staging' }]);
+  assert.deepEqual(h.u.calls[0], ['feed', { provider: 'generic', url: FEED, channel: 'staging', useMultipleRangeRequest: false }]);
   assert.equal(h.u.autoDownload, true);
   assert.equal(h.u.autoInstallOnAppQuit, true);
   assert.equal(h.u.allowDowngrade, false);
@@ -148,6 +153,8 @@ test('updater: states from check to ready, then restart installs silently', asyn
   assert.equal(state().status, 'ready');
   assert.equal(await h.handlers['desktop:updates-install'](), true);
   assert.equal(h.prepared(), 1); // the runtime is stopped first
+  // The "Updating Tandem" window shows (after the runtime stopped), then Tandem quits into the installer.
+  assert.deepEqual(h.shown, [['0.3.1-staging.58', 1]]);
   await new Promise((r) => setImmediate(r));
   assert.deepEqual(h.u.calls.at(-1), ['install', true, true]);
 });

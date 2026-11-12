@@ -75,6 +75,7 @@ function setupUpdates({
   handle,
   send,
   prepareInstall,
+  showProgress = async () => false, // the "Updating Tandem" window (updatingWindow.js)
   env = process.env,
   platform = process.platform,
   execPath = process.execPath,
@@ -138,6 +139,13 @@ function setupUpdates({
     } catch (err) {
       log.warn?.('[updates] before install', err);
     }
+    // The installer runs silently: a small window shows its progress after
+    // Tandem closes (and closes once the new version runs).
+    try {
+      await showProgress(state.available);
+    } catch (err) {
+      log.warn?.('[updates] progress window', err);
+    }
     // Silent install, then open the new version.
     setImmediate(() => updater.quitAndInstall(true, true));
     return true;
@@ -153,7 +161,9 @@ function setupUpdates({
       updater = loadUpdater();
       updater.logger = log;
       // The feed is fixed here; nothing the page sends reaches these.
-      updater.setFeedURL({ provider: 'generic', url: gate.config.url, channel: gate.config.channel });
+      // One range per request: GitHub's file servers refuse several in one (HTTP 501),
+      // which made every update download the whole installer instead of the changed parts.
+      updater.setFeedURL({ provider: 'generic', url: gate.config.url, channel: gate.config.channel, useMultipleRangeRequest: false });
       updater.autoDownload = true;
       updater.autoInstallOnAppQuit = true; // "Later": installs when Tandem quits
       updater.allowDowngrade = false; // set after the feed: setting a channel can turn it on
