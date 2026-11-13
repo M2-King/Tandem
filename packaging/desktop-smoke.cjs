@@ -245,6 +245,25 @@ async function deviceProject(w, timeout) {
     win = current;
   }
 
+  // The Terminal (Ctrl+`): a real shell (ConPTY on Windows, a pty elsewhere)
+  // from the bundled runtime, in the project folder, the project's Python first.
+  await win.keyboard.press('Control+Backquote');
+  await win.locator('.terminal-view .xterm').waitFor({ timeout: 60000 });
+  await win.waitForFunction(() => /tandem-desktop-/.test(document.querySelector('.terminal-note')?.innerText || ''), null, { timeout: 60000 });
+  await win.waitForTimeout(1500); // the shell's prompt
+  await win.locator('.terminal-view .xterm').click();
+  await win.keyboard.type('python -c "import sys; print(\'TERM\' + \'-OK \' + sys.executable)"');
+  await win.keyboard.press('Enter');
+  const termOk = await win
+    .waitForFunction(() => /TERM-OK \S/.test((document.querySelector('.terminal-view .xterm-rows')?.innerText || '').replace(/\u00a0/g, ' ')), null, { timeout: 60000 })
+    .then(() => true, () => false);
+  const termText = (await win.evaluate(() => document.querySelector('.terminal-view .xterm-rows')?.innerText || '')).replace(/\u00a0/g, ' ');
+  const termPython = /TERM-OK (\S.*)/.exec(termText)?.[1]?.trim();
+  if (!termOk) console.log(termText.slice(-1500));
+  check(termOk && !!termPython && path.dirname(termPython).toLowerCase() === path.dirname(python).toLowerCase(),
+    `Terminal: a shell in the project, the project's Python first on PATH (${termPython})`);
+  await win.getByRole('tab', { name: 'Output' }).click();
+
   // "Open with Tandem" while Tandem is open: Windows starts a second Tandem
   // with the file, which hands it to the open one and exits.
   const activeTab = (w) => w.locator('.tab.is-active').innerText().then((t) => t.trim());

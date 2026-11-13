@@ -27,6 +27,7 @@ from .kernels import KernelError, KernelHub
 from .runs import RunError, RunManager
 from .security import TOKEN_HEADER, AccessPolicy
 from .shared import SharedError, SharedWorkspaces
+from .terminals import TerminalError, TerminalHub
 
 CONFIG_TAG_ID = "tandem-runtime"
 
@@ -133,6 +134,7 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
     runs = RunManager(files, interpreter)
     jobs = JobManager()
     kernels = KernelHub(files.root, interpreter)
+    terminals = TerminalHub()
     # Tandem Cowork: working copies of shared projects, each with its own runs
     # and kernels, apart from the project folder above (shared.py).
     shared = SharedWorkspaces(shared_root or (ai.folder / "shared"), cli_python)
@@ -149,6 +151,7 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
                   lifespan=lifespan)
     app.state.files = files
     app.state.runs = runs
+    app.state.terminals = terminals
     app.state.shared = shared
 
     # Environments and packages apply to the device project (scope "project")
@@ -384,12 +387,32 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
     def get_ai_active():
         return {"active": active_provider(ai)}
 
+    def ai_environment(shared_scope: bool) -> dict:
+        """What the assistant is told about where the code runs (and what it may install)."""
+        python, source = scope_python("shared" if shared_scope else None)
+        if python is None:
+            return {"python": None}
+        info = describe(python)
+        can, reason = envs.can_install_into(python)
+        env = {"python": str(python), "source": source, "version": info.get("version") if info.get("ok") else None,
+               "can_install": can, "reason": reason}
+        with contextlib.suppress(envs.EnvError):
+            env["installed"] = [p["name"] for p in envs.installed_packages(python)]
+        if not shared_scope:
+            env["missing"] = envs.missing_imports(files.root, python)
+        return env
+
     @app.post("/api/ai/assist")
     def post_ai_assist(body: AssistBody):
         if not body.prompt.strip():
             raise HTTPException(status_code=400, detail="Empty request.")
+        request = body.model_dump()
         try:
-            return assist(ai, files, body.model_dump())
+            request["environment"] = ai_environment(isinstance(body.file_list, list))
+        except Exception:  # never in the way of an answer
+            request["environment"] = None
+        try:
+            return assist(ai, files, request)
         except AssistError as exc:
             return {"kind": "error", "text": str(exc)}
 
@@ -483,6 +506,7 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
         lock = asyncio.Lock()
         mine: set[str] = set()
         my_kernels: set[str] = set()
+        my_terms: set[str] = set()
         # Which runs and kernels belong to a shared project's working copy.
         run_owner: dict[str, RunManager] = {}
         kernel_owner: dict[str, KernelHub] = {}
@@ -541,6 +565,24 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
                                     "code": getattr(exc, "code", None)})
                 elif kind.startswith("kernel.") and str(message.get("id")) in my_kernels:
                     await kernel_command(kind, message, send, kernel_owner.get(str(message.get("id")), kernels))
+                elif kind == "term.start":
+                    # The Terminal panel: a shell in the project folder (or a
+                    # shared project's working copy), its environment on PATH.
+                    term_id = str(message.get("id"))
+                    try:
+                        ws_ = workspace_for(message)
+                        cwd = ws_.root if ws_ else files.root
+                        python, _ = scope_python("shared" if ws_ else None)
+                        await terminals.start(term_id, cwd, python, message.get("cols") or 80, message.get("rows") or 24, send)
+                        my_terms.add(term_id)
+                    except (TerminalError, SharedError) as exc:
+                        await send({"type": "term.rejected", "id": term_id, "message": str(exc)})
+                elif kind == "term.input" and str(message.get("id")) in my_terms:
+                    terminals.write(str(message.get("id")), str(message.get("data", ""))[:100_000])
+                elif kind == "term.resize" and str(message.get("id")) in my_terms:
+                    terminals.resize(str(message.get("id")), int(message.get("cols") or 80), int(message.get("rows") or 24))
+                elif kind == "term.kill" and str(message.get("id")) in my_terms:
+                    await terminals.kill(str(message.get("id")))
                 elif kind == "job.start":
                     await start_job(message, send)
                 elif kind == "job.cancel":
@@ -558,9 +600,10 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
                 for manager in {runs, *run_owner.values()}:
                     if manager.current is not None and manager.current.id in mine:
                         await manager.stop(manager.current.id)
-                # So do its notebooks' kernels.
+                # So do its notebooks' kernels, and its terminals.
                 for hub in {kernels, *kernel_owner.values()}:
                     await hub.shutdown_all(my_kernels)
+                await terminals.kill_all(my_terms)
 
     # ---------------- UI ----------------
 

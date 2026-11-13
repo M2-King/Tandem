@@ -1,6 +1,7 @@
 // The real assistant: the local runtime asks the AI model chosen in AI
 // settings. Same result shapes as the demo service (aiService.js), so the
-// review → accept → undo flow is unchanged. Nothing is written or run here.
+// review → accept → undo flow is unchanged. Nothing is written or run here:
+// the actions it asks for are carried out by the app (useAssistantActions).
 
 const lineText = (l) => (typeof l === 'string' ? l : l?.text ?? '');
 
@@ -41,13 +42,15 @@ export function createRealAssistant({ backend, getLastRun, getModelLabel, getSha
     );
 
     if (result.shared) onShared?.(result.shared);
+    // What it asks Tandem to do (install packages, run a file or cells).
+    const actions = Array.isArray(result.actions) ? result.actions : [];
     if (result.kind === 'proposal' && typeof files[result.path] !== 'string') {
       // Review works on files that exist; show a new file as code to create.
-      return { kind: 'answer', text: `${result.text}\n\nNew file **${result.path}**:\n\n\`\`\`python\n${result.new_content}\`\`\`` };
+      return { kind: 'answer', actions, text: `${result.text}\n\nNew file **${result.path}**:\n\n\`\`\`python\n${result.new_content}\`\`\`` };
     }
     if (result.kind === 'proposal') {
       onStage?.('Preparing changes');
-      return { kind: 'proposal', path: result.path, newContent: result.new_content, text: result.text, summary: result.summary };
+      return { kind: 'proposal', path: result.path, newContent: result.new_content, text: result.text, summary: result.summary, actions };
     }
     if (result.kind === 'setup') {
       return { kind: 'answer', text: result.text, action: { type: 'open-ai-settings', label: 'Open AI settings' } };
@@ -57,6 +60,6 @@ export function createRealAssistant({ backend, getLastRun, getModelLabel, getSha
       error.userMessage = `${result.text} No files were changed.`;
       throw error;
     }
-    return { kind: 'answer', text: result.text };
+    return { kind: 'answer', text: result.text, actions };
   };
 }

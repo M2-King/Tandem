@@ -112,6 +112,36 @@ export function createLocalBackend(config, { socket = true } = {}) {
     // onOutput(text), onFinish({ status, exitCode, message, ... }). Returns { cancel }.
     startJob,
 
+    // The Terminal panel: a shell in the project folder with the project's
+    // environment first on PATH (runtime/terminals.py). Only the person types here.
+    startTerminal({ cols, rows }, { onStart, onOutput, onExit, onRejected }) {
+      const id = uid('term');
+      let ended = false;
+      const end = (fn) => {
+        if (ended) return;
+        ended = true;
+        off();
+        offState();
+        fn();
+      };
+      const off = client.on((e) => {
+        if (e.id !== id) return;
+        if (e.type === 'term.started') onStart?.(e);
+        else if (e.type === 'term.output') onOutput?.(e.data);
+        else if (e.type === 'term.exit') end(() => onExit?.(e.code));
+        else if (e.type === 'term.rejected') end(() => onRejected?.(e.message));
+      });
+      const offState = client.onState((state) => {
+        if (state === 'disconnected') end(() => onExit?.(null, 'The connection to the runtime was lost.'));
+      });
+      if (!client.send({ type: 'term.start', id, cols, rows })) end(() => onRejected?.('The runtime isn’t connected.'));
+      return {
+        write: (data) => !ended && client.send({ type: 'term.input', id, data }),
+        resize: (c, r) => !ended && client.send({ type: 'term.resize', id, cols: c, rows: r }),
+        kill: () => !ended && client.send({ type: 'term.kill', id }),
+      };
+    },
+
     // Tandem Cowork: the Python and packages used for shared projects (one
     // choice for all of them), in the same shape as above for the
     // environment dialog. `project`: the open shared project, for its imports.

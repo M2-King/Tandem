@@ -2,6 +2,7 @@
 
 import json
 import threading
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -197,3 +198,73 @@ def test_a_shared_project_proposal_never_reads_this_devices_file_of_the_same_nam
     req = shared_request(project, fake)
     result = client.post("/api/ai/assist", json=req).json()
     assert result["kind"] == "proposal" and result["new_file"] is True
+
+
+# ---------------------------------------------------------------- acting in Tandem
+
+def use_openai(client, fake):
+    client.put("/api/ai/settings", json={"provider": "openai", "base_url": fake + "/openai/v1", "api_key": KEY,
+                                         "model": "model-a", "activate": True})
+
+
+NOTEBOOK = {
+    "cells": [
+        {"cell_type": "markdown", "metadata": {}, "source": ["# Read tissue"]},
+        {"cell_type": "code", "metadata": {}, "execution_count": 4, "source": ["import torch_never_installed_x\n", "print(1)"],
+         "outputs": [{"output_type": "error", "ename": "ModuleNotFoundError",
+                      "evalue": "No module named 'torch_never_installed_x'",
+                      "traceback": ["\x1b[31mModuleNotFoundError\x1b[0m: No module named 'torch_never_installed_x'"]}]},
+    ],
+    "metadata": {}, "nbformat": 4, "nbformat_minor": 5,
+}
+
+
+def test_the_assistant_knows_tandem_the_environment_and_the_notebook(client, project, fake):
+    import sys
+
+    from conftest import use_python
+
+    use_openai(client, fake)
+    use_python(project, Path(sys.executable))
+    text = json.dumps(NOTEBOOK)
+    (project / "student.ipynb").write_text(text)
+    Fake.reply = "torch_never_installed_x is missing."
+    client.post("/api/ai/assist", json={"prompt": "install what my project needs", "files": {"student.ipynb": text},
+                                        "active_path": "student.ipynb"})
+    _, _, body = Fake.seen[-1]
+    system = body["messages"][0]["content"]
+    user = body["messages"][-1]["content"]
+    # Tandem's own abilities, instead of "open a terminal in VS Code".
+    assert "<tandem-install" in system and "<tandem-run" in system and "Terminal" in system
+    # The environment: its Python, and the notebook's import that isn't installed.
+    assert "Environment: Python" in user and "torch_never_installed_x (package torch_never_installed_x) in student.ipynb cell 2" in user
+    # The notebook as cells with their outputs, not as JSON.
+    assert "[cell 2, code, ran as [4]]" in user and "ERROR ModuleNotFoundError" in user and '"cell_type"' not in user
+
+
+def test_install_and_run_actions_come_back_checked(client, project, fake):
+    use_openai(client, fake)
+    (project / "main.py").write_text("print(1)\n")
+    (project / "student.ipynb").write_text(json.dumps(NOTEBOOK))
+    Fake.reply = ('You need two packages.\n\n<tandem-install packages="torch torchvision --index-url=http://evil numpy<2"/>\n'
+                  '<tandem-run path="student.ipynb" cells="2-3"/>\n<tandem-run path="main.py"/>')
+    result = client.post("/api/ai/assist", json={"prompt": "set it up"}).json()
+    assert result["kind"] == "answer" and result["text"].startswith("You need two packages.")
+    assert "<tandem-" not in result["text"]
+    assert result["actions"] == [
+        {"type": "install", "packages": ["torch", "torchvision", "numpy<2"]},  # never a pip option
+        {"type": "run", "path": "student.ipynb", "cells": [2, 3]},  # one run at a time
+    ]
+    assert "--index-url" in result["text"] and "Only the first run" in result["text"]
+
+
+def test_a_fix_can_come_with_a_run_and_nothing_runs_outside_the_project(client, project, fake):
+    use_openai(client, fake)
+    (project / "main.py").write_text("print(1)\n")
+    Fake.reply = 'Print 2.\n<tandem-file path="main.py">\nprint(2)\n</tandem-file>\n- prints 2\n<tandem-run path="main.py"/>'
+    result = client.post("/api/ai/assist", json={"prompt": "print 2", "files": {"main.py": "print(1)\n"}}).json()
+    assert result["kind"] == "proposal" and result["new_content"] == "print(2)\n"
+    assert result["actions"] == [{"type": "run", "path": "main.py"}]
+    Fake.reply = '<tandem-run path="../elsewhere.py"/>\n<tandem-run path="data.csv"/>'
+    result = client.post("/api/ai/assist", json={"prompt": "run it"}).json()
+    assert "actions" not in result and "isn't a file in this project" in result["text"]

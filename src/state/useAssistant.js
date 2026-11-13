@@ -7,16 +7,32 @@ import { sendAssistantRequest } from '../services/aiService.js';
 
 const createChat = () => ({ messages: [], proposals: {} });
 
-// A request can't still be running after a reload, so mark it cancelled.
+// A request (or an action) can't still be running after a reload, so mark it cancelled.
 function restore(saved) {
   if (!Array.isArray(saved?.messages)) return null;
   return {
     proposals: saved.proposals || {},
-    messages: saved.messages.map((m) =>
-      m.status === 'working' ? { ...m, status: 'cancelled', text: 'Cancelled when the page was closed. No files were changed.' } : m
-    ),
+    messages: saved.messages.map((m) => {
+      const actions = m.actions?.map((a) =>
+        a.status === 'running' || a.status === 'pending' ? { ...a, status: 'skipped', note: 'Not done: the page was closed.' } : a
+      );
+      const next = actions ? { ...m, actions } : m;
+      return m.status === 'working' ? { ...next, status: 'cancelled', text: 'Cancelled when the page was closed. No files were changed.' } : next;
+    }),
   };
 }
+
+// The longest chain of automatic steps (results sent back, the next answer)
+// for one request before Tandem stops and asks.
+export const MAX_STEPS = 8;
+
+// What an answer asked Tandem to do, as the conversation remembers it.
+const actionNote = (a) =>
+  a.type === 'install'
+    ? `install ${a.packages.join(' ')}`
+    : `run ${a.path}${a.cells ? ` (cells ${a.cells.join(', ')})` : ''}`;
+const historyText = (m) =>
+  m.actions?.length ? `${m.text || ''}\n\n(Asked Tandem to: ${m.actions.map(actionNote).join('; ')}.)`.trim() : m.text;
 
 // Conversation, proposals, and the composer's context chips.
 //
@@ -35,8 +51,10 @@ export function useAssistant({ getFiles, getActivePath, onSave, request = sendAs
     [setChat]
   );
 
+  // kind 'results': Tandem sending back what the actions did (step: how many
+  // automatic steps this request has taken so far).
   const send = useCallback(
-    async ({ prompt, intent = 'chat', context = [] }) => {
+    async ({ prompt, intent = 'chat', context = [], kind = null, step = 0 }) => {
       const text = prompt.trim();
       if (!text || controllerRef.current) return null;
       const assistantId = uid('msg');
@@ -44,8 +62,8 @@ export function useAssistant({ getFiles, getActivePath, onSave, request = sendAs
         ...c,
         messages: [
           ...c.messages,
-          { id: uid('msg'), role: 'user', text, context },
-          { id: assistantId, role: 'assistant', status: 'working', stages: [] },
+          { id: uid('msg'), role: 'user', text, context, ...(kind ? { kind } : {}) },
+          { id: assistantId, role: 'assistant', status: 'working', stages: [], step },
         ],
       }));
 
@@ -57,8 +75,8 @@ export function useAssistant({ getFiles, getActivePath, onSave, request = sendAs
 
       try {
         const history = chat.messages
-          .filter((m) => (m.role === 'user' || m.status === 'done') && m.text && m.kind !== 'analysis')
-          .map((m) => ({ role: m.role, text: m.text }));
+          .filter((m) => (m.role === 'user' || m.status === 'done') && (m.text || m.actions?.length) && m.kind !== 'analysis')
+          .map((m) => ({ role: m.role, text: m.role === 'user' ? m.text : historyText(m) }));
         const result = await request({
           prompt: text,
           intent,
@@ -74,6 +92,7 @@ export function useAssistant({ getFiles, getActivePath, onSave, request = sendAs
             })),
         });
 
+        const actions = (result.actions || []).map((a) => ({ ...a, id: uid('act'), status: 'pending' }));
         if (result.kind === 'proposal') {
           const proposalId = uid('change');
           const baseContent = files[result.path];
@@ -101,12 +120,13 @@ export function useAssistant({ getFiles, getActivePath, onSave, request = sendAs
                     status: 'done',
                     text: result.text,
                     proposalId,
+                    actions,
                     stages: [...m.stages.map((s) => ({ ...s, done: true })), { label: 'Ready for review', done: true }],
                   }
                 : m
             ),
           }));
-          return { proposalId, path: result.path };
+          return { messageId: assistantId, proposalId, path: result.path, actions, step };
         }
 
         patchMessage(assistantId, (m) => ({
@@ -117,8 +137,9 @@ export function useAssistant({ getFiles, getActivePath, onSave, request = sendAs
           text: result.text,
           suggestions: result.suggestions || [],
           action: result.action || null,
+          actions,
         }));
-        return null;
+        return { messageId: assistantId, actions, step };
       } catch (error) {
         const cancelled = error?.name === 'AbortError';
         patchMessage(assistantId, (m) => ({
@@ -157,6 +178,22 @@ export function useAssistant({ getFiles, getActivePath, onSave, request = sendAs
     [setChat]
   );
 
+  const updateAction = useCallback(
+    (messageId, actionId, patch) =>
+      patchMessage(messageId, (m) => ({
+        ...m,
+        actions: (m.actions || []).map((a) => (a.id === actionId ? { ...a, ...(typeof patch === 'function' ? patch(a) : patch) } : a)),
+      })),
+    [patchMessage]
+  );
+
+  // The chain reached MAX_STEPS: keep the results for "Continue".
+  const markLimit = useCallback(
+    (messageId, prompt) => patchMessage(messageId, (m) => ({ ...m, limit: true, limitPrompt: prompt })),
+    [patchMessage]
+  );
+  const patchLimit = useCallback((messageId) => patchMessage(messageId, (m) => ({ ...m, limit: false })), [patchMessage]);
+
   const updateProposal = useCallback(
     (id, patch) =>
       setChat((c) => (c.proposals[id] ? { ...c, proposals: { ...c.proposals, [id]: { ...c.proposals[id], ...patch } } } : c)),
@@ -184,6 +221,9 @@ export function useAssistant({ getFiles, getActivePath, onSave, request = sendAs
     cancel,
     addAnalysis,
     updateProposal,
+    updateAction,
+    markLimit,
+    patchLimit,
     draftContext,
     addContext,
     removeContext,

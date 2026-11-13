@@ -10,6 +10,8 @@ dependencies = [
   "anthropic>=2.4",
   "jupyter_client>=8",
   "jedi>=0.19",
+  # The Terminal panel on Windows (ConPTY); elsewhere the standard pty module.
+  "pywinpty>=2.0; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

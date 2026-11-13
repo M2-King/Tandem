@@ -2494,6 +2494,7 @@ button.proposal-head:focus-visible {
 .results-content {
   flex: 1;
   min-height: 0;
+  position: relative; /* the Terminal tab fills it */
 }
 .results-scroll {
   height: 100%;
@@ -6848,4 +6849,218 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   font-size: var(--fs-sm);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- assistant actions */
+/* What an answer asked Tandem to do (install, run): one card, a row each. */
+.ai-actions {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  border-radius: var(--radius-card);
+  background: var(--group-fill);
+  box-shadow: inset 0 0 0 1px var(--hairline), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.ai-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.ai-action + .ai-action {
+  border-top: 1px solid var(--hairline);
+}
+.ai-action-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.ai-action.is-done .ai-action-icon {
+  color: var(--success, #5cc48c);
+  background: rgba(92, 196, 140, 0.13);
+}
+.ai-action.is-failed .ai-action-icon {
+  color: var(--danger, #e8828a);
+  background: rgba(232, 130, 138, 0.13);
+}
+.ai-action.is-skipped {
+  opacity: 0.62;
+}
+.ai-action-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ai-action-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.ai-action-state {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.ai-action.is-failed .ai-action-state {
+  color: var(--danger, #e8828a);
+}
+.ai-action-log {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  max-height: 96px;
+  overflow: auto;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.22);
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.ai-action-buttons {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  align-self: center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ai-action.is-running .ai-action-icon {
+    animation: ai-action-pulse 1.6s var(--ease) infinite;
+  }
+}
+@keyframes ai-action-pulse {
+  50% {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+}
+
+/* The results sent back to the assistant: one quiet line, open to read. */
+.msg-results {
+  align-self: stretch;
+}
+.msg-results-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.msg-results-head:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+.msg-results-chevron {
+  transition: transform var(--t-select, 0.15s) var(--ease);
+}
+.msg-results-chevron.is-open {
+  transform: rotate(90deg);
+}
+.msg-results-text {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ai-limit {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.ai-limit .btn {
+  flex: none;
+}
+
+/* How much the assistant may do on its own (panel header). */
+.ai-mode {
+  gap: 5px;
+  white-space: nowrap;
+}
+.ai-mode.is-safe {
+  color: var(--accent);
+}
+.ai-mode.is-auto {
+  color: var(--warning);
+}
+
+/* ---------------------------------------------------------------- terminal */
+/* The Terminal tab: xterm.js on the panel's glass (its own background is clear). */
+.terminal-tab {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+.terminal-tab[hidden] {
+  display: none;
+}
+.terminal-view {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 4px 4px 12px;
+}
+.terminal-note {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.terminal-note.is-error {
+  color: var(--danger, #e8828a);
+}
+.terminal-env {
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--success);
+  background: rgba(111, 191, 142, 0.12);
+  font-family: var(--font-code);
+  font-size: 11px;
+}
+.terminal-host {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.terminal-surface {
+  position: absolute;
+  inset: 0;
+}
+.terminal-surface .xterm {
+  height: 100%;
+}
+.terminal-surface .xterm-viewport {
+  background: transparent !important;
 }

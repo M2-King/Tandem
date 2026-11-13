@@ -24,7 +24,9 @@ a = Analysis(
     + collect_data_files("jedi", include_py_files=True) + collect_data_files("parso", include_py_files=True),
     hiddenimports=collect_submodules("uvicorn") + collect_submodules("websockets")
     + collect_submodules("jupyter_client") + collect_submodules("jupyter_core") + collect_submodules("zmq")
-    + collect_submodules("jedi") + collect_submodules("parso"),
+    + collect_submodules("jedi") + collect_submodules("parso")
+    # The Terminal panel on Windows (imported only when a terminal starts).
+    + (collect_submodules("winpty") if sys.platform == "win32" else []),
     excludes=["pytest", "numpy", "pandas", "matplotlib", "IPython", "tkinter"],
 )
 pyz = PYZ(a.pure)

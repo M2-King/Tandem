@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { X, Play, Loader2, AlertCircle, RotateCcw, MessageSquarePlus, Wrench, Maximize2, ArrowRight, Info, GitCompare, Code2, ChevronRight, Package, Square } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import FigureView from './FigureView.jsx';
@@ -9,6 +9,7 @@ import { useRunMode } from '../lib/runMode.js';
 const version = (run) => (run.versionLabel ? ` · ${run.versionLabel}` : '');
 
 const TABS = ['Output', 'Variables', 'Charts', 'Runs'];
+const TerminalView = lazy(() => import('./TerminalView.jsx'));
 
 function Empty({ title, text, children }) {
   return (
@@ -538,7 +539,13 @@ function missingModule(error) {
   return match ? match[1].split('.')[0] : null;
 }
 
-export default function ResultsPanel({ tab, onTab, session, traceView, notice, runs, run, runTarget, newCharts, actions, onClose }) {
+// terminalBackend: the runtime, for the Terminal tab (this device's project only).
+export default function ResultsPanel({ tab, onTab, session, traceView, notice, runs, run, runTarget, newCharts, actions, onClose, terminalBackend }) {
+  const tabs = terminalBackend ? [...TABS, 'Terminal'] : TABS;
+  const [terminalShown, setTerminalShown] = useState(tab === 'Terminal');
+  useEffect(() => {
+    if (tab === 'Terminal') setTerminalShown(true);
+  }, [tab]);
   const mode = useRunMode();
   const [figureIndex, setFigureIndex] = useState(null);
   useEffect(() => setFigureIndex(null), [run?.id]);
@@ -550,7 +557,7 @@ export default function ResultsPanel({ tab, onTab, session, traceView, notice, r
     <section className="results-inner" aria-label="Results">
       <div className="results-header">
         <div className="results-tabs" role="tablist" aria-label="Results">
-          {TABS.map((name) => (
+          {tabs.map((name) => (
             <button
               key={name}
               type="button"
@@ -588,6 +595,13 @@ export default function ResultsPanel({ tab, onTab, session, traceView, notice, r
         {tab === 'Charts' && <ChartsView run={run} figure={figure} />}
         {tab === 'Runs' && (
           <RunsView runs={runs} selectedRunId={run?.id} onSelect={actions.onSelectRun} onCompare={actions.onExpand} />
+        )}
+        {terminalBackend && terminalShown && (
+          <div className="terminal-tab" hidden={tab !== 'Terminal'}>
+            <Suspense fallback={<p className="terminal-note">Starting the terminal…</p>}>
+              <TerminalView backend={terminalBackend} visible={tab === 'Terminal'} />
+            </Suspense>
+          </div>
         )}
       </div>
     </section>

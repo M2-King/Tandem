@@ -1,5 +1,7 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, Sparkles, ChevronRight, MessageSquareText, Wrench, Lightbulb, FileCode2, Table2, History, Users } from 'lucide-react';
+import { ArrowUp, Square, X, Check, Loader2, Code2, BarChart3, AlertCircle, ArrowDown, RotateCcw, Sparkles, ChevronRight, MessageSquareText, Wrench, Lightbulb, FileCode2, Table2, History, Users, Package, Play, ShieldCheck, Zap, Hand, CornerDownRight } from 'lucide-react';
+import Menu, { MenuItem } from './Menu.jsx';
+import { AI_MODES, AI_MODE_ORDER, autoAllowed } from '../state/useAssistantActions.js';
 import TandemMark from './TandemMark.jsx';
 import Markdown from './Markdown.jsx';
 import ProposalCard from './ProposalCard.jsx';
@@ -72,7 +74,111 @@ function StepTrace({ stages }) {
   );
 }
 
-function Message({ message, proposalView, handlers, onSuggestion, onAction, onRetry, onCancel, onShowResults, onGoToCode, busy }) {
+const actionTitle = (a) =>
+  a.type === 'install'
+    ? `Install ${a.packages.join(', ')}`
+    : `Run ${a.path.split('/').pop()}${a.cells ? ` · cell${a.cells.length > 1 ? 's' : ''} ${cellRange(a.cells)}` : ''}`;
+function cellRange(cells) {
+  const parts = [];
+  for (let i = 0; i < cells.length; i++) {
+    let j = i;
+    while (j + 1 < cells.length && cells[j + 1] === cells[j] + 1) j++;
+    parts.push(j > i ? `${cells[i]}–${cells[j]}` : `${cells[i]}`);
+    i = j;
+  }
+  return parts.join(', ');
+}
+
+// What an answer asked Tandem to do: each with its state, and the buttons
+// the mode leaves to the person (Install, Run, Skip; Stop while it runs).
+function ActionCards({ message, mode, actionHandlers, proposalPending }) {
+  const actions = message.actions || [];
+  if (!actions.length) return null;
+  const firstWaiting = actions.find((a) => a.status === 'pending');
+  const anyRunning = actions.some((a) => a.status === 'running');
+  return (
+    <ul className="ai-actions" aria-label="What the assistant asked Tandem to do">
+      {actions.map((a) => {
+        const Icon = a.type === 'install' ? Package : Play;
+        const waiting = a.status === 'pending';
+        const myTurn = waiting && a.id === firstWaiting?.id && !anyRunning;
+        const auto = waiting && autoAllowed(mode, a);
+        const verb = a.type === 'install' ? 'Install' : proposalPending ? 'Apply change & run' : 'Run';
+        return (
+          <li key={a.id} className={`ai-action is-${a.status}`}>
+            <span className="ai-action-icon" aria-hidden="true">
+              {a.status === 'running' ? <Loader2 size={15} className="spin" /> : a.status === 'done' ? <Check size={15} /> : a.status === 'failed' ? <AlertCircle size={15} /> : <Icon size={15} />}
+            </span>
+            <div className="ai-action-main">
+              <span className="ai-action-title">{actionTitle(a)}</span>
+              <span className="ai-action-state" aria-live="polite">
+                {a.status === 'running'
+                  ? a.type === 'install'
+                    ? 'Installing into the project’s environment…'
+                    : 'Running…'
+                  : a.status === 'done'
+                    ? a.type === 'install'
+                      ? 'Installed.'
+                      : a.result?.summary || 'Finished.'
+                    : a.status === 'failed'
+                      ? a.stopped
+                        ? 'Stopped.'
+                        : a.type === 'install'
+                          ? `Didn’t install: ${a.result?.message || 'pip reported an error.'}`
+                          : a.result?.summary || 'Failed.'
+                      : a.status === 'skipped'
+                        ? a.note || 'Skipped.'
+                        : auto
+                          ? 'Starting…'
+                          : myTurn
+                            ? 'Waiting for you.'
+                            : 'After the step above.'}
+              </span>
+              {a.type === 'install' && a.log && (a.status === 'running' || a.status === 'failed') && (
+                <pre className="ai-action-log">{a.log.split('\n').slice(-6).join('\n')}</pre>
+              )}
+            </div>
+            <div className="ai-action-buttons">
+              {a.status === 'running' && (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => actionHandlers.stop()}>
+                  <Square size={13} aria-hidden="true" /> Stop
+                </button>
+              )}
+              {myTurn && !auto && (
+                <>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => actionHandlers.skip(message.id, a.id)}>
+                    Skip
+                  </button>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => actionHandlers.approve(message.id, a.id)}>
+                    <Icon size={14} aria-hidden="true" /> {verb}
+                  </button>
+                </>
+              )}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// The results Tandem sent back to the assistant (the next step's question).
+function ResultsMessage({ message }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="msg msg-results">
+      <button type="button" className="msg-results-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <CornerDownRight size={14} aria-hidden="true" />
+        <span>Tandem sent the results to the assistant</span>
+        <ChevronRight size={14} aria-hidden="true" className={`msg-results-chevron${open ? ' is-open' : ''}`} />
+      </button>
+      {open && <pre className="msg-results-text">{message.text}</pre>}
+    </div>
+  );
+}
+
+function Message({ message, proposalView, handlers, onSuggestion, onAction, onRetry, onCancel, onShowResults, onGoToCode, busy, mode, actionHandlers }) {
+  if (message.role === 'user' && message.kind === 'results') return <ResultsMessage message={message} />;
   if (message.role === 'user') {
     return (
       <div className="msg msg-user">
@@ -119,6 +225,22 @@ function Message({ message, proposalView, handlers, onSuggestion, onAction, onRe
       )}
       {message.proposalId && proposalView(message.proposalId) && (
         <ProposalCard view={proposalView(message.proposalId)} handlers={handlers} />
+      )}
+      {actionHandlers && (
+        <ActionCards
+          message={message}
+          mode={mode}
+          actionHandlers={actionHandlers}
+          proposalPending={!!message.proposalId && proposalView(message.proposalId)?.proposal?.status === 'pending'}
+        />
+      )}
+      {message.limit && (
+        <div className="ai-limit">
+          <span>Stopped after {message.step} steps in a row, so you can check what happened.</span>
+          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => actionHandlers?.continueChain(message)}>
+            Continue
+          </button>
+        </div>
       )}
       {message.action && (
         <button type="button" className="btn btn-secondary btn-sm msg-action" onClick={() => onAction(message.action)}>
@@ -398,6 +520,39 @@ const Composer = forwardRef(function Composer({ busy, context, onRemoveContext, 
   );
 });
 
+const MODE_ICON = { ask: Hand, safe: ShieldCheck, auto: Zap };
+
+// How much the assistant may do on its own (useAssistantActions).
+function ModeMenu({ mode = 'ask', onMode }) {
+  const Icon = MODE_ICON[mode] || Hand;
+  return (
+    <Menu
+      label="What the assistant may do on its own"
+      role="menu"
+      renderTrigger={(props) => (
+        <button type="button" className={`btn btn-ghost btn-sm ai-mode is-${mode}`} data-tooltip={AI_MODES[mode]?.note} {...props}>
+          <Icon size={14} aria-hidden="true" /> {AI_MODES[mode]?.short}
+        </button>
+      )}
+    >
+      {(close) =>
+        AI_MODE_ORDER.map((m) => (
+          <MenuItem
+            key={m}
+            close={close}
+            role="menuitemradio"
+            checked={m === mode}
+            icon={MODE_ICON[m]}
+            label={AI_MODES[m].label}
+            description={AI_MODES[m].note}
+            onSelect={() => onMode(m)}
+          />
+        ))
+      }
+    </Menu>
+  );
+}
+
 export default function AssistantPanel({
   messages,
   busy,
@@ -418,6 +573,9 @@ export default function AssistantPanel({
   onGoToCode,
   onConnectAI,
   aiModel,
+  aiMode,
+  onAIMode,
+  actionHandlers,
 }) {
   const listRef = useRef(null);
   const contentRef = useRef(null);
@@ -526,6 +684,7 @@ export default function AssistantPanel({
             AI settings
           </button>
         )}
+        {onAIMode && <ModeMenu mode={aiMode} onMode={onAIMode} />}
         <IconButton icon={X} label="Hide assistant" className="push-right" onClick={onClose} tooltipSide="left" />
       </div>
       <div className="assistant-messages" ref={listRef} onScroll={onScroll}>
@@ -546,6 +705,8 @@ export default function AssistantPanel({
               onShowResults={onShowResults}
               onGoToCode={onGoToCode}
               busy={busy}
+              mode={aiMode}
+              actionHandlers={actionHandlers}
             />
           ))
         )}

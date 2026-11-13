@@ -1,10 +1,13 @@
 """The assistant: asks the AI provider chosen in AI settings about the project.
 
-The model gets the files the request is about, the latest run of that file
-(output and traceback), the project's file list and the recent conversation.
-When it proposes a change it returns one complete new version of one file;
-the UI shows that as a diff and nothing is written until the person accepts
-it. Nothing here runs code.
+The model gets the files the request is about (a notebook as its cells and
+outputs), the latest run (output and traceback), the project's environment
+(Python, installed and missing packages), the file list and the recent
+conversation. It can propose one complete new version of one file (shown as
+a diff; nothing is written until accepted) and ask Tandem to act: install
+packages, run a file or a notebook's cells. The app carries those out, as
+the person chose (ask each time, or on its own), and sends the results back
+for the next step. Nothing here writes, installs or runs anything.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ import urllib.parse
 import urllib.request
 
 from .ai_settings import PROVIDERS, AISettings
+from .envs import PACKAGE_SPEC
 from .files import FileError, ProjectFiles
 
 MAX_FILE_CHARS = 120_000  # per file sent to the model
@@ -26,19 +30,36 @@ MAX_TOKENS = 16_000
 # Models that take the server-side refusal fallback ("default" form).
 FALLBACK_MODELS = {"claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"}
 
-SYSTEM = """You are the coding assistant inside Tandem, a Python editor. The developer runs their code with their own Python 3 on their computer; Tandem shows the output, charts, variables and tracebacks. Scripts can read input: the developer types it in Tandem's Output panel.
+SYSTEM = """You are the coding assistant inside Tandem, a Python editor with notebooks. The developer's code runs with their own Python on their computer, in the project's environment (for example its .venv); Tandem shows the output, charts, variables and tracebacks. Scripts can read input: the developer types it in Tandem's Output panel.
 
-Be concise and specific, like a senior colleague. Name lines and variables.
+Be concise and specific, like a senior colleague. Name lines, cells and variables.
 
-When the developer asks for a change, or asks you to fix an error, propose ONE complete new version of ONE file in exactly this format:
+Changing code: when the developer asks for a change, or asks you to fix an error, propose ONE complete new version of ONE file in exactly this format:
 
 <tandem-file path="relative/path.py">
 ...the complete new file content, every line...
 </tandem-file>
 
-Before the block, write one or two sentences saying what you changed and why. After the block, list the changes as short lines starting with "- ". Keep the developer's style and change only what is needed. Do not use a file block when you are only explaining or answering. Never claim you ran the code."""
+Before the block, write one or two sentences saying what you changed and why. After the block, list the changes as short lines starting with "- ". Keep the developer's style and change only what is needed. Do not use a file block when you are only explaining or answering. For a notebook (.ipynb) never write the file: show the new code of the cell, by its number, in a ```python block.
+
+Acting in Tandem: you can ask Tandem to do things by putting these tags on their own lines at the end of your answer. Tandem carries them out (asking the developer first if they chose that) and sends you the results in the next message, so you can continue:
+
+<tandem-install packages="torch torchvision scikit-learn"/>
+  installs packages from PyPI into the project's environment (names as on PyPI; a version is allowed, like "numpy<2").
+<tandem-run path="main.py"/>
+  runs a Python file. For a notebook it runs its cells: all of them, or some with cells="2-5" (numbered from 1).
+
+Use these instead of telling the developer to type commands: never tell them to open a terminal in another app or to pip install by hand when an install tag does it. Check the Environment section: install only what is missing, and only into the project's environment. Installs come before a run; at most one run per answer. When results come back: if something failed, fix it (a file change, an install) and run again; if it worked, say so in a sentence and stop. Don't start long training or anything slow unless the developer asked for it. If installing isn't possible (the Environment section says why), say so and point to the Python environment button at the top left of Tandem.
+
+Tandem also has a Terminal (bottom panel, Terminal tab) where the developer can type commands themselves, in the project folder with the project's environment active.
+
+Never claim you ran code or installed anything yourself: Tandem does that and shows you the results."""
 
 _FILE_BLOCK = re.compile(r'<tandem-file path="([^"\n]+)">\n?(.*?)\n?</tandem-file>', re.DOTALL)
+_INSTALL_TAG = re.compile(r'<tandem-install\s+packages="([^"\n]*)"\s*/?>(?:\s*</tandem-install>)?')
+_RUN_TAG = re.compile(r'<tandem-run\s+path="([^"\n]+)"(?:\s+cells="([^"\n]*)")?\s*/?>(?:\s*</tandem-run>)?')
+MAX_PACKAGES = 20
+MAX_NOTEBOOK_OUTPUT_CHARS = 1_500  # per cell
 
 
 class AssistError(Exception):
@@ -73,6 +94,10 @@ def _context_message(request: dict, files: ProjectFiles) -> str:
     listed = _project_paths(request, files)
     parts.append("Project files:\n" + "\n".join(f"- {p}" for p in listed))
 
+    env = _environment_text(request.get("environment"))
+    if env:
+        parts.append(env)
+
     contents = request.get("files") or {}
     for path, text in list(contents.items())[:6]:
         if not isinstance(text, str):
@@ -81,6 +106,11 @@ def _context_message(request: dict, files: ProjectFiles) -> str:
             files.resolve(path)
         except FileError:
             continue
+        if path.endswith(".ipynb"):
+            notebook = _notebook_text(text)
+            if notebook is not None:
+                parts.append(f"Notebook {path}, cell by cell (with their latest outputs):\n{notebook}")
+                continue
         clipped = text if len(text) <= MAX_FILE_CHARS else text[:MAX_FILE_CHARS] + "\n# … (file truncated)"
         numbered = "\n".join(f"{i + 1:>4}  {line}" for i, line in enumerate(clipped.split("\n")))
         parts.append(f'File {path} (line numbers added for reference, not part of the file):\n{numbered}')
@@ -109,9 +139,90 @@ def _context_message(request: dict, files: ProjectFiles) -> str:
         parts.append("\n".join(lines))
 
     intent = request.get("intent") or "chat"
+    if intent == "results":
+        # Not the developer: Tandem, with what the actions of the last answer did.
+        parts.append(f"From Tandem (not the developer): {request.get('prompt', '').strip()}\n\n"
+                     "Continue the task: the next step, or say briefly that it is done.")
+        return "\n\n".join(parts)
     hint = {"fix": " (they want a fix)", "explain": " (they want an explanation, no change)"}.get(intent, "")
     parts.append(f"Request{hint}: {request.get('prompt', '').strip()}")
     return "\n\n".join(parts)
+
+
+def _environment_text(env) -> str:
+    """Where the project's code runs, and what is installed or missing there."""
+    if not isinstance(env, dict):
+        return ""
+    if not env.get("python"):
+        return "Environment: no Python interpreter is selected for this project, so nothing can run or be installed yet."
+    lines = [f"Environment: Python {env.get('version') or '(version unknown)'} at {env['python']}"
+             f" ({env.get('source') or 'chosen for this project'})."]
+    if env.get("can_install"):
+        lines.append("Tandem can install packages into it (install tag).")
+    else:
+        lines.append(f"Tandem can't install packages into it: {env.get('reason') or 'it is not a project environment'}")
+    installed = env.get("installed")
+    if isinstance(installed, list):
+        names = ", ".join(str(n) for n in installed[:150])
+        lines.append(f"Installed packages ({len(installed)}): {names or 'none'}.")
+    missing = env.get("missing")
+    if isinstance(missing, list) and missing:
+        lines.append("Imported in the project but not installed:")
+        for m in missing[:30]:
+            where = ", ".join(f"{w.get('path')} {w.get('line')}" for w in (m.get("where") or [])[:3])
+            lines.append(f"- {m.get('module')} (package {m.get('package')}){' in ' + where if where else ''}")
+    elif isinstance(missing, list):
+        lines.append("Every package the project imports is installed.")
+    return "\n".join(lines)
+
+
+def _cell_text(cell: dict) -> str:
+    source = cell.get("source") or ""
+    return "".join(source) if isinstance(source, list) else str(source)
+
+
+def _notebook_text(text: str) -> str | None:
+    """A notebook as numbered cells with short outputs; None if it isn't valid JSON."""
+    try:
+        cells = json.loads(text).get("cells")
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(cells, list):
+        return None
+    out = []
+    total = 0
+    for number, cell in enumerate(cells, start=1):
+        if not isinstance(cell, dict):
+            continue
+        kind = cell.get("cell_type") or "code"
+        count = cell.get("execution_count")
+        head = f"[cell {number}, {kind}" + (f", ran as [{count}]" if kind == "code" and count else "") + "]"
+        body = _cell_text(cell)
+        shown = []
+        for o in cell.get("outputs") or [] if kind == "code" else []:
+            if not isinstance(o, dict):
+                continue
+            if o.get("output_type") == "error":
+                trace = "\n".join(re.sub(r"\x1b\[[0-9;]*m", "", t) for t in (o.get("traceback") or [])[-4:])
+                shown.append(f"ERROR {o.get('ename')}: {o.get('evalue')}\n{trace}")
+            elif o.get("output_type") == "stream":
+                shown.append(_cell_text({"source": o.get("text")}))
+            else:
+                data = o.get("data") or {}
+                if "text/plain" in data:
+                    shown.append(_cell_text({"source": data["text/plain"]}))
+                elif any(k.startswith("image/") for k in data):
+                    shown.append("(an image)")
+        output = "\n".join(x.rstrip() for x in shown if x.strip())
+        if len(output) > MAX_NOTEBOOK_OUTPUT_CHARS:
+            output = output[:MAX_NOTEBOOK_OUTPUT_CHARS // 3] + "\n… (output shortened) …\n" + output[-MAX_NOTEBOOK_OUTPUT_CHARS * 2 // 3:]
+        piece = f"{head}\n{body}" + (f"\n--- output ---\n{output}" if output else "")
+        total += len(piece)
+        if total > MAX_FILE_CHARS:
+            out.append("… (the rest of the notebook is not shown)")
+            break
+        out.append(piece)
+    return "\n\n".join(out)
 
 
 def _history(request: dict) -> list[dict]:
@@ -260,8 +371,82 @@ def _ask_shared(shared: dict, request: dict, timeout: float) -> dict:
 
 # ---------------------------------------------------------------- the request
 
+def _cells(spec: str | None) -> list[int] | None:
+    """ "2-5", "3", "1, 4, 7-8" → cell numbers (from 1); None for all."""
+    if not spec or not spec.strip():
+        return None
+    numbers: list[int] = []
+    for part in spec.replace(" ", "").split(","):
+        m = re.fullmatch(r"(\d{1,4})(?:-(\d{1,4}))?", part)
+        if not m:
+            return None
+        lo = int(m.group(1))
+        hi = int(m.group(2) or lo)
+        numbers.extend(range(lo, min(hi, lo + 500) + 1))
+    numbers = sorted({n for n in numbers if n >= 1})
+    return numbers or None
+
+
+def parse_actions(text: str, request: dict, files: ProjectFiles) -> tuple[str, list[dict], list[str]]:
+    """The install and run tags in an answer (outside a file block): (text without them, actions, problems)."""
+    block = _FILE_BLOCK.search(text)
+    outside = text if not block else text[:block.start()] + "\0BLOCK\0" + text[block.end():]
+    actions: list[dict] = []
+    problems: list[str] = []
+    listed = request.get("file_list") if isinstance(request.get("file_list"), list) else None
+
+    packages: list[str] = []
+    for m in _INSTALL_TAG.finditer(outside):
+        for name in m.group(1).replace(",", " ").split():
+            if not PACKAGE_SPEC.match(name):
+                problems.append(f"“{name}” isn't a package name Tandem installs, so it was left out.")
+            elif name.lower() not in (p.lower() for p in packages):
+                packages.append(name)
+    if packages:
+        actions.append({"type": "install", "packages": packages[:MAX_PACKAGES]})
+
+    runs = list(_RUN_TAG.finditer(outside))
+    if runs:
+        m = runs[0]
+        path = m.group(1).strip().removeprefix("./")
+        ok = path in listed if listed is not None else True
+        if ok and listed is None:
+            try:
+                ok = files.resolve(path).is_file()
+            except FileError:
+                ok = False
+        if not ok:
+            problems.append(f"The model asked to run {path}, which isn't a file in this project.")
+        elif not path.endswith((".py", ".ipynb")):
+            problems.append(f"The model asked to run {path}; Tandem runs Python files and notebooks.")
+        else:
+            action = {"type": "run", "path": path}
+            cells = _cells(m.group(2)) if path.endswith(".ipynb") else None
+            if cells:
+                action["cells"] = cells
+            actions.append(action)
+        if len(runs) > 1:
+            problems.append("Only the first run was kept (one run at a time).")
+
+    cleaned = _RUN_TAG.sub("", _INSTALL_TAG.sub("", outside))
+    if block:
+        cleaned = cleaned.replace("\0BLOCK\0", text[block.start():block.end()])
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned, actions, problems
+
+
 def parse_reply(text: str, request: dict, files: ProjectFiles) -> dict:
-    """Turn the model's text into an answer, or a proposal for one file."""
+    """Turn the model's text into an answer, or a proposal for one file, with any actions."""
+    text, actions, problems = parse_actions(text, request, files)
+    result = _parse_reply(text, request, files) if text or not actions else {"kind": "answer", "text": ""}
+    if actions:
+        result["actions"] = actions
+    if problems:
+        result["text"] = (result.get("text") or "").rstrip() + "\n\n" + "\n".join(f"_{p}_" for p in problems)
+    return result
+
+
+def _parse_reply(text: str, request: dict, files: ProjectFiles) -> dict:
     match = _FILE_BLOCK.search(text)
     if not match:
         return {"kind": "answer", "text": text.strip() or "(The model returned an empty answer.)"}

@@ -61,7 +61,8 @@ export function useExecution({ onSave, backend, real = IS_LOCAL }) {
   // Real run through the local runtime. Edits are saved first, so the run
   // executes exactly what is on screen.
   const runLocal = useCallback(
-    async (path, files, flush, { mode = 'run', breakpoints = [] } = {}) => {
+    // onDone(record | { status: 'rejected', message }): when this run has ended (the assistant's runs wait for it).
+    async (path, files, flush, { mode = 'run', breakpoints = [], onDone } = {}) => {
       setNotice(null);
       const snapshot = files[path] ?? '';
       let pauses = 0;
@@ -118,6 +119,7 @@ export function useExecution({ onSave, backend, real = IS_LOCAL }) {
             );
             if (result.status === 'rejected') {
               setNotice({ kind: 'runtime', path, title: 'The run didn’t start', detail: result.message });
+              onDone?.({ status: 'rejected', message: result.message });
               return;
             }
             const number = storeRef.current.nextNumber;
@@ -143,10 +145,12 @@ export function useExecution({ onSave, backend, real = IS_LOCAL }) {
             };
             setStore((s) => ({ runs: [...s.runs, record], nextNumber: s.nextNumber + 1 }));
             setSelectedRunId(record.id);
+            onDone?.(record);
           },
         });
       } catch (e) {
         handleRef.current = null;
+        onDone?.({ status: 'rejected', message: e.message });
         setSession(null);
         setNotice({ kind: 'runtime', path, title: 'The run didn’t start', detail: e.message });
         return false;

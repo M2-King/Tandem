@@ -38,6 +38,7 @@ import AISettingsDialog from './components/AISettingsDialog.jsx';
 import AIChoiceDialog from './cowork/AIChoiceDialog.jsx';
 import ProjectsDialog from './components/ProjectsDialog.jsx';
 import { createRealAssistant } from './services/realAI.js';
+import { useAssistantActions } from './state/useAssistantActions.js';
 import { useAssistant } from './state/useAssistant.js';
 import { useExecution } from './state/useExecution.js';
 import { useViewportWidth } from './state/useViewport.js';
@@ -454,21 +455,30 @@ export default function App() {
 
   /* ---------- AI requests and proposals ---------- */
 
+  // options.kind 'results': Tandem sending back what the assistant's actions
+  // did (useAssistantActions), step: how many automatic steps so far.
+  const aiActionsRef = useRef(null);
+  const aiModeRef = useRef(prefs.aiMode || 'ask');
+  aiModeRef.current = prefs.aiMode || 'ask';
   const sendPrompt = useCallback(
     async (prompt, options = {}) => {
       if (assistant.busy) return;
+      if (!options.kind) aiActionsRef.current?.skipWaiting(); // a new request: what still waits is skipped
       const context = options.context ?? assistant.draftContext;
       if (!options.context) assistant.clearContext();
       showAssistant();
-      const result = await assistant.send({ prompt, intent: options.intent, context });
-      if (result?.proposalId) {
+      const result = await assistant.send({ prompt, intent: options.kind === 'results' ? 'results' : options.intent, context, kind: options.kind, step: options.step });
+      if (result?.proposalId && aiModeRef.current === 'ask') {
         // Show the diff in the editor as soon as the change is ready.
         setReviewingId(result.proposalId);
         ws.openFile(result.path);
       }
+      aiActionsRef.current?.onAnswer(result);
     },
     [assistant, showAssistant, ws]
   );
+  const sendPromptRef = useRef(sendPrompt);
+  sendPromptRef.current = sendPrompt;
 
   const accept = (id, { force = false } = {}) => {
     const p = proposalsRef.current[id];
@@ -559,6 +569,140 @@ export default function App() {
       reviewing: reviewingId === id,
     };
   };
+
+  /* ---------- what the assistant asks Tandem to do ---------- */
+
+  // Installs go through Tandem's own installer (into the project's
+  // environment), runs through the Run button's runner or the notebook's
+  // kernel, so they show where the person's own would.
+  const actionStops = useRef({});
+  const aiPerform = {
+    install: (packages, onLog) =>
+      new Promise((resolve) => {
+        const target = inCowork && cowork.live ? backend.forScope('shared', cowork.project.id) : backend;
+        let log = '';
+        const handle = target.startJob(
+          { kind: 'install', packages },
+          {
+            onOutput: (text) => {
+              log = (log + text).slice(-40_000);
+              onLog(log);
+            },
+            onFinish: (result) => {
+              delete actionStops.current.install;
+              if (result.status === 'success') {
+                runtime.refresh();
+                setSharedEnvTick((n) => n + 1);
+              }
+              resolve({ ok: result.status === 'success', message: result.status === 'cancelled' ? 'Stopped.' : result.message, log });
+            },
+          }
+        );
+        actionStops.current.install = () => handle.cancel();
+      }),
+    run: (action) => (isNotebook(action.path) ? runNotebookForAI(action) : runScriptForAI(action)),
+    stop: (action) => {
+      if (action.type === 'install') actionStops.current.install?.();
+      else if (isNotebook(action.path)) actionStops.current.notebook?.();
+      else exec.stop();
+    },
+  };
+  const runScriptForAI = (action) =>
+    new Promise((resolve) => {
+      if (exec.session && !exec.session.finished) {
+        resolve({ ok: false, summary: 'didn’t start: another run is still going. Stop it first.' });
+        return;
+      }
+      ws.openFile(action.path);
+      setResultsOpen(true);
+      setResultsTab('Output');
+      exec.run(action.path, ws.files, ws.flush, {
+        onDone: (r) => {
+          if (r.status === 'rejected') return resolve({ ok: false, summary: `didn’t start: ${r.message}` });
+          const output = (r.output || []).map((l) => (typeof l === 'string' ? l : l?.text ?? '')).join('\n');
+          const err = r.error;
+          const summary =
+            r.status === 'success'
+              ? `finished (exit code 0) in ${Math.max(1, Math.round((r.durationMs || 0) / 1000))} s.`
+              : r.status === 'stopped'
+                ? 'was stopped before it finished.'
+                : err?.type
+                  ? `failed with ${err.type}: ${err.message}${err.line ? ` (${err.path || action.path}, line ${err.line})` : ''}.`
+                  : `failed (exit code ${r.exitCode ?? '?'}).`;
+          resolve({ ok: r.status === 'success', summary, detail: output.trim() ? `Output (last part):\n${output.slice(-4000)}` : 'No output.' });
+        },
+      });
+    });
+  const runNotebookForAI = (action) =>
+    new Promise((resolve) => {
+      const path = action.path;
+      if (typeof ws.files[path] !== 'string') return resolve({ ok: false, summary: `didn’t start: ${path} isn’t open in this project.` });
+      ws.openFile(path);
+      const session = notebookSession(notebookKey(path), {
+        text: ws.files[path],
+        backend: inCowork ? coworkBackend : backend,
+        save: (text) => ws.setFile(path, text),
+      });
+      if (session.error || !session.nb) return resolve({ ok: false, summary: `didn’t start: the notebook can’t be read (${session.error || 'no cells'}).` });
+      const cells = session.nb.cells;
+      const numbered = (action.cells || cells.map((_, i) => i + 1)).map((n) => ({ n, cell: cells[n - 1] })).filter((x) => x.cell);
+      const ids = numbered.map((x) => x.cell.id);
+      if (!ids.length) return resolve({ ok: false, summary: 'didn’t start: there are no such cells.' });
+      let off = null;
+      const end = () => {
+        off?.();
+        delete actionStops.current.notebook;
+        const now = new Map(session.nb.cells.map((c, i) => [c.id, { cell: c, n: i + 1 }]));
+        let firstError = null;
+        const parts = [];
+        for (const id of ids) {
+          const here = now.get(id);
+          if (!here || here.cell.cell_type !== 'code') continue;
+          const text = (here.cell.outputs || [])
+            .map((o) => {
+              if (o.output_type === 'error') {
+                firstError ??= { n: here.n, ename: o.ename, evalue: o.evalue };
+                return `${o.ename}: ${o.evalue}`;
+              }
+              if (o.output_type === 'stream') return Array.isArray(o.text) ? o.text.join('') : o.text || '';
+              const data = o.data || {};
+              if (data['text/plain']) return Array.isArray(data['text/plain']) ? data['text/plain'].join('') : data['text/plain'];
+              return Object.keys(data).some((k) => k.startsWith('image/')) ? '(an image)' : '';
+            })
+            .join('')
+            .trim();
+          if (text) parts.push(`cell ${here.n}:\n${text.slice(-600)}`);
+        }
+        const problem = session.kernelProblem?.message;
+        const ok = !firstError && !problem;
+        resolve({
+          ok,
+          summary: problem
+            ? `couldn’t run: ${problem}`
+            : firstError
+              ? `stopped with an error in cell ${firstError.n}: ${firstError.ename}: ${firstError.evalue}`
+              : `ran ${ids.length} cell${ids.length === 1 ? '' : 's'} without errors.`,
+          detail: parts.length ? `Outputs:\n${parts.join('\n\n').slice(-4000)}` : 'No output.',
+        });
+      };
+      const settled = () =>
+        !ids.some((id) => session.running[id]) && !['starting', 'restarting'].includes(session.kernelState);
+      for (const id of ids) session.run(id);
+      actionStops.current.notebook = () => session.interrupt();
+      if (session.kernelProblem && settled()) return end();
+      off = session.subscribe(() => {
+        if (settled() || session.kernelProblem) end();
+      });
+    });
+  const setAIMode = useCallback((aiMode) => update({ aiMode }), [update]);
+  const aiActions = useAssistantActions({
+    assistant,
+    mode: prefs.aiMode || 'ask',
+    accept: (id) => accept(id),
+    perform: aiPerform,
+    send: ({ prompt, kind, step }) => sendPromptRef.current(prompt, { kind, step, context: [] }),
+  });
+  aiActionsRef.current = aiActions;
 
   const reviewProposal = reviewingId ? assistant.proposals[reviewingId] : null;
   const review = reviewProposal && reviewProposal.status === 'pending' ? proposalView(reviewingId) : null;
@@ -674,6 +818,23 @@ export default function App() {
     if (exec.session && !exec.session.finished) exec.stop();
     return undefined;
   };
+  // Ctrl+` (as in VS Code): the Terminal tab of this device's project.
+  const terminalAvailable = !IS_IPAD && !inCowork && !!backend?.startTerminal;
+  useEffect(() => {
+    if (!terminalAvailable) setResultsTab((t) => (t === 'Terminal' ? 'Output' : t));
+  }, [terminalAvailable]);
+  useEffect(() => {
+    if (!terminalAvailable) return undefined;
+    const onKey = (e) => {
+      if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === '`' || e.code === 'Backquote')) {
+        e.preventDefault();
+        setResultsOpen(true);
+        setResultsTab('Terminal');
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [terminalAvailable]);
   useEffect(() => {
     const onKey = (e) => {
       const mod = e.ctrlKey || e.metaKey;
@@ -1267,6 +1428,7 @@ export default function App() {
             <ResultsPanel
               tab={resultsTab}
               onTab={setResultsTab}
+              terminalBackend={!IS_IPAD && !inCowork && backend?.startTerminal ? backend : null}
               session={session}
               traceView={traceView}
               notice={exec.notice}
@@ -1308,6 +1470,9 @@ export default function App() {
               action.type === 'reset-file' ? resetFile(action.path) : action.type === 'open-ai-settings' && openAISettings()
             }
             aiModel={assistantModel}
+            aiMode={prefs.aiMode || 'ask'}
+            onAIMode={IS_LOCAL && !IS_IPAD ? setAIMode : null}
+            actionHandlers={IS_LOCAL && !IS_IPAD ? aiActions : null}
             onRetry={(r) => sendPrompt(r.prompt, { intent: r.intent, context: r.context })}
             composerRef={composerRef}
             onClose={closeAssistant}

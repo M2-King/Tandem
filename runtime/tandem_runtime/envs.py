@@ -302,7 +302,7 @@ def installed_packages(python: Path) -> list[dict]:
 
 
 def project_imports(root: Path, limit: int = 400) -> dict[str, list[dict]]:
-    """Top-level modules the project's .py files import, with where."""
+    """Top-level modules the project's .py files and notebooks import, with where."""
     found: dict[str, list[dict]] = {}
     local: set[str] = set()
     sources: list[Path] = []
@@ -316,27 +316,55 @@ def project_imports(root: Path, limit: int = 400) -> dict[str, list[dict]]:
             if name.endswith(".py"):
                 local.add(name[:-3])
                 sources.append(here / name)
+            elif name.endswith(".ipynb"):
+                sources.append(here / name)
         if len(sources) > limit:
             break
     for path in sources[:limit]:
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-        except (SyntaxError, ValueError, OSError):
-            continue
         rel = path.relative_to(root).as_posix()
-        for node in ast.walk(tree):
-            names: list[str] = []
-            if isinstance(node, ast.Import):
-                names = [a.name for a in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                names = [node.module]
-            for full in names:
-                top = full.split(".")[0]
-                key = "google.protobuf" if full.startswith("google.protobuf") else top
-                if top in local:
-                    continue
-                found.setdefault(key, []).append({"path": rel, "line": node.lineno})
+        for tree, place in _parsed_sources(path):
+            for node in ast.walk(tree):
+                names: list[str] = []
+                if isinstance(node, ast.Import):
+                    names = [a.name for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                    names = [node.module]
+                for full in names:
+                    top = full.split(".")[0]
+                    key = "google.protobuf" if full.startswith("google.protobuf") else top
+                    if top in local:
+                        continue
+                    found.setdefault(key, []).append({"path": rel, "line": place(node.lineno)})
     return found
+
+
+def _parsed_sources(path: Path):
+    """(syntax tree, line → place) for a .py file, or for each code cell of a notebook."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    if not path.name.endswith(".ipynb"):
+        try:
+            yield ast.parse(text), lambda line: line
+        except (SyntaxError, ValueError):
+            pass
+        return
+    try:
+        cells = json.loads(text).get("cells") or []
+    except (ValueError, AttributeError):
+        return
+    for number, cell in enumerate(cells, start=1):
+        if not isinstance(cell, dict) or cell.get("cell_type") != "code":
+            continue
+        source = cell.get("source") or ""
+        source = "".join(source) if isinstance(source, list) else str(source)
+        # IPython lines (%magic, !shell) aren't Python: blank them, keeping line numbers.
+        code = "\n".join("" if line.lstrip().startswith(("%", "!", "?")) else line for line in source.split("\n"))
+        try:
+            yield ast.parse(code), (lambda n: lambda _line: f"cell {n}")(number)
+        except (SyntaxError, ValueError):
+            continue
 
 
 def missing_imports(root: Path, python: Path) -> list[dict]:
