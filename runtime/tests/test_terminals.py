@@ -43,7 +43,7 @@ def test_a_terminal_runs_in_the_project_with_its_environment(client, project):
     with client.websocket_connect(f"ws://127.0.0.1:{PORT}/ws?token={TOKEN}") as ws:
         ws.send_text(json.dumps({"type": "term.start", "id": "t1", "cols": 100, "rows": 30}))
         started = json.loads(ws.receive_text())
-        assert started["type"] == "term.started" and started["env"] == ".venv"
+        assert started["type"] == "term.started" and started["env"] == ".venv", started
         assert started["cwd"] == str(project)
         # `python` is the project's, and the shell starts in the project folder.
         ws.send_text(json.dumps({"type": "term.input", "id": "t1", "data": "python hello.py\r"}))
@@ -59,7 +59,8 @@ def test_a_terminal_runs_in_the_project_with_its_environment(client, project):
 def test_a_terminal_ends_with_its_window_and_only_its_window_can_type_in_it(client, project):
     with client.websocket_connect(f"ws://127.0.0.1:{PORT}/ws?token={TOKEN}") as ws:
         ws.send_text(json.dumps({"type": "term.start", "id": "t2"}))
-        assert json.loads(ws.receive_text())["type"] == "term.started"
+        started = json.loads(ws.receive_text())
+        assert started["type"] == "term.started", started
         with client.websocket_connect(f"ws://127.0.0.1:{PORT}/ws?token={TOKEN}") as other:
             other.send_text(json.dumps({"type": "term.input", "id": "t2", "data": "echo SNEAKY\r"}))
             other.send_text(json.dumps({"type": "ping"}))

@@ -197,9 +197,9 @@ class _WindowsTerminal:
             from winpty import PtyProcess
         except ImportError as exc:  # pragma: no cover - Windows only
             raise TerminalError(f"The terminal needs pywinpty ({exc}).") from None
-        import subprocess
-
-        self.proc = PtyProcess.spawn(subprocess.list2cmdline(argv), cwd=cwd, env=env, dimensions=(max(2, rows), max(2, cols)))
+        # A list (pywinpty quotes the arguments itself; a string would be split
+        # with its quotes kept, and a shell path with spaces wouldn't be found).
+        self.proc = PtyProcess.spawn(list(argv), cwd=cwd, env=env, dimensions=(max(2, rows), max(2, cols)))
         self.loop = loop
         self.on_output, self.on_exit = on_output, on_exit
         self.closed = False

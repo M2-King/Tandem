@@ -252,16 +252,17 @@ async function deviceProject(w, timeout) {
   await win.waitForFunction(() => /tandem-desktop-/.test(document.querySelector('.terminal-note')?.innerText || ''), null, { timeout: 60000 });
   await win.waitForTimeout(1500); // the shell's prompt
   await win.locator('.terminal-view .xterm').click();
-  await win.keyboard.type('python -c "import sys; print(\'TERM\' + \'-OK \' + sys.executable)"');
+  // (Python compares the folders itself: a long path would wrap in the terminal.)
+  const wantDir = path.dirname(python).replace(/'/g, "\\'");
+  await win.keyboard.type(`python -c "import sys, os; print('TERM' + '-OK', os.path.normcase(os.path.dirname(sys.executable)) == os.path.normcase(r'${wantDir}'))"`);
   await win.keyboard.press('Enter');
+  const rows = () => win.evaluate(() => (document.querySelector('.terminal-view .xterm-rows')?.innerText || '').replace(/\u00a0/g, ' '));
   const termOk = await win
-    .waitForFunction(() => /TERM-OK \S/.test((document.querySelector('.terminal-view .xterm-rows')?.innerText || '').replace(/\u00a0/g, ' ')), null, { timeout: 60000 })
+    .waitForFunction(() => /TERM-OK (True|False)/.test((document.querySelector('.terminal-view .xterm-rows')?.innerText || '').replace(/\u00a0/g, ' ')), null, { timeout: 60000 })
     .then(() => true, () => false);
-  const termText = (await win.evaluate(() => document.querySelector('.terminal-view .xterm-rows')?.innerText || '')).replace(/\u00a0/g, ' ');
-  const termPython = /TERM-OK (\S.*)/.exec(termText)?.[1]?.trim();
-  if (!termOk) console.log(termText.slice(-1500));
-  check(termOk && !!termPython && path.dirname(termPython).toLowerCase() === path.dirname(python).toLowerCase(),
-    `Terminal: a shell in the project, the project's Python first on PATH (${termPython})`);
+  const answer = /TERM-OK (True|False)/.exec(await rows())?.[1];
+  if (answer !== 'True') console.log((await rows()).slice(-1500));
+  check(termOk && answer === 'True', `Terminal: a shell in the project, the project's Python first on PATH (${answer})`);
   await win.getByRole('tab', { name: 'Output' }).click();
 
   // "Open with Tandem" while Tandem is open: Windows starts a second Tandem
