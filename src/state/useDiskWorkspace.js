@@ -31,6 +31,18 @@ export function uniqueFileName(name, taken) {
 // Edits are written to disk shortly after typing. A write carries the hash
 // of the version it replaces; if the file changed on disk in between, the
 // write is refused and the person is told, instead of silently overwriting.
+const WHY_UNREADABLE = {
+  'too-large': 'it is too large to edit here',
+  binary: 'it isn’t a text file',
+  'not-utf8': 'it isn’t UTF-8 text',
+};
+
+// A file the desktop app was asked to open ("Open with Tandem"), once.
+export function requestedFile() {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get('open');
+}
+
 export function useDiskWorkspace(onSave, backend, { notify } = {}) {
   const [files, setFiles] = useState({});
   const [fileOrder, setFileOrder] = useState([]);
@@ -46,6 +58,7 @@ export function useDiskWorkspace(onSave, backend, { notify } = {}) {
   const orderRef = useRef([]);
   orderRef.current = fileOrder;
   const uiKey = project ? `tandem.local.ui.v1:${project.root}` : null;
+  const requested = useRef(requestedFile());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,13 +83,23 @@ export function useDiskWorkspace(onSave, backend, { notify } = {}) {
       setUnreadable(skipped);
       setFileOrder(list.map((f) => f.path));
       const saved = loadJSON(`tandem.local.ui.v1:${status.project.root}`, null);
-      const openTabs = (saved?.openTabs || []).filter((p) => p in loaded);
+      let openTabs = (saved?.openTabs || []).filter((p) => p in loaded);
       const firstPy = list.find((f) => f.path.endsWith('.py'))?.path || null;
-      setUi({
-        openTabs: openTabs.length ? openTabs : firstPy ? [firstPy] : [],
-        activePath: openTabs.includes(saved?.activePath) ? saved.activePath : openTabs[0] || firstPy,
-        breakpoints: saved?.breakpoints || {},
-      });
+      let activePath = openTabs.includes(saved?.activePath) ? saved.activePath : openTabs[0] || firstPy;
+      if (!openTabs.length && firstPy) openTabs = [firstPy];
+      // Opened from Explorer: that file is the one shown.
+      const want = requested.current;
+      requested.current = null;
+      if (want) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.hash); // keeps #/device
+        if (want in loaded) {
+          if (!openTabs.includes(want)) openTabs = [...openTabs, want];
+          activePath = want;
+        } else {
+          notify?.(`Tandem can't open ${want}: ${WHY_UNREADABLE[skipped[want]] || 'it isn’t in the project’s file list'}.`);
+        }
+      }
+      setUi({ openTabs, activePath, breakpoints: saved?.breakpoints || {} });
     } catch (e) {
       setLoadError(e.message);
     } finally {
@@ -198,6 +221,27 @@ export function useDiskWorkspace(onSave, backend, { notify } = {}) {
     []
   );
 
+  // Open a file the desktop app was handed while this project is open; it
+  // may be newer than the file list.
+  const openFromOutside = useCallback(
+    async (path) => {
+      if (!(path in latest.current)) {
+        const file = await backend.readFile(path).catch((e) => ({ text: null, error: e.message }));
+        if (file.text == null) {
+          notify?.(`Tandem can't open ${path}: ${WHY_UNREADABLE[file.reason] || file.error?.replace(/\.$/, '') || 'it couldn’t be read'}.`);
+          return false;
+        }
+        hashes.current[path] = file.hash;
+        latest.current = { ...latest.current, [path]: file.text };
+        setFiles((f) => ({ ...f, [path]: file.text }));
+        setFileOrder((order) => (order.includes(path) ? order : [...order, path].sort()));
+      }
+      openFile(path);
+      return true;
+    },
+    [backend, notify, openFile]
+  );
+
   const closeTab = useCallback(
     (path) =>
       setUi((u) => {
@@ -240,6 +284,7 @@ export function useDiskWorkspace(onSave, backend, { notify } = {}) {
     project,
     reload: load,
     openFile,
+    openFromOutside,
     closeTab,
     setFile,
     toggleBreakpoint,

@@ -9,7 +9,7 @@
 // the whole screen, so the system glass can be seen over the desktop.
 
 const { _electron: electron } = require('playwright');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -245,6 +245,22 @@ async function deviceProject(w, timeout) {
     win = current;
   }
 
+  // "Open with Tandem" while Tandem is open: Windows starts a second Tandem
+  // with the file, which hands it to the open one and exits.
+  const activeTab = (w) => w.locator('.tab.is-active').innerText().then((t) => t.trim());
+  fs.mkdirSync(path.join(project, 'sql'));
+  fs.writeFileSync(path.join(project, 'sql', 'later.sql'), 'SELECT 1;\n');
+  const second = spawn(exe, [`--user-data-dir=${userData}`, ...(IS_WIN ? [] : ['--no-sandbox']), path.join(project, 'sql', 'later.sql')],
+    { stdio: 'ignore' });
+  const secondExit = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve('still running'), 30000);
+    second.on('exit', (code) => (clearTimeout(timer), resolve(code)));
+  });
+  console.log(`     second start exited: ${secondExit}`);
+  await win.waitForFunction(() => document.querySelector('.tab.is-active')?.innerText.trim() === 'later.sql', null, { timeout: 30000 });
+  const sqlMode = await win.getByRole('radio', { name: 'SQL', checked: true }).count();
+  check(secondExit === 0 && sqlMode === 1, 'Open with: a file sent to the open app shows in its tab (SQL workspace), the second start exits');
+
   const href = await app.evaluate(async ({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
     await w.webContents.executeJavaScript("location.href = 'https://example.com/'; 1");
@@ -261,6 +277,30 @@ async function deviceProject(w, timeout) {
     left = runtimeProcesses();
   }
   check(left === 0, 'closing the app stops the runtime');
+
+  // "Open with Tandem" when Tandem isn't running: a file outside the last
+  // project opens with its own folder as the project.
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-downloads-'));
+  const notebook = path.join(elsewhere, 'student_notebook.ipynb');
+  fs.writeFileSync(notebook, JSON.stringify({
+    cells: [{ cell_type: 'code', id: 'c1', metadata: {}, source: ['x = 41\n', 'print(x + 1)'], outputs: [], execution_count: null }],
+    metadata: {}, nbformat: 4, nbformat_minor: 5,
+  }));
+  const cold = await electron.launch({
+    executablePath: exe,
+    args: [`--user-data-dir=${userData}`, ...(IS_WIN ? [] : ['--no-sandbox']), notebook],
+    env: { ...process.env, TANDEM_OPEN_FOLDER: project, TANDEM_CONFIG_DIR: path.join(userData, 'config') },
+    timeout: 120000,
+  });
+  const coldWin = await cold.firstWindow();
+  await coldWin.locator('.runtime-status.tone-up').waitFor({ timeout: 90000 });
+  await coldWin.waitForFunction(() => document.querySelector('.tab.is-active')?.innerText.trim() === 'student_notebook.ipynb', null, { timeout: 30000 });
+  await coldWin.locator('.nb-cell').first().waitFor({ timeout: 15000 });
+  const folder = await cold.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getURL());
+  const shownProject = await coldWin.locator('.toolbar').innerText();
+  check(shownProject.includes(path.basename(elsewhere)) && !folder.includes('?open='),
+    'Open with: starting Tandem with a notebook opens it, with its folder as the project');
+  await cold.close();
 
   console.log('\nAll desktop checks passed.');
 })().catch((e) => {

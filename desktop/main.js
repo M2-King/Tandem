@@ -216,7 +216,7 @@ function lockDown(contents) {
   contents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
 }
 
-function createWindow(place) {
+function createWindow(place, url = runtime.url) {
   const material = currentMaterial();
   const w = new BrowserWindow({ ...windowOptions(material), ...(place?.bounds || {}) });
   win = w;
@@ -232,7 +232,7 @@ function createWindow(place) {
   w.on('maximize', () => w.webContents.send('desktop:maximized', true));
   w.on('unmaximize', () => w.webContents.send('desktop:maximized', false));
   w.on('focus', () => w.webContents.send('desktop:wallpaper', wallpaperLuminance()));
-  w.loadURL(runtime.url);
+  w.loadURL(url);
   return w;
 }
 
@@ -261,7 +261,95 @@ async function chooseFolder(parent) {
   return result.canceled || !result.filePaths[0] ? null : result.filePaths[0];
 }
 
-async function openFolder(folder) {
+// ---------------------------------------------------------------- files from Explorer
+// "Open with Tandem" (or a file dropped on Tandem's icon) starts Tandem with
+// the file's path. A file inside the open project opens there; any other
+// file opens with its own folder as the project.
+
+// Folders the project's file list leaves out (as runtime/files.py does).
+const SKIP_DIRS = new Set(['.git', '.hg', '.svn', '.venv', 'venv', 'env', '__pycache__', 'node_modules', '.tandem',
+  '.ipynb_checkpoints', '.mypy_cache', '.pytest_cache', '.ruff_cache', '.idea', '.vscode']);
+
+function fileFromArgs(argv) {
+  // argv[0] is Tandem itself; in development argv[1] is the app folder.
+  for (const arg of argv.slice(app.isPackaged ? 1 : 2)) {
+    if (!arg || arg.startsWith('-')) continue;
+    try {
+      const file = path.resolve(arg);
+      if (fs.statSync(file).isFile()) return file;
+    } catch {
+      // not a file
+    }
+  }
+  return null;
+}
+
+function placeFile(file, project) {
+  if (project) {
+    const rel = path.relative(project, file);
+    const parts = rel.split(path.sep);
+    const listed = rel && !path.isAbsolute(rel) && parts[0] !== '..' &&
+      parts.slice(0, -1).every((d) => !d.startsWith('.') && !SKIP_DIRS.has(d));
+    if (listed) return { folder: project, rel: parts.join('/') };
+  }
+  return { folder: path.dirname(file), rel: path.basename(file) };
+}
+
+// #/device: a file from Explorer opens in this device's project, not on the
+// shared projects page (where Tandem Staging starts).
+const pageUrl = (rel) => (rel ? `${runtime.url}?open=${encodeURIComponent(rel)}#/device` : runtime.url);
+
+// Tandem edits text files. Explorer offers it for every type, so a file
+// that isn't text (an image, a PDF…) is turned down before anything changes.
+function isTextFile(file) {
+  try {
+    const fd = fs.openSync(file, 'r');
+    try {
+      const head = Buffer.alloc(8192);
+      const n = fs.readSync(fd, head, 0, head.length, 0);
+      return !head.subarray(0, n).includes(0);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+}
+
+async function turnDown(file) {
+  await dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined, {
+    type: 'info',
+    title: 'Tandem',
+    message: `Tandem can't open ${path.basename(file)}.`,
+    detail: 'It isn\u2019t a text file. Tandem opens code, notebooks, data and other text files.',
+  });
+}
+
+async function openGivenFile(file) {
+  if (!isTextFile(file)) return turnDown(file);
+  const project = runtime?.folder ?? null;
+  const place = placeFile(file, project);
+  if (runtime && win && !win.isDestroyed() && place.folder === project) {
+    win.webContents.send('desktop:open-file', place.rel);
+    return;
+  }
+  if (runtime && win && !win.isDestroyed()) {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'question',
+      title: 'Tandem',
+      message: `Open ${path.basename(file)}?`,
+      detail: `It isn't in the open project, so Tandem will open its folder (${place.folder}) as the project. ` +
+        'Anything running in the current project stops; your files are already saved.',
+      buttons: ['Open', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) return;
+  }
+  await openFolder(place.folder, place.rel);
+}
+
+async function openFolder(folder, openRel = null) {
   stopRuntime();
   try {
     runtime = await startRuntime(folder);
@@ -275,8 +363,8 @@ async function openFolder(folder) {
     return false;
   }
   saveSettings({ lastFolder: folder });
-  if (win && !win.isDestroyed()) win.loadURL(runtime.url);
-  else createWindow();
+  if (win && !win.isDestroyed()) win.loadURL(pageUrl(openRel));
+  else createWindow(null, pageUrl(openRel));
   return true;
 }
 
@@ -377,19 +465,27 @@ handle('desktop:window', (action) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
     if (win) {
       if (win.isMinimized()) win.restore();
       win.focus();
     }
+    const file = fileFromArgs(argv);
+    if (file) openGivenFile(file);
   });
 
   app.whenReady().then(async () => {
     nativeTheme.themeSource = 'dark';
     updates.start(); // first check after 10 s, in the background
     let folder = process.env.TANDEM_OPEN_FOLDER || loadSettings().lastFolder;
-    if (!folder || !fs.existsSync(folder)) folder = await chooseFolder(null);
-    if (!folder || !(await openFolder(folder))) {
+    if (folder && !fs.existsSync(folder)) folder = null;
+    const given = fileFromArgs(process.argv);
+    const file = given && isTextFile(given) ? given : null;
+    if (given && !file) await turnDown(given); // then Tandem opens as usual
+    let openRel = null;
+    if (file) ({ folder, rel: openRel } = placeFile(file, folder));
+    if (!folder) folder = await chooseFolder(null);
+    if (!folder || !(await openFolder(folder, openRel))) {
       app.quit();
     }
   });

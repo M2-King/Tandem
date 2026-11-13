@@ -18,7 +18,7 @@ import UpdateBanner, { UpdatingOverlay } from './components/UpdateBanner.jsx';
 import { DESKTOP } from './runtime/desktop.js';
 import { applyGlass } from './lib/glass.js';
 import { useWorkspace } from './state/useWorkspace.js';
-import { useDiskWorkspace } from './state/useDiskWorkspace.js';
+import { requestedFile, useDiskWorkspace } from './state/useDiskWorkspace.js';
 import { useRuntimeStatus } from './state/useRuntimeStatus.js';
 import { IS_IPAD, IS_LOCAL, RUNTIME_CONFIG } from './runtime/config.js';
 import { setupIpadShell } from './runtime/ipadShell.js';
@@ -641,6 +641,26 @@ export default function App() {
     setResultsOpen(true);
   };
   const setWorkspace = (workspace) => update({ workspace });
+  // A file opened from Explorer ("Open with Tandem") shows in its own
+  // workspace: SQL files in SQL, Python files and notebooks in Python.
+  const workspaceFor = (path) => (isSqlFile(path) ? 'sql' : /\.(py|pyw|ipynb)$/i.test(path) ? 'python' : null);
+  useEffect(() => {
+    const opened = IS_LOCAL ? requestedFile() : null;
+    if (opened && workspaceFor(opened)) update({ workspace: workspaceFor(opened) });
+  }, []);
+  // Files from Explorer belong to this device's project (never a shared one):
+  // leave a shared project or the shared projects page for it.
+  const openFromOutside = deviceWs.openFromOutside;
+  const goLocal = cowork.go;
+  useEffect(
+    () =>
+      DESKTOP?.onOpenFile?.(async (path) => {
+        goLocal('local');
+        if (!(await openFromOutside(path))) return;
+        if (workspaceFor(path)) update({ workspace: workspaceFor(path) });
+      }),
+    [openFromOutside, goLocal, update]
+  );
   // Python completion in the editor (Jedi via the runtime, or inside Python on iPad).
   useEffect(() => {
     if (IS_LOCAL) registerPythonCompletion(backend);

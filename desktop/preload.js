@@ -34,4 +34,5 @@ contextBridge.exposeInMainWorld('tandemDesktop', {
     preview: () => ipcRenderer.invoke('desktop:updates-preview'),
     onState: listen('desktop:updates'),
   }),
+  onOpenFile: listen('desktop:open-file'),
 });

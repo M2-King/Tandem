@@ -139,6 +139,11 @@ jobs:
           npm ci
           npx electron-builder --win --publish never
 
+      - name: Check the installer ("Open with" for every type of file)
+        if: github.ref == 'refs/heads/cowork'
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/open-with-check.ps1 (Resolve-Path desktop/release/Tandem-Setup-*.exe).Path
+
       - name: Check the desktop app
         shell: pwsh
         env:

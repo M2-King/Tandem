@@ -82,7 +82,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Tandem",
-      "artifactName": "Tandem-Setup-${version}.exe"
+      "artifactName": "Tandem-Setup-${version}.exe",
+      "include": "nsis/installer.nsh"
     },
     "portable": {
       "artifactName": "Tandem-${version}-portable.exe"
