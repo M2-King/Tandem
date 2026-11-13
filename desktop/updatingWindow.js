@@ -75,7 +75,7 @@ async function showUpdatingWindow({
   execPath = process.execPath,
   appName = 'Tandem',
   version = '',
-  waitMs = 8000,
+  waitMs = 10000,
   relaunch = true,
   preview = false, // a made-up update for a few seconds (⋯ › Preview the update window)
   spawn = require('child_process').spawn,
@@ -122,7 +122,9 @@ async function showUpdatingWindow({
       relaunch,
     }));
     if (preview) args.push('-TestSeconds', '8');
-    const child = spawn('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: true });
+    // Not windowsHide: Windows would apply "hidden" to the window too (the
+    // console goes away by itself: -WindowStyle Hidden).
+    const child = spawn('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: false });
     child.on?.('error', (err) => {
       note(`could not start powershell: ${err?.message || err}`);
       log.warn?.('[updates] progress window', err);

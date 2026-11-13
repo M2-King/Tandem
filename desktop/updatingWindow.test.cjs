@@ -37,7 +37,7 @@ test('only on Windows', async () => {
   assert.equal(await showUpdatingWindow({ platform: 'darwin' }), false);
 });
 
-test('starts the window detached and hidden, from a copy outside the app, and waits until it shows', async () => {
+test('starts the window detached (console hidden by -WindowStyle, not windowsHide), from a copy outside the app, and waits until it shows', async () => {
   const dir = appDir();
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-tmp-'));
   let spawned;
@@ -56,7 +56,7 @@ test('starts the window detached and hidden, from a copy outside the app, and wa
   });
   assert.equal(ok, true);
   assert.equal(spawned.cmd, 'powershell.exe');
-  assert.ok(spawned.options.detached && spawned.options.windowsHide && spawned.options.stdio === 'ignore');
+  assert.ok(spawned.options.detached && spawned.options.windowsHide === false && spawned.options.stdio === 'ignore'); // not hidden: Windows would hide the window too
   const script = spawned.args[spawned.args.indexOf('-File') + 1];
   assert.equal(path.dirname(script), tmp); // not in the app's folder, which the installer replaces
   assert.ok(fs.readFileSync(script, 'utf8').includes('Updating $AppName'));

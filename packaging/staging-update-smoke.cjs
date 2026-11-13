@@ -109,7 +109,7 @@ function check(ok, message) {
   await new Promise((r) => setTimeout(r, 10000)); // it runs a made-up update, then closes
   const logText = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
   console.log(logText.replace(/^/gm, '     '));
-  check(previewShown === true && /shown: visible=True/.test(logText), 'Preview the update window: the window is on screen (started by the app, as an update starts it)');
+  check(previewShown === true && /shown: visible=True/.test(logText) && /on screen: True/.test(logText), 'Preview the update window: the window is on screen (started by the app, as an update starts it; its colours checked on the screen)');
 
   await app.close();
   const uninstaller = path.join(dir, 'Uninstall Tandem.exe');

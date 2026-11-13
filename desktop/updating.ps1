@@ -37,13 +37,10 @@ function Write-Log($text) {
   try { Add-Content -Path $LogFile -Value ("{0:HH:mm:ss.fff} {1}" -f (Get-Date), $text) -Encoding ASCII } catch {}
 }
 Write-Log "start: app=$AppName version=$Version dir=$InstallDir baseline=$Baseline test=$TestSeconds"
-# Tandem starts this hidden (no console window). Windows applies "hidden" to
-# the first window a program shows, so the window shows itself again, on top.
-Add-Type -Namespace TandemUpdating -Name Native -MemberDefinition @'
-[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
-[DllImport("user32.dll")] public static extern bool IsWindowVisible(System.IntPtr hWnd);
-[DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr hWnd);
-'@
+# Tandem starts this normally (not "hidden": Windows would apply that to this
+# window too), and -WindowStyle Hidden puts the console away at once. No C#
+# is compiled here (Add-Type): antivirus checks of the compiler can take many
+# seconds, and Tandem waits for this window before it closes.
 $ell = [string][char]0x2026  # an ellipsis (kept out of the file: PowerShell 5.1 reads it as ANSI)
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -204,16 +201,18 @@ $check.Add_Tick({ try {
     elseif ($t -lt 0.85) { Set-Phase "Installing the new version$ell" (12 + 80 * ($t - 0.3) / 0.55) }
     else { Set-Phase "Opening $AppName$ell" 100 }
     if ($elapsed -ge $TestSeconds) {
-      if (-not [TandemUpdating.Native]::IsWindowVisible($form.Handle)) {
-        Stop-OnError 'the window is not visible on screen'
+      # What is really on screen there (not a drawing of the window): the
+      # window's own background colour must be there.
+      $bmp = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
+      $g = [System.Drawing.Graphics]::FromImage($bmp)
+      $g.CopyFromScreen($form.Location, [System.Drawing.Point]::Empty, $form.Size)
+      if ($ScreenshotPath) { $bmp.Save($ScreenshotPath, [System.Drawing.Imaging.ImageFormat]::Png) }
+      $px = $bmp.GetPixel(14, [int]($form.Height / 2))
+      $onScreen = [Math]::Abs($px.R - $bg.R) -le 12 -and [Math]::Abs($px.G - $bg.G) -le 12 -and [Math]::Abs($px.B - $bg.B) -le 12
+      Write-Log "on screen: $onScreen (pixel $($px.R),$($px.G),$($px.B))"
+      if (-not $onScreen) {
+        Stop-OnError 'the window is not on screen'
         return
-      }
-      if ($ScreenshotPath) {
-        # What is really on screen there (not a drawing of the window).
-        $bmp = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
-        $g = [System.Drawing.Graphics]::FromImage($bmp)
-        $g.CopyFromScreen($form.Location, [System.Drawing.Point]::Empty, $form.Size)
-        $bmp.Save($ScreenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
       }
       $form.Close()
     }
@@ -274,12 +273,8 @@ $anim.Add_Tick({ try {
 } catch { Stop-OnError $_ } })
 
 $form.Add_Shown({
-  try {
-    [void][TandemUpdating.Native]::ShowWindow($form.Handle, 5)  # SW_SHOW
-    [void][TandemUpdating.Native]::SetForegroundWindow($form.Handle)
-    $form.Activate()
-  } catch { Write-Log "show: $_" }
-  $visible = [TandemUpdating.Native]::IsWindowVisible($form.Handle)
+  try { $form.Activate() } catch { Write-Log "show: $_" }
+  $visible = $form.Visible
   Write-Log "shown: visible=$visible"
   $check.Start()
   $anim.Start()

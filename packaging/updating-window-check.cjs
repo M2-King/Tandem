@@ -26,7 +26,7 @@ const args = [
   png,
 ];
 const started = Date.now();
-const child = spawn('powershell.exe', args, { stdio: 'inherit', windowsHide: true });
+const child = spawn('powershell.exe', args, { stdio: 'inherit', windowsHide: false });
 const timer = setTimeout(() => {
   console.log('FAILED: the window did not end by itself');
   child.kill();
@@ -42,7 +42,8 @@ child.on('exit', (code) => {
   };
   check(code === 0, `the window ended by itself (exit code ${code}, ${Date.now() - started} ms)`);
   check(fs.existsSync(readyFile), 'it said it was on screen (Tandem quits only then)');
-  check(/shown: visible=True/.test(log), 'Windows reports the window visible');
+  check(/shown: visible=True/.test(log), 'the window says it is shown');
+  check(/on screen: True/.test(log), 'its colours are really on the screen where it is');
   check(fs.existsSync(png) && fs.statSync(png).size > 2000, `a capture of the screen where it was (${fs.existsSync(png) ? fs.statSync(png).size : 0} bytes)`);
   process.exit(failures ? 1 : 0);
 });

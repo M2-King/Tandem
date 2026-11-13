@@ -361,7 +361,7 @@ const updates = setupUpdates({
       appName: require('./package.json').tandemDisplayName || app.getName(),
       version: String(version || '').replace(/-staging\.(\d+)$/, ' (build $1)'),
       relaunch,
-      waitMs: relaunch ? 8000 : 0,
+      waitMs: relaunch ? 10000 : 0,
     }),
 });
 
