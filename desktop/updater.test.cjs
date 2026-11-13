@@ -124,7 +124,7 @@ test('updater: fixed feed and settings; checks at 10 s and every 4 h', () => {
 test('updater: the page’s handlers take no arguments that matter', async () => {
   const h = harness();
   h.updates.start();
-  assert.deepEqual(Object.keys(h.handlers).sort(), ['desktop:updates-check', 'desktop:updates-install', 'desktop:updates-state']);
+  assert.deepEqual(Object.keys(h.handlers).sort(), ['desktop:updates-check', 'desktop:updates-install', 'desktop:updates-preview', 'desktop:updates-state']);
   // Whatever the page passes is ignored: the feed stays as set.
   h.handlers['desktop:updates-check']('https://evil.example/feed');
   await new Promise((r) => setImmediate(r));
@@ -235,4 +235,15 @@ test('updater: after "Restart to update" the quit that follows shows no second w
   h.quit();
   await new Promise((r) => setImmediate(r));
   assert.equal(h.shown.length, 1);
+});
+
+test('updater: "Preview the update window" opens it with a made-up update (Windows only)', async () => {
+  let previews = 0;
+  const h = harness({ showPreview: async () => ++previews });
+  h.updates.start();
+  await h.handlers['desktop:updates-preview']();
+  assert.equal(previews, 1);
+  const mac = harness({ platform: 'darwin', showPreview: async () => ++previews });
+  assert.equal(await mac.handlers['desktop:updates-preview'](), false);
+  assert.equal(previews, 1);
 });

@@ -21,6 +21,7 @@ import {
   Users,
   RefreshCw,
   Download,
+  Eye,
 } from 'lucide-react';
 import IconButton from './IconButton.jsx';
 import TandemMark from './TandemMark.jsx';
@@ -83,6 +84,9 @@ function AppVersion({ desktop, updates, close, onRestartToUpdate }) {
           ) : (
             // Stays open so the status below shows the result.
             <MenuItem icon={RefreshCw} label="Check for updates" disabled={!s.enabled || busy} onSelect={updates.check} />
+          )}
+          {desktop.info?.platform === 'win32' && updates.preview && (
+            <MenuItem close={close} icon={Eye} label="Preview the update window" onSelect={updates.preview} />
           )}
           <div className={`menu-update-status ${s.status === 'error' ? 'is-error' : ''}`} role="status" aria-live="polite">
             {updateStatusText(s)}

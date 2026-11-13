@@ -77,6 +77,7 @@ async function showUpdatingWindow({
   version = '',
   waitMs = 8000,
   relaunch = true,
+  preview = false, // a made-up update for a few seconds (⋯ › Preview the update window)
   spawn = require('child_process').spawn,
   tmpdir = os.tmpdir(),
   platform = process.platform,
@@ -101,14 +102,15 @@ async function showUpdatingWindow({
     } catch {
       // none yet
     }
-    note(`update to ${version || '?'}: starting the progress window`);
+    note(preview ? 'preview: starting the progress window' : `update to ${version || '?'}: starting the progress window`);
     fs.writeFileSync(scriptPath, fs.readFileSync(path.join(__dirname, 'updating.ps1'), 'utf8'));
     try {
       fs.unlinkSync(readyFile);
     } catch {
       // not there
     }
-    const args = updatingArgs({
+    const args = [];
+    args.push(...updatingArgs({
       scriptPath,
       installDir,
       exeName: path.basename(execPath),
@@ -118,7 +120,8 @@ async function showUpdatingWindow({
       readyFile,
       logFile,
       relaunch,
-    });
+    }));
+    if (preview) args.push('-TestSeconds', '8');
     const child = spawn('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: true });
     child.on?.('error', (err) => {
       note(`could not start powershell: ${err?.message || err}`);

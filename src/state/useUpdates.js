@@ -112,6 +112,8 @@ export function useUpdates({ notify } = {}) {
     installing,
     banner,
     later: () => setLaterFor(state?.available ?? null),
+    // The "Updating Tandem" window with a made-up update (Windows).
+    preview: () => BRIDGE?.preview?.(),
     dismiss: () => setAsked(false),
   };
 }

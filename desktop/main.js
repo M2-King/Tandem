@@ -354,6 +354,8 @@ const updates = setupUpdates({
   },
   // Then a small "Updating Tandem" window that stays while the installer runs.
   // (When Tandem is closing with an update waiting: it doesn't reopen, and there is no time to wait.)
+  showPreview: () =>
+    showUpdatingWindow({ appName: require('./package.json').tandemDisplayName || app.getName(), version: 'a made-up update', preview: true, waitMs: 8000 }),
   showProgress: (version, { relaunch = true } = {}) =>
     showUpdatingWindow({
       appName: require('./package.json').tandemDisplayName || app.getName(),

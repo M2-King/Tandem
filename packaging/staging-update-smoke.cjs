@@ -67,7 +67,7 @@ function check(ok, message) {
     return { keys: Object.keys(u).sort(), state: await u.state() };
   });
   console.log('     ', JSON.stringify(bridge.state));
-  check(JSON.stringify(bridge.keys) === JSON.stringify(['check', 'install', 'onState', 'state']), 'the page sees only state, check, install, onState');
+  check(JSON.stringify(bridge.keys) === JSON.stringify(['check', 'install', 'onState', 'preview', 'state']), 'the page sees only state, check, install, onState, preview');
   check(bridge.state.enabled === true && bridge.state.staging === true, 'updates are on in the installed Tandem Staging');
   check(bridge.state.version === version, `installed version ${bridge.state.version}`);
 
@@ -96,6 +96,20 @@ function check(ok, message) {
   check((await action.count()) === 1, `the menu offers “${(await action.innerText()).trim()}”`);
   check((await menu.locator('.menu-update-status').innerText()).trim().length > 0, `status line: ${(await menu.locator('.menu-update-status').innerText()).trim()}`);
   await win.keyboard.press('Escape');
+
+  // ⋯ › Preview the update window: the "Updating Tandem" window, started by
+  // the installed app exactly as an update starts it, must be on screen.
+  const log = path.join(os.tmpdir(), 'tandem-updating.log');
+  try {
+    fs.unlinkSync(log);
+  } catch {
+    // none yet
+  }
+  const previewShown = await win.evaluate(() => window.tandemDesktop.updates.preview());
+  await new Promise((r) => setTimeout(r, 10000)); // it runs a made-up update, then closes
+  const logText = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
+  console.log(logText.replace(/^/gm, '     '));
+  check(previewShown === true && /shown: visible=True/.test(logText), 'Preview the update window: the window is on screen (started by the app, as an update starts it)');
 
   await app.close();
   const uninstaller = path.join(dir, 'Uninstall Tandem.exe');

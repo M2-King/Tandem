@@ -77,6 +77,7 @@ function setupUpdates({
   send,
   prepareInstall,
   showProgress = async () => false, // the "Updating Tandem" window (updatingWindow.js)
+  showPreview = async () => false, // that window with a made-up update
   env = process.env,
   platform = process.platform,
   execPath = process.execPath,
@@ -165,6 +166,7 @@ function setupUpdates({
   handle('desktop:updates-state', () => state);
   handle('desktop:updates-check', () => check());
   handle('desktop:updates-install', () => install());
+  handle('desktop:updates-preview', () => (platform === 'win32' ? showPreview() : false));
 
   function start() {
     if (!gate.enabled) return;

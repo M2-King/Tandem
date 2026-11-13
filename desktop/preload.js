@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('tandemDesktop', {
     state: () => ipcRenderer.invoke('desktop:updates-state'),
     check: () => ipcRenderer.invoke('desktop:updates-check'),
     install: () => ipcRenderer.invoke('desktop:updates-install'),
+    // The "Updating Tandem" window with a made-up update, to see that it shows.
+    preview: () => ipcRenderer.invoke('desktop:updates-preview'),
     onState: listen('desktop:updates'),
   }),
 });
