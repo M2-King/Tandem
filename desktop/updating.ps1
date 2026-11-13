@@ -32,13 +32,30 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Tandem passes the settings in TANDEM_UPDATING_ARGS (JSON), not on the
+# command line: it starts this through "cmd /c start" (a detached PowerShell
+# exits at once without running anything), and cmd would read characters
+# such as % or & in paths.
+if ($env:TANDEM_UPDATING_ARGS) {
+  $given = $env:TANDEM_UPDATING_ARGS | ConvertFrom-Json
+  if ($null -ne $given.InstallDir) { $InstallDir = $given.InstallDir }
+  if ($null -ne $given.ExeName) { $ExeName = $given.ExeName }
+  if ($null -ne $given.AppName) { $AppName = $given.AppName }
+  if ($null -ne $given.Version) { $Version = $given.Version }
+  if ($null -ne $given.Baseline) { $Baseline = $given.Baseline }
+  if ($null -ne $given.ReadyFile) { $ReadyFile = $given.ReadyFile }
+  if ($null -ne $given.LogFile) { $LogFile = $given.LogFile }
+  if ($null -ne $given.TestSeconds) { $TestSeconds = $given.TestSeconds }
+  if ($null -ne $given.ScreenshotPath) { $ScreenshotPath = $given.ScreenshotPath }
+  if ($given.NoRelaunch) { $NoRelaunch = $true }
+}
 function Write-Log($text) {
   if (-not $LogFile) { return }
   try { Add-Content -Path $LogFile -Value ("{0:HH:mm:ss.fff} {1}" -f (Get-Date), $text) -Encoding ASCII } catch {}
 }
 Write-Log "start: app=$AppName version=$Version dir=$InstallDir baseline=$Baseline test=$TestSeconds"
-# Tandem starts this normally (not "hidden": Windows would apply that to this
-# window too), and -WindowStyle Hidden puts the console away at once. No C#
+# Started with a normal window (not "hidden": Windows would apply that to
+# this window too); -WindowStyle Hidden puts the console away at once. No C#
 # is compiled here (Add-Type): antivirus checks of the compiler can take many
 # seconds, and Tandem waits for this window before it closes.
 $ell = [string][char]0x2026  # an ellipsis (kept out of the file: PowerShell 5.1 reads it as ANSI)

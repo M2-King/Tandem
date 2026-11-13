@@ -2,7 +2,7 @@ name: Window launch experiment (temporary)
 on:
   push:
     branches: [claude/tandem-cowork-staging-verify-7kd94b]
-    paths: [packaging/experiments/**, .github/workflows/window-launch-experiment.yml]
+    paths: [packaging/**, desktop/**, .github/workflows/window-launch-experiment.yml]
 jobs:
   try:
     runs-on: windows-latest
@@ -10,4 +10,5 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: node packaging/updating-window-check.cjs updating-window.png
       - run: node packaging/experiments/window-launch.cjs

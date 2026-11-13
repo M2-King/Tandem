@@ -39,32 +39,51 @@ function folderSize(dir) {
   return sum;
 }
 
-// Arguments for powershell.exe (testable without Windows).
-function updatingArgs({ scriptPath, installDir, exeName, appName, version, baseline, readyFile, logFile = '', relaunch = true }) {
-  return [
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-WindowStyle',
-    'Hidden',
-    '-File',
-    scriptPath,
-    '-InstallDir',
-    installDir,
-    '-ExeName',
-    exeName,
-    '-AppName',
-    appName,
-    '-Version',
-    version || '',
-    '-Baseline',
-    String(Math.max(0, Math.round(baseline || 0))),
-    '-ReadyFile',
-    readyFile,
-    '-LogFile',
-    logFile,
-    ...(relaunch ? [] : ['-NoRelaunch']),
-  ];
+// The window's settings (testable without Windows); the script reads them as
+// JSON from TANDEM_UPDATING_ARGS.
+function updatingParams({ installDir, exeName, appName, version, baseline, readyFile, logFile = '', relaunch = true, testSeconds = 0, screenshotPath = '' }) {
+  return {
+    InstallDir: installDir || '',
+    ExeName: exeName || 'Tandem.exe',
+    AppName: appName || 'Tandem',
+    Version: version || '',
+    Baseline: Math.max(0, Math.round(baseline || 0)),
+    ReadyFile: readyFile || '',
+    LogFile: logFile || '',
+    NoRelaunch: !relaunch,
+    TestSeconds: testSeconds || 0,
+    ScreenshotPath: screenshotPath || '',
+  };
+}
+
+// How the window is started. Not powershell.exe detached: Node starts a
+// detached program without a console, and Windows PowerShell then exits at
+// once without running the script (that is why the window never showed).
+// Not attached either: Tandem's children end with it. So a detached cmd.exe
+// runs `start`, which gives PowerShell a console of its own, outside Tandem;
+// -WindowStyle Hidden puts that console away. The script's path and settings
+// go in environment variables, so cmd never reads them.
+function launchSpec({ scriptPath, params, env = process.env }) {
+  return {
+    command: 'cmd.exe',
+    args: ['/d', '/s', '/c', '"start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "& $env:TANDEM_UPDATING_SCRIPT""'],
+    options: {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true, // cmd's own (it has no window); PowerShell's comes from start
+      windowsVerbatimArguments: true,
+      env: { ...env, TANDEM_UPDATING_SCRIPT: scriptPath, TANDEM_UPDATING_ARGS: JSON.stringify(params) },
+    },
+  };
+}
+
+// Starts the window (never throws).
+function startWindow({ scriptPath, params, spawn = require('child_process').spawn, env = process.env, onError = () => {} }) {
+  const { command, args, options } = launchSpec({ scriptPath, params, env });
+  const child = spawn(command, args, options);
+  child.on?.('error', onError);
+  child.unref?.();
+  return child;
 }
 
 // Starts the window; resolves true once it shows (or false after `waitMs`,
@@ -109,9 +128,7 @@ async function showUpdatingWindow({
     } catch {
       // not there
     }
-    const args = [];
-    args.push(...updatingArgs({
-      scriptPath,
+    const params = updatingParams({
       installDir,
       exeName: path.basename(execPath),
       appName,
@@ -120,16 +137,17 @@ async function showUpdatingWindow({
       readyFile,
       logFile,
       relaunch,
-    }));
-    if (preview) args.push('-TestSeconds', '8');
-    // Not windowsHide: Windows would apply "hidden" to the window too (the
-    // console goes away by itself: -WindowStyle Hidden).
-    const child = spawn('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: false });
-    child.on?.('error', (err) => {
-      note(`could not start powershell: ${err?.message || err}`);
-      log.warn?.('[updates] progress window', err);
+      testSeconds: preview ? 8 : 0,
     });
-    child.unref?.();
+    startWindow({
+      scriptPath,
+      params,
+      spawn,
+      onError: (err) => {
+        note(`could not start the window: ${err?.message || err}`);
+        log.warn?.('[updates] progress window', err);
+      },
+    });
     if (!waitMs) {
       note('started (not waiting: Tandem is closing)');
       return true;
@@ -150,4 +168,4 @@ async function showUpdatingWindow({
   }
 }
 
-module.exports = { folderSize, updatingArgs, showUpdatingWindow };
+module.exports = { folderSize, updatingParams, launchSpec, startWindow, showUpdatingWindow };

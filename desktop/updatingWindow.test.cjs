@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { folderSize, updatingArgs, showUpdatingWindow } = require('./updatingWindow.js');
+const { folderSize, updatingParams, launchSpec, showUpdatingWindow } = require('./updatingWindow.js');
 
 const appDir = () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-app-'));
@@ -22,25 +22,36 @@ test('folder size: every file, in every folder', () => {
   assert.equal(folderSize(path.join(os.tmpdir(), 'no-such-folder-tandem')), 0);
 });
 
-test('powershell arguments: hidden console, the script, the app and its size', () => {
-  const args = updatingArgs({ scriptPath: 's.ps1', installDir: 'C:\\T', exeName: 'Tandem Staging.exe', appName: 'Tandem', version: '0.3.1 (build 60)', baseline: 1234.4, readyFile: 'r' });
-  assert.deepEqual(args.slice(0, 7), ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', 's.ps1']);
-  const value = (name) => args[args.indexOf(name) + 1];
-  assert.equal(value('-InstallDir'), 'C:\\T');
-  assert.equal(value('-ExeName'), 'Tandem Staging.exe');
-  assert.equal(value('-AppName'), 'Tandem');
-  assert.equal(value('-Version'), '0.3.1 (build 60)');
-  assert.equal(value('-Baseline'), '1234');
+test('the window\'s settings: the script, the app and its size', () => {
+  const p = updatingParams({ installDir: 'C:\\T', exeName: 'Tandem Staging.exe', appName: 'Tandem', version: '0.3.1 (build 60)', baseline: 1234.4, readyFile: 'r' });
+  assert.equal(p.InstallDir, 'C:\\T');
+  assert.equal(p.ExeName, 'Tandem Staging.exe');
+  assert.equal(p.AppName, 'Tandem');
+  assert.equal(p.Version, '0.3.1 (build 60)');
+  assert.equal(p.Baseline, 1234);
+  assert.equal(p.NoRelaunch, false);
+});
+
+test('started by a detached cmd "start" (a detached PowerShell exits at once), settings in the environment, not on cmd\'s line', () => {
+  const { command, args, options } = launchSpec({ scriptPath: 'C:\\Temp 100%\\s.ps1', params: { InstallDir: 'C:\\A & B' }, env: { PATH: 'p' } });
+  assert.equal(command, 'cmd.exe');
+  assert.equal(args.at(-1), '"start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "& $env:TANDEM_UPDATING_SCRIPT""');
+  assert.ok(options.detached && options.windowsVerbatimArguments && options.stdio === 'ignore');
+  assert.equal(options.env.PATH, 'p');
+  assert.equal(options.env.TANDEM_UPDATING_SCRIPT, 'C:\\Temp 100%\\s.ps1');
+  assert.deepEqual(JSON.parse(options.env.TANDEM_UPDATING_ARGS), { InstallDir: 'C:\\A & B' });
+  assert.ok(!args.join(' ').includes('Temp 100%'));
 });
 
 test('only on Windows', async () => {
   assert.equal(await showUpdatingWindow({ platform: 'darwin' }), false);
 });
 
-test('starts the window detached (console hidden by -WindowStyle, not windowsHide), from a copy outside the app, and waits until it shows', async () => {
+test('starts the window from a copy outside the app, and waits until it shows', async () => {
   const dir = appDir();
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-tmp-'));
   let spawned;
+  const settings = () => JSON.parse(spawned.options.env.TANDEM_UPDATING_ARGS);
   const ok = await showUpdatingWindow({
     platform: 'win32',
     execPath: path.join(dir, 'Tandem Staging.exe'),
@@ -50,17 +61,20 @@ test('starts the window detached (console hidden by -WindowStyle, not windowsHid
     waitMs: 3000,
     spawn: (cmd, args, options) => {
       spawned = { cmd, args, options };
-      setTimeout(() => fs.writeFileSync(args[args.indexOf('-ReadyFile') + 1], 'shown'), 200);
+      setTimeout(() => fs.writeFileSync(settings().ReadyFile, 'shown'), 200);
       return { on() {}, unref() {} };
     },
   });
   assert.equal(ok, true);
-  assert.equal(spawned.cmd, 'powershell.exe');
-  assert.ok(spawned.options.detached && spawned.options.windowsHide === false && spawned.options.stdio === 'ignore'); // not hidden: Windows would hide the window too
-  const script = spawned.args[spawned.args.indexOf('-File') + 1];
+  assert.equal(spawned.cmd, 'cmd.exe');
+  assert.ok(spawned.options.detached);
+  const script = spawned.options.env.TANDEM_UPDATING_SCRIPT;
   assert.equal(path.dirname(script), tmp); // not in the app's folder, which the installer replaces
   assert.ok(fs.readFileSync(script, 'utf8').includes('Updating $AppName'));
-  assert.equal(spawned.args[spawned.args.indexOf('-Baseline') + 1], '1234');
+  assert.ok(fs.readFileSync(script, 'utf8').includes('$env:TANDEM_UPDATING_ARGS'));
+  assert.equal(settings().Baseline, 1234);
+  assert.equal(settings().TestSeconds, 0);
+  assert.match(fs.readFileSync(path.join(tmp, 'tandem-updating.log'), 'utf8'), /the window is on screen/);
 });
 
 test('never holds up or breaks the update', async () => {
@@ -82,14 +96,12 @@ test('the window script is plain ASCII (Windows PowerShell 5.1 reads it as ANSI)
 });
 
 test('closing with an update waiting: -NoRelaunch, and no waiting for the window', async () => {
-  assert.ok(updatingArgs({ scriptPath: 's', installDir: 'd', exeName: 'T.exe', appName: 'Tandem', relaunch: false }).includes('-NoRelaunch'));
-  assert.ok(!updatingArgs({ scriptPath: 's', installDir: 'd', exeName: 'T.exe', appName: 'Tandem' }).includes('-NoRelaunch'));
   const dir = appDir();
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-tmp-'));
-  let args;
+  let env;
   const started = Date.now();
-  const ok = await showUpdatingWindow({ platform: 'win32', execPath: path.join(dir, 'Tandem.exe'), tmpdir: tmp, waitMs: 0, relaunch: false, spawn: (c, a) => ((args = a), { on() {}, unref() {} }) });
+  const ok = await showUpdatingWindow({ platform: 'win32', execPath: path.join(dir, 'Tandem.exe'), tmpdir: tmp, waitMs: 0, relaunch: false, spawn: (c, a, o) => ((env = o.env), { on() {}, unref() {} }) });
   assert.equal(ok, true);
   assert.ok(Date.now() - started < 1000);
-  assert.ok(args.includes('-NoRelaunch'));
+  assert.equal(JSON.parse(env.TANDEM_UPDATING_ARGS).NoRelaunch, true);
 });
