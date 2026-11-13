@@ -166,7 +166,7 @@ async function deviceProject(w, timeout) {
     return { keys: Object.keys(u).sort(), state: await u.state() };
   });
   console.log('     updates:', JSON.stringify(updates.state));
-  check(JSON.stringify(updates.keys) === JSON.stringify(['check', 'install', 'onState', 'state']), 'update bridge: state, check, install, onState only');
+  check(JSON.stringify(updates.keys) === JSON.stringify(['check', 'install', 'onState', 'preview', 'state']), 'update bridge: state, check, install, onState, preview only');
   check(updates.state.enabled === false && updates.state.status === 'off', 'updates are off in the unpacked app');
   if (IS_WIN) check(['acrylic', 'mica', 'clear'].includes(probe.material), `window glass: ${probe.material}`);
 
