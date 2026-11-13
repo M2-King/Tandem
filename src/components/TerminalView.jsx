@@ -29,9 +29,10 @@ function startShell(session) {
         session.onState?.(session.info);
       },
       onOutput: (data) => term.write(data),
-      onExit: (_code, problem) => {
+      onExit: (code, problem) => {
         session.ended = true;
-        term.write(`\r\n\x1b[2m${problem || 'The shell ended.'} Press any key for a new one.\x1b[0m\r\n`);
+        const why = problem || (code ? `The shell ended (exit code ${code}).` : 'The shell ended.');
+        term.write(`\r\n\x1b[2m${why} Press any key for a new one.\x1b[0m\r\n`);
       },
       onRejected: (message) => {
         session.ended = true;

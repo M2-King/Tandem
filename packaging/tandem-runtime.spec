@@ -4,7 +4,7 @@
 #     pyinstaller --noconfirm --distpath out packaging/tandem-runtime.spec
 import os
 import sys
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules, copy_metadata
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 SUPPORT = os.path.join(ROOT, "runtime", "tandem_runtime", "support")
@@ -21,7 +21,10 @@ a = Analysis(
     + copy_metadata("jupyter_client") + copy_metadata("jupyter_core") + copy_metadata("pyzmq")
     # Jedi (code completion) reads its type stubs from disk and starts a helper in
     # the project's Python from its own source files: ship them as real files.
-    + collect_data_files("jedi", include_py_files=True) + collect_data_files("parso", include_py_files=True),
+    + collect_data_files("jedi", include_py_files=True) + collect_data_files("parso", include_py_files=True)
+    # The Terminal panel on Windows: pywinpty's ConPTY helpers (OpenConsole.exe, conpty.dll, winpty-agent.exe, ...).
+    + (collect_data_files("winpty") if sys.platform == "win32" else []),
+    binaries=collect_dynamic_libs("winpty") if sys.platform == "win32" else [],
     hiddenimports=collect_submodules("uvicorn") + collect_submodules("websockets")
     + collect_submodules("jupyter_client") + collect_submodules("jupyter_core") + collect_submodules("zmq")
     + collect_submodules("jedi") + collect_submodules("parso")

@@ -146,6 +146,25 @@ def main():
             check(done["status"] == "error" and errors == ["NameError"], "Restart clears the kernel's state")
             ws.send(json.dumps({"type": "kernel.shutdown", "id": "k"}))
             until(lambda e: e["type"] == "kernel.status" and e["state"] == "shutdown")
+
+            # The Terminal panel: a real shell (ConPTY through pywinpty, bundled), the project's Python first.
+            ws.send(json.dumps({"type": "term.start", "id": "t", "cols": 120, "rows": 30}))
+            started, _ = until(lambda e: e["type"] in ("term.started", "term.rejected", "term.exit") and e.get("id") == "t", 60)
+            check(started["type"] == "term.started", f"a terminal starts ({started})")
+            ws.send(json.dumps({"type": "term.input", "id": "t", "data": "python -c \"print('TERM' + '-OK', 6 * 7)\"\r"}))
+            shown = ""
+            deadline = time.monotonic() + 60
+            while "TERM-OK 42" not in re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", shown) and time.monotonic() < deadline:
+                event = json.loads(ws.recv(timeout=60))
+                if event.get("id") != "t":
+                    continue
+                if event["type"] == "term.output":
+                    shown += event["data"]
+                elif event["type"] == "term.exit":
+                    break
+            check("TERM-OK 42" in re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", shown),
+                  f"the terminal runs the project's Python (output: {shown[-600:]!r})")
+            ws.send(json.dumps({"type": "term.kill", "id": "t"}))
         # Code completion (Jedi in the bundled runtime, asking the project's Python).
         text = "text = ' Python '\nclean = text.strip()\nclean."
         done = json.loads(get(url + "api/complete", token, "POST", {"path": "c.py", "text": text, "line": 3, "column": 6}))
