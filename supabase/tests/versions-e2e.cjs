@@ -80,11 +80,18 @@ let pa, pb;
   // 1. A backs up, with a name.
   await openBackups(pa);
   check((await pa.locator('.dialog-versions').innerText()).includes('No backups yet'), 'Backups starts empty');
-  await pa.locator('.versions-new input').fill('first draft');
-  await pa.locator('.versions-new').getByRole('button', { name: 'Back up now' }).click();
+  await pa.locator('.versions-new').getByRole('button', { name: /Back up now/ }).click();
+  const details = pa.locator('.dialog-backup-details');
+  await details.waitFor({ timeout: 5000 });
+  check(/1 file/.test(await details.innerText()), 'Back up now opens a window for the details, saying what will be backed up');
+  await details.getByLabel('Name', { exact: true }).fill('first draft');
+  await details.getByLabel(/^Description/).fill('The first working version, before the clean-up.');
+  await pa.waitForTimeout(400);
+  await pa.screenshot({ path: `${out}/bk-0-details.png` });
+  await details.getByRole('button', { name: 'Back up', exact: true }).click();
   await pa.waitForSelector('.versions-row', { timeout: 10000 });
   const row = (await pa.locator('.versions-row').first().innerText()).replace(/\s+/g, ' ');
-  check(row.includes('first draft') && row.includes(A) && row.includes('1 file'), `A backs up: “${row.slice(0, 80)}”`);
+  check(row.includes('first draft') && row.includes('before the clean-up') && row.includes(A) && row.includes('1 file'), `A backs up with a name and description: “${row.slice(0, 110)}”`);
   await pa.screenshot({ path: `${out}/bk-1-backed-up.png` });
   await pa.keyboard.press('Escape');
 

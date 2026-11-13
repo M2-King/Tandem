@@ -57,8 +57,9 @@ await rpc(B, 'cowork_accept_invitation', { p_invitation: inv.id });
 check(true, `owner ${A.username}, member ${B.username}, outsider ${C.username}; main.py and data.csv`);
 
 // Back up.
-const first = await rpc(B, 'cowork_create_version', { p_project: project, p_name: 'first draft' });
-check(first.status === 200 && first.data.name === 'first draft' && first.data.file_count === 2, 'a member backs up the project with a name (2 files)');
+const first = await rpc(B, 'cowork_create_version', { p_project: project, p_name: 'first draft', p_note: 'Before cleaning the data.\nKeep it.' });
+check(first.status === 200 && first.data.name === 'first draft' && first.data.note === 'Before cleaning the data.\nKeep it.' && first.data.file_count === 2, 'a member backs up the project with a name and a description (2 files)');
+check((await rpc(B, 'cowork_create_version', { p_project: project, p_name: 'x', p_note: 'y'.repeat(501) })).status === 400, 'a description over 500 characters is refused (400)');
 const storage1 = (await rpc(A, 'cowork_versions', { p_project: project })).data.storage;
 check(storage1 === 'print("v1")\n'.length + 'a,b\n1,2\n'.length, `the backup stores the two texts (${storage1} bytes)`);
 
@@ -76,7 +77,7 @@ check(storage2 - storage1 === 'print("v2")\n'.length + '# notes\n'.length, `the 
 
 // The list, and a file in a backup.
 const list = (await rpc(B, 'cowork_versions', { p_project: project })).data;
-check(list.versions.length === 2 && list.versions[0].id === second.data.id && list.versions[1].name === 'first draft', 'the list: newest first');
+check(list.versions.length === 2 && list.versions[0].id === second.data.id && list.versions[1].name === 'first draft' && list.versions[1].note.startsWith('Before cleaning'), 'the list: newest first, with descriptions');
 check(list.versions[1].created_by === B.username && list.versions[1].files.map((f) => f.path).join() === 'data.csv,main.py', '…with who made it and its files');
 const old = await rpc(B, 'cowork_version_file', { p_project: project, p_version: first.data.id, p_path: 'main.py' });
 check(old.data?.content === 'print("v1")\n', 'a file’s text in a backup');
@@ -112,9 +113,9 @@ check(reasons.filter((r) => r === 'before-restore').length >= 2, `the list shows
 
 // Name, delete.
 const auto1 = (await rpc(A, 'cowork_versions', { p_project: project })).data.versions.find((v) => v.auto);
-const named = await rpc(B, 'cowork_name_version', { p_project: project, p_version: auto1.id, p_name: 'keep this' });
+const named = await rpc(B, 'cowork_name_version', { p_project: project, p_version: auto1.id, p_name: 'keep this', p_note: 'the state before restoring' });
 const kept = (await rpc(A, 'cowork_versions', { p_project: project })).data.versions.find((v) => v.id === auto1.id);
-check(named.status === 200 && kept.name === 'keep this' && kept.auto === false, 'naming an automatic backup keeps it');
+check(named.status === 200 && kept.name === 'keep this' && kept.note === 'the state before restoring' && kept.auto === false, 'naming and describing an automatic backup keeps it');
 check((await rpc(B, 'cowork_delete_version', { p_project: project, p_version: second.data.id })).status === 403, 'a member can’t delete someone else’s backup (403)');
 check((await rpc(B, 'cowork_delete_version', { p_project: project, p_version: first.data.id })).status === 200, '…but can delete their own');
 const del = await rpc(A, 'cowork_delete_version', { p_project: project, p_version: second.data.id });

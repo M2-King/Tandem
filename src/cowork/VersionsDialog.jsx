@@ -27,6 +27,78 @@ function lineChanges(from, to) {
   return { added, removed };
 }
 
+// "Back up": a name and a description before backing up, or to edit them later.
+export function BackupDetailsDialog({ title, action, initial = {}, summary, onSubmit, onClose }) {
+  const [name, setName] = useState(initial.name || '');
+  const [note, setNote] = useState(initial.note || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const submit = async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onSubmit(name.trim(), note.trim());
+      onClose();
+    } catch (err) {
+      setError(err.message || 'That didn’t work. Try again.');
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog title={title} onClose={onClose} className="dialog-confirm dialog-backup-details">
+      <form onSubmit={submit} noValidate>
+        <div className="versions-head">
+          <span className="versions-head-icon" aria-hidden="true">
+            <Save size={18} />
+          </span>
+          <div>
+            <h2 className="dialog-title">{title}</h2>
+            {summary && <p className="dialog-text">{summary}</p>}
+          </div>
+        </div>
+        <label className="field">
+          <span className="field-label">Name</span>
+          <input
+            className="field-input"
+            value={name}
+            maxLength={80}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Before the big change"
+            data-autofocus
+          />
+        </label>
+        <label className="field">
+          <span className="field-label">Description</span>
+          <textarea
+            className="field-input backup-note"
+            rows={4}
+            maxLength={500}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="What’s in this version, or why you’re keeping it. For example: Model trained on the full data; charts fixed."
+          />
+          <span className="field-hint">{note.length}/500 · Both optional. A named backup is kept until someone deletes it.</span>
+        </label>
+        {error && (
+          <p className="field-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy ? <Loader2 size={14} className="spin" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />} {action}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
 function FileView({ versions, version, path, current, onClose, onRestore, busy }) {
   const [text, setText] = useState(null);
   const [error, setError] = useState('');
@@ -81,7 +153,6 @@ function VersionRow({ v, versions, isOwner, isMine, files, onRestoreAll, onResto
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState(null);
   const [naming, setNaming] = useState(false);
-  const [name, setName] = useState(v.name || '');
   const Icon = v.name ? Bookmark : v.reason === 'before-restore' ? Undo2 : v.auto ? Clock : Save;
   const now = useMemo(() => new Set(Object.keys(files)), [files]);
   const missing = [...now].filter((p) => !v.files.some((f) => f.path === p));
@@ -92,27 +163,8 @@ function VersionRow({ v, versions, isOwner, isMine, files, onRestoreAll, onResto
           <Icon size={15} />
         </span>
         <span className="versions-row-text">
-          {naming ? (
-            <form
-              className="versions-name-form"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!name.trim()) return;
-                await versions.rename(v.id, name.trim());
-                setNaming(false);
-              }}
-            >
-              <input className="field-input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} aria-label="Backup name" autoFocus />
-              <button type="submit" className="btn btn-secondary btn-sm">
-                Save
-              </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNaming(false)}>
-                Cancel
-              </button>
-            </form>
-          ) : (
-            <span className="versions-title">{titleOf(v)}</span>
-          )}
+          <span className="versions-title">{titleOf(v)}</span>
+          {v.note && <span className="versions-note-text">{v.note}</span>}
           <span className="versions-muted">
             {timeAgo(new Date(v.created_at).getTime())}
             {v.created_by ? ` · ${v.created_by}` : ''} · {v.file_count} file{v.file_count === 1 ? '' : 's'} · {sizeText(v.total_size)}
@@ -131,11 +183,15 @@ function VersionRow({ v, versions, isOwner, isMine, files, onRestoreAll, onResto
           >
             <RotateCcw size={13} aria-hidden="true" /> Restore
           </button>
-          {!naming && (
-            <button type="button" className="icon-btn icon-btn-sm" aria-label="Name this backup" data-tooltip={v.name ? 'Rename' : 'Name it (named backups are kept)'} onClick={() => setNaming(true)}>
-              <Pencil size={13} aria-hidden="true" />
-            </button>
-          )}
+          <button
+            type="button"
+            className="icon-btn icon-btn-sm"
+            aria-label="Name and describe this backup"
+            data-tooltip={v.name ? 'Edit name and description' : 'Name it (named backups are kept)'}
+            onClick={() => setNaming(true)}
+          >
+            <Pencil size={13} aria-hidden="true" />
+          </button>
           {(isOwner || isMine) && (
             <button type="button" className="icon-btn icon-btn-sm" aria-label="Delete this backup" data-tooltip="Delete" onClick={() => versions.remove(v.id)}>
               <Trash2 size={13} aria-hidden="true" />
@@ -143,6 +199,19 @@ function VersionRow({ v, versions, isOwner, isMine, files, onRestoreAll, onResto
           )}
         </span>
       </div>
+      {naming && (
+        <BackupDetailsDialog
+          title={v.name ? 'Edit this backup' : 'Name this backup'}
+          action="Save"
+          initial={{ name: v.name || '', note: v.note || '' }}
+          summary={`${titleOf(v)} · ${timeAgo(new Date(v.created_at).getTime())} · ${v.file_count} file${v.file_count === 1 ? '' : 's'}`}
+          onSubmit={async (name, note) => {
+            if (!name) throw new Error('Give the backup a name.');
+            await versions.rename(v.id, name, note);
+          }}
+          onClose={() => setNaming(false)}
+        />
+      )}
       {open && (
         <div className="versions-files">
           <ul>
@@ -191,7 +260,7 @@ function VersionRow({ v, versions, isOwner, isMine, files, onRestoreAll, onResto
 }
 
 export default function VersionsDialog({ versions, project, isOwner, me, files, onClose, notify }) {
-  const [name, setName] = useState('');
+  const [details, setDetails] = useState(false); // the "Back up" window
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(null); // { version } to restore the whole project
   useEffect(() => {
@@ -212,12 +281,12 @@ export default function VersionsDialog({ versions, project, isOwner, me, files, 
   };
   const undoWith = (backupId) => (backupId ? { label: 'Undo', onClick: () => run(() => versions.restore(backupId)) } : undefined);
 
-  const backUp = () =>
-    run(async () => {
-      await versions.backUp(name.trim());
-      notify(name.trim() ? `Backed up as “${name.trim()}”.` : 'Backed up.');
-      setName('');
-    });
+  const fileCount = Object.keys(files).length;
+  const bytes = Object.values(files).reduce((n, t) => n + new Blob([t ?? '']).size, 0);
+  const backUp = async (name, note) => {
+    await versions.backUp(name, note);
+    notify(name ? `Backed up as “${name}”.` : 'Backed up.');
+  };
   const restoreAll = (v) =>
     run(async () => {
       setConfirm(null);
@@ -246,18 +315,23 @@ export default function VersionsDialog({ versions, project, isOwner, me, files, 
         </div>
       </div>
 
-      <form
-        className="versions-new"
-        onSubmit={(e) => {
-          e.preventDefault();
-          backUp();
-        }}
-      >
-        <input className="field-input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Name (optional), e.g. Before the big change" aria-label="Backup name" />
-        <button type="submit" className="btn btn-primary" disabled={busy}>
-          {busy ? <Loader2 size={14} className="spin" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />} Back up now
+      <div className="versions-new">
+        <span className="versions-muted">
+          Now: {fileCount} file{fileCount === 1 ? '' : 's'} · {sizeText(bytes)}
+        </span>
+        <button type="button" className="btn btn-primary" onClick={() => setDetails(true)} disabled={busy || versions.unsupported}>
+          <Save size={14} aria-hidden="true" /> Back up now…
         </button>
-      </form>
+      </div>
+      {details && (
+        <BackupDetailsDialog
+          title="Back up the project"
+          action="Back up"
+          summary={`${project.name}: ${fileCount} file${fileCount === 1 ? '' : 's'}, ${sizeText(bytes)}, as saved now. Only files that changed since an earlier backup take space.`}
+          onSubmit={backUp}
+          onClose={() => setDetails(false)}
+        />
+      )}
 
       {confirm && (
         <div className="versions-confirm" role="alertdialog" aria-label="Restore the whole project">

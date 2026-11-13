@@ -1146,9 +1146,9 @@ body.is-resizing .resizer:active::after {
   background: var(--material-3);
   -webkit-backdrop-filter: var(--blur-3);
   backdrop-filter: var(--blur-3);
-  border: 1px solid var(--border-float);
+  border: 0;
   border-radius: var(--radius-float);
-  box-shadow: var(--shadow-menu);
+  box-shadow: var(--float-edge), var(--shadow-menu);
   animation: menu-in var(--t-menu) var(--ease-out);
 }
 .sel-btn {
@@ -1205,9 +1205,9 @@ body.is-resizing .resizer:active::after {
   background: var(--material-3);
   -webkit-backdrop-filter: var(--blur-3);
   backdrop-filter: var(--blur-3);
-  border: 1px solid var(--border-float);
+  border: 0;
   border-radius: var(--radius-float);
-  box-shadow: var(--shadow-menu);
+  box-shadow: var(--float-edge), var(--shadow-menu);
   transform-origin: top right;
   animation: menu-in var(--t-menu) var(--ease-out);
 }
@@ -1390,20 +1390,29 @@ body.is-resizing .resizer:active::after {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(5, 6, 9, 0.5);
-  animation: fade-in var(--t-panel) var(--ease);
+  /* A light veil: the glass dialog still shows the app softly behind it. */
+  background: rgba(5, 6, 9, 0.32);
+  /* The veil's colour fades in, not its opacity: a fading layer would turn
+     off the dialog's frosting until it is done (text behind showing through). */
+  animation: veil-in var(--t-panel) var(--ease);
+}
+@keyframes veil-in {
+  from {
+    background-color: rgba(5, 6, 9, 0);
+  }
 }
 .dialog {
   max-width: 100%;
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  background: rgba(var(--glass-tint-float), 0.92);
+  /* The window's glass (tokens.css, floating material). */
+  background: var(--material-3);
   -webkit-backdrop-filter: var(--blur-3);
   backdrop-filter: var(--blur-3);
-  border: 1px solid var(--border-float);
+  border: 0;
   border-radius: var(--radius-lg);
-  box-shadow: var(--glass-highlight), var(--shadow-overlay);
+  box-shadow: var(--float-edge), var(--window-shadow);
   animation: menu-in var(--t-panel) var(--ease-out);
 }
 .dialog-confirm {
@@ -1546,9 +1555,9 @@ select {
   background: var(--material-3);
   -webkit-backdrop-filter: var(--blur-3);
   backdrop-filter: var(--blur-3);
-  border: 1px solid var(--border-float);
+  border: 0;
   color: var(--text-primary);
-  box-shadow: var(--shadow-menu);
+  box-shadow: var(--float-edge), var(--shadow-menu);
   font-size: var(--fs-md);
   animation: toast-in var(--t-menu) var(--ease-out);
 }
@@ -5900,9 +5909,11 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   padding: 4px;
   list-style: none;
   border-radius: var(--radius-lg);
-  background: var(--surface-3-solid);
-  border: 1px solid var(--border-float);
-  box-shadow: var(--shadow-menu);
+  background: var(--material-3);
+  -webkit-backdrop-filter: var(--blur-3);
+  backdrop-filter: var(--blur-3);
+  border: 0;
+  box-shadow: var(--float-edge), var(--shadow-menu);
 }
 .share-found-row {
   display: flex;
@@ -5950,8 +5961,8 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   background: var(--material-3);
   -webkit-backdrop-filter: var(--blur-3);
   backdrop-filter: var(--blur-3);
-  border: 1px solid var(--border-float);
-  box-shadow: var(--shadow-menu);
+  border: 0;
+  box-shadow: var(--float-edge), var(--shadow-menu);
   color: var(--text-primary);
   font-size: var(--fs-md);
   animation: toast-in var(--t-menu) var(--ease-out);
@@ -6048,6 +6059,9 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   text-align: center;
   border-radius: var(--radius-float);
   background: var(--material-3);
+  -webkit-backdrop-filter: var(--blur-3);
+  backdrop-filter: var(--blur-3);
+  box-shadow: var(--float-edge), var(--window-shadow);
 }
 .updating-ring {
   display: grid;
@@ -6813,4 +6827,25 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   .backups-btn-text {
     display: none;
   }
+}
+.dialog-backup-details {
+  width: min(460px, calc(100vw - 32px));
+}
+.backup-note {
+  height: auto;
+  min-height: 92px;
+  padding: 8px 10px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.45;
+}
+.versions-new {
+  justify-content: space-between;
+  align-items: center;
+}
+.versions-note-text {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

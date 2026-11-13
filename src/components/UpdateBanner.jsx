@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { shownVersion } from '../state/useUpdates.js';
 import { AlertCircle, Check, Download, Loader2, RefreshCw, X } from 'lucide-react';
 
@@ -73,7 +74,8 @@ export default function UpdateBanner({ kind, state, onRestart, onLater, onDismis
 // "Restart to update": the whole window says what's happening, then Tandem
 // closes, installs and opens again by itself.
 export function UpdatingOverlay({ name, version }) {
-  return (
+  // On the page itself, above any open dialog.
+  return createPortal(
     <div className="updating-overlay" role="alertdialog" aria-live="assertive" aria-label={`Updating ${name}`}>
       <div className="updating-card">
         <span className="updating-ring" aria-hidden="true">
@@ -87,6 +89,7 @@ export function UpdatingOverlay({ name, version }) {
           <span />
         </span>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

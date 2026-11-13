@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 // Modal dialog. Keeps focus inside, closes on Escape, and returns focus to
 // whatever was focused before it opened.
@@ -63,7 +64,10 @@ export default function Dialog({ title, onClose, children, className = '', label
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
+  // On the page itself, not inside whatever opened it: a dialog opened from
+  // another dialog (or from glass, whose blur would hold it in) always covers
+  // the whole window.
+  return createPortal(
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={ref}
@@ -76,6 +80,7 @@ export default function Dialog({ title, onClose, children, className = '', label
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

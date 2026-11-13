@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 
 // One tooltip layer for the whole app. Any element with `data-tooltip`
@@ -66,9 +67,11 @@ export default function TooltipLayer() {
     style.top = rect.bottom + 6;
     style.transform = 'translateX(-50%)';
   }
-  return (
+  // On the page itself, above dialogs too (they are on the page: Dialog.jsx).
+  return createPortal(
     <div className="tooltip" role="tooltip" style={style}>
       {tip.text}
-    </div>
+    </div>,
+    document.body
   );
 }

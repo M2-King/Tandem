@@ -12,11 +12,12 @@
 --   until deleted). Restoring backs up the current files first, so a restore
 --   can be undone.
 --
---   cowork_create_version(project, name)        Members: back up now.
+--   cowork_create_version(project, name, note)  Members: back up now (a name and a
+--       description, both optional).
 --   cowork_auto_version(project)                Members: an automatic backup,
 --       only if something changed and the last backup is 25+ minutes old.
 --   cowork_versions(project)                    Members: the backups, newest first,
---       { versions: [{ id, name, auto, reason, created_by, created_at,
+--       { versions: [{ id, name, note, auto, reason, created_by, created_at,
 --         file_count, total_size, files: [{ path, size, hash }] }], storage }.
 --   cowork_version_file(project, version, path) Members: one file's text in a backup.
 --   cowork_restore_version(project, version, path)
@@ -24,7 +25,8 @@
 --       files back as they were, files added since removed. Restored files are
 --       saved as new revisions, so everyone's app takes them as teammates'
 --       saves. { restored: [...], removed: [...], backup: <version id> }.
---   cowork_name_version(project, version, name) Members: name a backup (kept).
+--   cowork_name_version(project, version, name, note)  Members: name or describe
+--       a backup (a named one is kept).
 --   cowork_delete_version(project, version)     Owners, or whoever made it.
 --
 -- Larger files: shared text files up to 10 MB (was 1 MB); a file's live copy
@@ -163,6 +165,12 @@ create table if not exists public.cowork_versions (
   total_size bigint not null
 );
 create index if not exists cowork_versions_project on public.cowork_versions (project_id, created_at desc);
+alter table public.cowork_versions add column if not exists note text check (note is null or char_length(note) <= 500);
+
+-- (An earlier version of this file had no descriptions.)
+drop function if exists tandem_private.versions_take(uuid, text, boolean, text);
+drop function if exists public.cowork_create_version(uuid, text);
+drop function if exists public.cowork_name_version(uuid, uuid, text);
 
 -- Only the functions below read or write them.
 alter table public.cowork_version_blobs enable row level security;
@@ -189,7 +197,7 @@ $$;
 
 -- Back up the project's files as saved now. Automatic backups (p_auto) are
 -- skipped when nothing changed since the last backup; only the newest 30 are kept.
-create or replace function tandem_private.versions_take(p_project uuid, p_name text, p_auto boolean, p_reason text)
+create or replace function tandem_private.versions_take(p_project uuid, p_name text, p_note text, p_auto boolean, p_reason text)
 returns jsonb
 language plpgsql security definer
 set search_path = ''
@@ -218,8 +226,8 @@ begin
     from public.cowork_files f where f.project_id = p_project
   on conflict (project_id, hash) do nothing;
 
-  insert into public.cowork_versions (project_id, name, auto, reason, created_by, files, manifest, file_count, total_size)
-  values (p_project, nullif(btrim(coalesce(p_name, '')), ''), p_auto, p_reason, auth.uid(), files, m,
+  insert into public.cowork_versions (project_id, name, note, auto, reason, created_by, files, manifest, file_count, total_size)
+  values (p_project, nullif(btrim(coalesce(p_name, '')), ''), nullif(btrim(coalesce(p_note, '')), ''), p_auto, p_reason, auth.uid(), files, m,
           jsonb_array_length(files), coalesce((select sum((e ->> 'size')::bigint) from jsonb_array_elements(files) e), 0))
   returning * into v;
 
@@ -233,12 +241,12 @@ begin
   if used > tandem_private.versions_budget() then
     raise exception 'Backups of this project would use more than 200 MB. Delete some old backups first.' using errcode = 'PT409';
   end if;
-  return jsonb_build_object('id', v.id, 'name', v.name, 'auto', v.auto, 'reason', v.reason, 'created_at', v.created_at,
+  return jsonb_build_object('id', v.id, 'name', v.name, 'note', v.note, 'auto', v.auto, 'reason', v.reason, 'created_at', v.created_at,
                             'file_count', v.file_count, 'total_size', v.total_size);
 end;
 $$;
 
-create or replace function public.cowork_create_version(p_project uuid, p_name text)
+create or replace function public.cowork_create_version(p_project uuid, p_name text, p_note text default null)
 returns jsonb
 language plpgsql security definer
 set search_path = ''
@@ -249,7 +257,10 @@ begin
   if char_length(btrim(coalesce(p_name, ''))) > 80 then
     raise exception 'Keep the name under 80 characters.' using errcode = 'PT400';
   end if;
-  return tandem_private.versions_take(p_project, p_name, false, null);
+  if char_length(btrim(coalesce(p_note, ''))) > 500 then
+    raise exception 'Keep the description under 500 characters.' using errcode = 'PT400';
+  end if;
+  return tandem_private.versions_take(p_project, p_name, p_note, false, null);
 end;
 $$;
 
@@ -266,7 +277,7 @@ begin
   if exists (select 1 from public.cowork_versions where project_id = p_project and created_at > now() - interval '25 minutes') then
     return null;
   end if;
-  return tandem_private.versions_take(p_project, null, true, 'auto');
+  return tandem_private.versions_take(p_project, null, null, true, 'auto');
 end;
 $$;
 
@@ -280,7 +291,7 @@ begin
   return jsonb_build_object(
     'versions', coalesce((
       select jsonb_agg(jsonb_build_object(
-               'id', v.id, 'name', v.name, 'auto', v.auto, 'reason', v.reason,
+               'id', v.id, 'name', v.name, 'note', v.note, 'auto', v.auto, 'reason', v.reason,
                'created_by', tandem_private.username_of(v.created_by), 'created_at', v.created_at,
                'file_count', v.file_count, 'total_size', v.total_size, 'files', v.files) order by v.created_at desc)
         from public.cowork_versions v where v.project_id = p_project), '[]'::jsonb),
@@ -335,7 +346,7 @@ begin
     raise exception '% isn''t in that backup.', p_path using errcode = 'PT404';
   end if;
   -- What is here now, kept first (so this restore can be undone).
-  before := tandem_private.versions_take(p_project, null, true, 'before-restore');
+  before := tandem_private.versions_take(p_project, null, null, true, 'before-restore');
 
   for e in select x from jsonb_array_elements(v.files) x where p_path is null or x ->> 'path' = p_path loop
     select content into body from public.cowork_version_blobs where project_id = p_project and hash = e ->> 'hash';
@@ -369,24 +380,28 @@ begin
 end;
 $$;
 
-create or replace function public.cowork_name_version(p_project uuid, p_version uuid, p_name text)
+create or replace function public.cowork_name_version(p_project uuid, p_version uuid, p_name text, p_note text default null)
 returns jsonb
 language plpgsql security definer
 set search_path = ''
 as $$
 declare
   n text := nullif(btrim(coalesce(p_name, '')), '');
+  d text := nullif(btrim(coalesce(p_note, '')), '');
 begin
   perform tandem_private.require_role(p_project, 'member');
   if n is null or char_length(n) > 80 then
     raise exception 'Give the backup a name of up to 80 characters.' using errcode = 'PT400';
   end if;
+  if char_length(coalesce(d, '')) > 500 then
+    raise exception 'Keep the description under 500 characters.' using errcode = 'PT400';
+  end if;
   -- A named backup is kept (it no longer counts among the automatic ones).
-  update public.cowork_versions set name = n, auto = false where id = p_version and project_id = p_project;
+  update public.cowork_versions set name = n, note = d, auto = false where id = p_version and project_id = p_project;
   if not found then
     raise exception 'That backup was deleted.' using errcode = 'PT404';
   end if;
-  return jsonb_build_object('id', p_version, 'name', n);
+  return jsonb_build_object('id', p_version, 'name', n, 'note', d);
 end;
 $$;
 
@@ -415,21 +430,21 @@ $$;
 -- ------------------------------------------------------------------ grants
 
 revoke all on function tandem_private.versions_budget(), tandem_private.versions_tidy(uuid),
-  tandem_private.versions_take(uuid, text, boolean, text) from public, anon;
+  tandem_private.versions_take(uuid, text, text, boolean, text) from public, anon;
 grant execute on function tandem_private.versions_budget(), tandem_private.versions_tidy(uuid),
-  tandem_private.versions_take(uuid, text, boolean, text) to authenticated;
+  tandem_private.versions_take(uuid, text, text, boolean, text) to authenticated;
 
 revoke all on function
   public.cowork_project_state(uuid), public.cowork_file_contents(uuid, text[]),
-  public.cowork_create_version(uuid, text), public.cowork_auto_version(uuid), public.cowork_versions(uuid),
+  public.cowork_create_version(uuid, text, text), public.cowork_auto_version(uuid), public.cowork_versions(uuid),
   public.cowork_version_file(uuid, uuid, text), public.cowork_restore_version(uuid, uuid, text),
-  public.cowork_name_version(uuid, uuid, text), public.cowork_delete_version(uuid, uuid)
+  public.cowork_name_version(uuid, uuid, text, text), public.cowork_delete_version(uuid, uuid)
 from public, anon;
 grant execute on function
   public.cowork_project_state(uuid), public.cowork_file_contents(uuid, text[]),
-  public.cowork_create_version(uuid, text), public.cowork_auto_version(uuid), public.cowork_versions(uuid),
+  public.cowork_create_version(uuid, text, text), public.cowork_auto_version(uuid), public.cowork_versions(uuid),
   public.cowork_version_file(uuid, uuid, text), public.cowork_restore_version(uuid, uuid, text),
-  public.cowork_name_version(uuid, uuid, text), public.cowork_delete_version(uuid, uuid)
+  public.cowork_name_version(uuid, uuid, text, text), public.cowork_delete_version(uuid, uuid)
 to authenticated;
 
 commit;

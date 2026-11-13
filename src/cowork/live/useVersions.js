@@ -37,9 +37,9 @@ export function useVersions({ cowork, projectId }) {
   const flush = () => coworkRef.current.flushSaves?.().catch(() => {});
 
   const backUp = useCallback(
-    async (name) => {
+    async (name, note) => {
       await flush();
-      const v = await api.createVersion(current.current, name);
+      const v = await api.createVersion(current.current, name, note);
       await load();
       return v;
     },
@@ -64,8 +64,8 @@ export function useVersions({ cowork, projectId }) {
   );
 
   const rename = useCallback(
-    async (versionId, name) => {
-      await api.nameVersion(current.current, versionId, name);
+    async (versionId, name, note) => {
+      await api.nameVersion(current.current, versionId, name, note);
       await load();
     },
     [load]

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { uid } from '../lib/id.js';
 
@@ -59,12 +60,15 @@ function Toast({ toast, onDismiss }) {
   );
 }
 
+// On the page itself, like dialogs (Dialog.jsx), so a message (and its Undo)
+// shows above an open dialog.
 export default function Toasts({ toasts, dismiss }) {
-  return (
+  return createPortal(
     <div className="toasts" role="status" aria-live="polite">
       {toasts.map((t) => (
         <Toast key={t.id} toast={t} onDismiss={dismiss} />
       ))}
-    </div>
+    </div>,
+    document.body
   );
 }

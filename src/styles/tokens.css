@@ -57,13 +57,21 @@
   --rail-width: 56px;
   --bg-app: #11141a; /* only seen before the wallpaper loads */
 
-  /* ---- Floating material (menus, popovers, dialogs, toasts) ---- */
-  --surface-3: rgba(var(--glass-tint-float), var(--glass-opacity-float));
+  /* ---- Floating material (menus, popovers, dialogs, toasts, banners) ----
+     The window's own glass, lifted off it: the same smoked tint, edges and
+     transmission, following the person's glass and frost settings, a step
+     denser and more frosted than the window so text over busy content
+     behind stays easy to read. */
+  --float-opacity: min(0.94, max(0.58, calc(var(--window-opacity) + 0.3)));
+  --float-blur: calc(var(--window-blur) + 14px);
+  --surface-3: rgba(var(--window-tint), var(--float-opacity));
   --surface-1-solid: #11141c;
   --surface-3-solid: #242834;
-  --blur-3: blur(28px) saturate(160%) brightness(0.8);
-  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, var(--glass-highlight-strength));
-  --material-3: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 90px), var(--surface-3);
+  --blur-3: blur(var(--float-blur)) saturate(var(--window-saturate)) brightness(var(--glass-transmission));
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --material-3: linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.04) 120px, rgba(255, 255, 255, 0.02)),
+    var(--surface-3);
+  --float-edge: 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.08), var(--glass-highlight);
 
   /* Grouped content inside a pane (context, suggestions, a proposed change,
      run summary groups): one fill, one hairline edge with a lit top */
