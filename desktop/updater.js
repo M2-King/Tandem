@@ -152,6 +152,16 @@ function setupUpdates({
     return true;
   }
 
+  // Closing Tandem with an update downloaded ("Later", or just closing it):
+  // the installer runs as Tandem quits; the window shows its progress too.
+  app.on?.('before-quit', () => {
+    if (!updater || installing || state.status !== 'ready') return;
+    installing = true;
+    Promise.resolve()
+      .then(() => showProgress(state.available, { relaunch: false }))
+      .catch((err) => log.warn?.('[updates] progress window', err));
+  });
+
   handle('desktop:updates-state', () => state);
   handle('desktop:updates-check', () => check());
   handle('desktop:updates-install', () => install());

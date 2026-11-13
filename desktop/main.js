@@ -353,10 +353,13 @@ const updates = setupUpdates({
     return stopRuntime(5000);
   },
   // Then a small "Updating Tandem" window that stays while the installer runs.
-  showProgress: (version) =>
+  // (When Tandem is closing with an update waiting: it doesn't reopen, and there is no time to wait.)
+  showProgress: (version, { relaunch = true } = {}) =>
     showUpdatingWindow({
       appName: require('./package.json').tandemDisplayName || app.getName(),
       version: String(version || '').replace(/-staging\.(\d+)$/, ' (build $1)'),
+      relaunch,
+      waitMs: relaunch ? 8000 : 0,
     }),
 });
 

@@ -40,7 +40,7 @@ function folderSize(dir) {
 }
 
 // Arguments for powershell.exe (testable without Windows).
-function updatingArgs({ scriptPath, installDir, exeName, appName, version, baseline, readyFile, logFile = '' }) {
+function updatingArgs({ scriptPath, installDir, exeName, appName, version, baseline, readyFile, logFile = '', relaunch = true }) {
   return [
     '-NoProfile',
     '-ExecutionPolicy',
@@ -63,16 +63,20 @@ function updatingArgs({ scriptPath, installDir, exeName, appName, version, basel
     readyFile,
     '-LogFile',
     logFile,
+    ...(relaunch ? [] : ['-NoRelaunch']),
   ];
 }
 
 // Starts the window; resolves true once it shows (or false after `waitMs`,
 // or if it couldn't start). Never throws: an update must not fail over this.
+// relaunch: false when Tandem is closing with an update waiting (the
+// installer won't open it again); waitMs 0 then, as quitting can't wait.
 async function showUpdatingWindow({
   execPath = process.execPath,
   appName = 'Tandem',
   version = '',
   waitMs = 8000,
+  relaunch = true,
   spawn = require('child_process').spawn,
   tmpdir = os.tmpdir(),
   platform = process.platform,
@@ -113,6 +117,7 @@ async function showUpdatingWindow({
       baseline: folderSize(installDir),
       readyFile,
       logFile,
+      relaunch,
     });
     const child = spawn('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: true });
     child.on?.('error', (err) => {
@@ -120,6 +125,10 @@ async function showUpdatingWindow({
       log.warn?.('[updates] progress window', err);
     });
     child.unref?.();
+    if (!waitMs) {
+      note('started (not waiting: Tandem is closing)');
+      return true;
+    }
     const until = Date.now() + waitMs;
     while (Date.now() < until) {
       if (fs.existsSync(readyFile)) {

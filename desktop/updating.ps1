@@ -12,6 +12,8 @@
 #   -Baseline       the folder's size in bytes before the update (0: unknown)
 #   -ReadyFile      written once the window is on screen (Tandem quits after that)
 #   -LogFile        what happened, for when something goes wrong (temp folder)
+#   -NoRelaunch     Tandem was closed with an update waiting: the installer
+#                   doesn't open it again, so the window ends once installed
 #   -TestSeconds    CI: simulate an update for this long, then exit
 #   -ScreenshotPath CI: save the window as a .png before exiting
 
@@ -25,7 +27,8 @@ param(
   [string]$LogFile = '',
   [int]$TimeoutSeconds = 300,
   [int]$TestSeconds = 0,
-  [string]$ScreenshotPath = ''
+  [string]$ScreenshotPath = '',
+  [switch]$NoRelaunch
 )
 
 $ErrorActionPreference = 'Stop'
@@ -118,6 +121,9 @@ $script:target = 3.0     # where the bar is heading (0-100)
 $script:shown = 0.0      # where it is
 $script:sheenX = -44
 $script:removedSeen = $false
+$script:lastSize = -1
+$script:stableSince = $null   # the folder stopped changing (installed)
+$script:installedAt = $null
 $script:finished = $false
 $script:closeAt = $null
 $script:size = $Baseline
@@ -167,6 +173,15 @@ function Test-NewAppRunning {
 $check = New-Object System.Windows.Forms.Timer
 $check.Interval = 500
 $script:failed = $false
+function Finish-Window($text, $ms) {
+  $script:finished = $true
+  $script:target = 100
+  $pct.Visible = $false
+  $phase.Width = 384
+  $phase.Text = $text
+  $script:closeAt = (Get-Date).AddMilliseconds($ms)
+  Write-Log "finished: $text"
+}
 # A problem never shows an error box during a real update: the window just
 # closes (the update goes on). In the CI test it fails the step.
 function Stop-OnError($err) {
@@ -205,12 +220,15 @@ $check.Add_Tick({ try {
     return
   }
   if ($elapsed -gt $TimeoutSeconds) { $form.Close(); return }
-  if (Test-NewAppRunning) {
-    $script:finished = $true
-    $script:target = 100
-    $phase.Text = "Done. Opening $AppName$ell"
-    $script:closeAt = (Get-Date).AddMilliseconds(1600)
+  if (-not $NoRelaunch -and (Test-NewAppRunning)) {
+    Finish-Window "Done. Opening $AppName$ell" 1600
     return
+  }
+  # Installed and not opening by itself (closed with an update waiting), or
+  # not opened 45 s after installing: say so, then go.
+  if ($script:installedAt) {
+    if ($NoRelaunch) { Finish-Window "$AppName is updated. Open it when you're ready." 4000; return }
+    if (((Get-Date) - $script:installedAt).TotalSeconds -gt 45) { Finish-Window "$AppName is updated. Open it from the Start menu." 8000; return }
   }
   if ($InstallDir -and $Baseline -gt 0) {
     if ($script:measureHandle -and $script:measureHandle.IsCompleted) {
@@ -221,12 +239,18 @@ $check.Add_Tick({ try {
     if (-not $script:measureHandle) { Start-Measure }
     $ratio = [Math]::Max(0, [Math]::Min(1, $script:size / $Baseline))
     if ($ratio -lt 0.6) { $script:removedSeen = $true }
+    # Back to full size and no longer changing for 3 s: installed.
+    if ($script:size -ne $script:lastSize) { $script:lastSize = $script:size; $script:stableSince = Get-Date }
+    elseif ($script:removedSeen -and $ratio -ge 0.97 -and -not $script:installedAt -and ((Get-Date) - $script:stableSince).TotalSeconds -ge 3) {
+      $script:installedAt = Get-Date
+      Write-Log "installed (folder $([int64]$script:size) bytes)"
+    }
     if (-not $script:removedSeen) {
       if ($elapsed -lt 4) { Set-Phase "Closing $AppName$ell" 5 } else { Set-Phase "Removing the old version$ell" 10 }
     } elseif ($ratio -lt 0.97) {
       Set-Phase "Installing the new version$ell" (12 + 80 * $ratio)
     } else {
-      Set-Phase "Starting $AppName$ell" 95
+      Set-Phase $(if ($NoRelaunch) { "Finishing$ell" } else { "Starting $AppName$ell" }) 95
     }
   } else {
     # Size unknown: phases by time, the bar creeping on.

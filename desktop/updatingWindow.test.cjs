@@ -80,3 +80,16 @@ test('the window script is plain ASCII (Windows PowerShell 5.1 reads it as ANSI)
   const text = fs.readFileSync(path.join(__dirname, 'updating.ps1'), 'utf8');
   assert.ok(![...text].some((c) => c.charCodeAt(0) > 127));
 });
+
+test('closing with an update waiting: -NoRelaunch, and no waiting for the window', async () => {
+  assert.ok(updatingArgs({ scriptPath: 's', installDir: 'd', exeName: 'T.exe', appName: 'Tandem', relaunch: false }).includes('-NoRelaunch'));
+  assert.ok(!updatingArgs({ scriptPath: 's', installDir: 'd', exeName: 'T.exe', appName: 'Tandem' }).includes('-NoRelaunch'));
+  const dir = appDir();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-tmp-'));
+  let args;
+  const started = Date.now();
+  const ok = await showUpdatingWindow({ platform: 'win32', execPath: path.join(dir, 'Tandem.exe'), tmpdir: tmp, waitMs: 0, relaunch: false, spawn: (c, a) => ((args = a), { on() {}, unref() {} }) });
+  assert.equal(ok, true);
+  assert.ok(Date.now() - started < 1000);
+  assert.ok(args.includes('-NoRelaunch'));
+});

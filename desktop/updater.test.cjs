@@ -83,7 +83,8 @@ function harness(overrides = {}) {
   const u = fakeUpdater();
   let prepared = 0;
   const shown = [];
-  const app = { isPackaged: true, getName: () => 'Tandem Staging', getVersion: () => '0.3.1-staging.57' };
+  const quitHandlers = [];
+  const app = { isPackaged: true, getName: () => 'Tandem Staging', getVersion: () => '0.3.1-staging.57', on: (ev, fn) => ev === 'before-quit' && quitHandlers.push(fn) };
   const updates = setupUpdates({
     app,
     pkg: staging,
@@ -92,8 +93,8 @@ function harness(overrides = {}) {
     prepareInstall: async () => {
       prepared += 1;
     },
-    showProgress: async (version) => {
-      shown.push([version, prepared]);
+    showProgress: async (version, options) => {
+      shown.push(options ? [version, prepared, options] : [version, prepared]);
       return true;
     },
     env: {},
@@ -106,7 +107,7 @@ function harness(overrides = {}) {
     log: { warn() {}, info() {}, error() {} },
     ...overrides,
   });
-  return { updates, handlers, sent, timers, u, prepared: () => prepared, shown };
+  return { updates, handlers, sent, timers, u, prepared: () => prepared, shown, quit: () => quitHandlers.forEach((fn) => fn()) };
 }
 
 test('updater: fixed feed and settings; checks at 10 s and every 4 h', () => {
@@ -209,4 +210,29 @@ test('updater: portable and dev builds never load electron-updater', () => {
     assert.equal(h.handlers['desktop:updates-check']().status, 'off', c.label);
     assert.equal(h.timers.timeouts.length, 0, c.label);
   }
+});
+
+test('updater: closing Tandem with an update waiting shows the progress window (no reopening), once', async () => {
+  const h = harness();
+  h.updates.start();
+  h.quit(); // nothing waiting: nothing shown
+  await new Promise((r) => setImmediate(r));
+  assert.equal(h.shown.length, 0);
+  h.u.emit('update-available', { version: '0.3.1-staging.59' });
+  h.u.emit('update-downloaded', { version: '0.3.1-staging.59' });
+  h.quit();
+  h.quit();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(h.shown, [['0.3.1-staging.59', 0, { relaunch: false }]]);
+});
+
+test('updater: after "Restart to update" the quit that follows shows no second window', async () => {
+  const h = harness();
+  h.updates.start();
+  h.u.emit('update-available', { version: '0.3.1-staging.59' });
+  h.u.emit('update-downloaded', { version: '0.3.1-staging.59' });
+  await h.handlers['desktop:updates-install']();
+  h.quit();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(h.shown.length, 1);
 });
