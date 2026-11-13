@@ -19,7 +19,7 @@ Usernames are 3 to 24 lowercase letters, numbers or `_`, starting with a letter.
 
 New projects start empty. The owner invites a teammate by username or Tandem address; Share suggests matching accounts while typing. The invitation appears in the teammate's Shared Projects. Invitations stay in the app: nothing is emailed.
 
-Both owners and members can create, upload, rename, and edit UTF-8 text files up to 1 MB. File removal and project archive require an owner. An account that isn't in a project can't open, read, or change it, even with its link.
+Both owners and members can create, upload, rename, and edit UTF-8 text files up to 10 MB (1 MB before 005_cowork_versions.sql). A project holds up to 500 files. File removal and project archive require an owner. An account that isn't in a project can't open, read, or change it, even with its link.
 
 ### Running shared projects
 
@@ -75,6 +75,19 @@ An open project reloads every 10 seconds while the app is visible, when its wind
 - No connection: the status shows **Offline**, edits stay on this device and are saved when the connection is back (or with **Retry**). **Unsaved** is left for other failures; copy the draft if one persists.
 
 The status reads Saved, Saving…, Offline, Unsaved or Conflict. This is how files that aren't typed live (database files, or all files without 003) stay in step; live typing (above) and cursors work alongside it. No database change is needed for this part; it uses `cowork_project`.
+
+### Backups and restore
+
+**Backups** in a shared project's toolbar keeps the project's files as they were at a moment, and puts them back:
+
+- **Back up now**, with a name or not. Tandem also backs up by itself every 30 minutes while the project changes (the app asks; the server skips it when nothing changed or the last backup is under 25 minutes old). The newest 30 automatic backups are kept; named backups stay until deleted, and naming an automatic one keeps it.
+- **Restore**: one file (any member: **Files**, then **Restore file**, or **View** it first with the lines restoring changes), or the whole project (owners, after confirming): every file goes back as it was, and files added since are removed. What is there is backed up first (**Before a restore**), so **Undo** in the message, or restoring that backup, takes it back. Restored files are saved as new revisions, so everyone's app shows them at once, like a teammate's save; their live typing starts again from the restored text.
+- **Space**: each different text is stored once per project, so a backup costs only the files that changed since an earlier one. Backups of one project may use up to 200 MB; the window shows how much they use.
+- Owners delete any backup; members delete their own.
+
+Reloading an open project (every 10 seconds) asks which files changed and fetches only their text, so a large file costs nothing while nobody changes it.
+
+Turn it on: run [005_cowork_versions.sql](../supabase/migrations/005_cowork_versions.sql) in the SQL Editor (additive, safe to run again). It also raises the file size limit to 10 MB and adds the lighter reload. Without it the app works as before and Backups says the update is needed. Checked by `supabase/tests/versions-api.mjs` (33 checks: storage once per text, who may restore what, undo, outsiders, 10 MB, the reload) and `supabase/tests/versions-e2e.cjs` (two accounts: back up, view and restore a file, restore the project, undo).
 
 ### Sharing an AI with the project
 

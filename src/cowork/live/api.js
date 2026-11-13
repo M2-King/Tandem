@@ -213,6 +213,19 @@ export async function sharedAIEndpoint() {
   return { url: `${URL_}/functions/v1/cowork-ai`, apikey: KEY, token: data?.session?.access_token || '' };
 }
 
+// Lighter reloads (005): the files without their text, then the text of the changed ones.
+export const projectState = (id) => rpc('cowork_project_state', { p_project: id });
+export const fileContents = (id, paths) => rpc('cowork_file_contents', { p_project: id, p_paths: paths });
+
+// Backups and restore (005_cowork_versions.sql).
+export const versions = (id) => rpc('cowork_versions', { p_project: id });
+export const createVersion = (id, name) => rpc('cowork_create_version', { p_project: id, p_name: name || '' });
+export const autoVersion = (id) => rpc('cowork_auto_version', { p_project: id });
+export const versionFile = (id, version, path) => rpc('cowork_version_file', { p_project: id, p_version: version, p_path: path });
+export const restoreVersion = (id, version, path = null) => rpc('cowork_restore_version', { p_project: id, p_version: version, p_path: path });
+export const nameVersion = (id, version, name) => rpc('cowork_name_version', { p_project: id, p_version: version, p_name: name });
+export const deleteVersion = (id, version) => rpc('cowork_delete_version', { p_project: id, p_version: version });
+
 export const fileDocs = async (id) => Object.fromEntries((await rpc('cowork_file_docs', { p_project: id })).map((d) => [d.path, d]));
 
 // ------------------------------------------------------------------ realtime

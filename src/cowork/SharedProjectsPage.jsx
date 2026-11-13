@@ -7,6 +7,7 @@ import { addressOf } from './accounts.js';
 const ROLE = { owner: 'Owner', member: 'Member' };
 
 export function timeAgo(at) {
+  if (Date.now() - at < 60000) return 'just now';
   const minutes = Math.max(1, Math.round((Date.now() - at) / 60000));
   if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);

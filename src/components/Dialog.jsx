@@ -2,8 +2,16 @@ import { useEffect, useRef } from 'react';
 
 // Modal dialog. Keeps focus inside, closes on Escape, and returns focus to
 // whatever was focused before it opened.
+//
+// Focus can fall out of a dialog onto the page (a focused button that gets
+// disabled while it works, a part that is replaced): Escape still closes the
+// topmost dialog then, and Tab goes back into it.
+const open = []; // the dialogs on screen, topmost last
+
 export default function Dialog({ title, onClose, children, className = '', labelledBy }) {
   const ref = useRef(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     const previous = document.activeElement;
@@ -17,7 +25,7 @@ export default function Dialog({ title, onClose, children, className = '', label
     const onKey = (e) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        closeRef.current();
       } else if (e.key === 'Tab') {
         const list = focusables();
         if (!list.length) return;
@@ -33,8 +41,23 @@ export default function Dialog({ title, onClose, children, className = '', label
       }
     };
     node.addEventListener('keydown', onKey);
+    open.push(node);
+    const onPageKey = (e) => {
+      const lost = !document.activeElement || document.activeElement === document.body;
+      if (!lost || open[open.length - 1] !== node) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeRef.current();
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        (focusables()[0] || node).focus();
+      }
+    };
+    document.addEventListener('keydown', onPageKey);
     return () => {
       node.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onPageKey);
+      open.splice(open.indexOf(node), 1);
       if (previous && previous.isConnected) previous.focus();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

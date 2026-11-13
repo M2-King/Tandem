@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, CloudOff, Laptop, Loader2, LogOut, RefreshCw, RotateCcw, Settings, Share2, UserRound, WifiOff, GitCompareArrows } from 'lucide-react';
+import { Check, ChevronLeft, CloudOff, Laptop, Loader2, LogOut, RefreshCw, RotateCcw, Settings, Share2, UserRound, WifiOff, GitCompareArrows, ArchiveRestore } from 'lucide-react';
 import Menu, { MenuItem } from '../components/Menu.jsx';
 import { addressOf, initialsOf } from './accounts.js';
 
@@ -125,6 +125,16 @@ export function ShareButton({ onClick, compact }) {
     <button type="button" className={`btn btn-secondary btn-sm share-btn ${compact ? 'is-compact' : ''}`} onClick={onClick}>
       <Share2 size={14} aria-hidden="true" />
       <span className="share-btn-text">Share</span>
+    </button>
+  );
+}
+
+// Backups and restore of a shared project (VersionsDialog).
+export function BackupsButton({ onClick }) {
+  return (
+    <button type="button" className="btn btn-ghost btn-sm backups-btn" onClick={onClick} data-tooltip="Back up the project, or restore it or a file">
+      <ArchiveRestore size={14} aria-hidden="true" />
+      <span className="backups-btn-text">Backups</span>
     </button>
   );
 }

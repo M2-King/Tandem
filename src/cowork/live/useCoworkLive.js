@@ -35,7 +35,7 @@ const PROJECT_POLL = 10 * 1000;
 const OVERVIEW_POLL = 30 * 1000;
 const visible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
 const online = () => typeof navigator === 'undefined' || navigator.onLine !== false;
-const MAX_UPLOAD = 1024 * 1024;
+const MAX_UPLOAD = 10 * 1024 * 1024; // 005 (was 1 MB)
 const at = (iso) => (iso ? Date.parse(iso) : Date.now());
 
 export function useCoworkLive({ notify }) {
@@ -331,6 +331,32 @@ export function useCoworkLive({ notify }) {
   const pulling = useRef(false);
   const pullAgain = useRef(false);
   const pullRef = useRef(null);
+  // Reloading: which files changed, then only their text (005); a server
+  // without 005 sends every file's text, as before.
+  const lightReload = useRef(true);
+  const loadChanged = useCallback(async (projectId) => {
+    if (!lightReload.current) return api.openProject(projectId);
+    let state;
+    try {
+      state = await api.projectState(projectId);
+    } catch (e) {
+      if (!isMissingFunction(e)) throw e;
+      lightReload.current = false;
+      return api.openProject(projectId);
+    }
+    const known = base.current;
+    const changed = state.files.filter((f) => !known[f.path] || known[f.path].revision !== f.revision).map((f) => f.path);
+    const fetched = changed.length ? await api.fileContents(projectId, changed) : [];
+    const byPath = Object.fromEntries(fetched.map((f) => [f.path, f]));
+    const files = [];
+    for (const f of state.files) {
+      if (byPath[f.path]) files.push(byPath[f.path]);
+      else if (known[f.path] && known[f.path].revision === f.revision) files.push({ ...f, content: known[f.path].content });
+      // (Removed between the two calls: the next reload sees it.)
+    }
+    return { ...state, files };
+  }, []);
+
   const pull = useCallback(async () => {
     const id = openedRef.current?.id;
     if (!id || openedRef.current.loading) return;
@@ -341,7 +367,7 @@ export function useCoworkLive({ notify }) {
     pulling.current = true;
     const gen = openGen.current;
     try {
-      const p = await api.openProject(id);
+      const p = await loadChanged(id);
       // Left, reopened or still opening meanwhile: this result is stale.
       if (openedRef.current?.id !== id || openedRef.current.loading || openGen.current !== gen) return;
       // Live files a teammate saved since: merge their saved document in (no
@@ -663,7 +689,7 @@ export function useCoworkLive({ notify }) {
       const skipped = [];
       for (const file of chosen) {
         if (file.size > MAX_UPLOAD) {
-          skipped.push(`${file.name} is larger than 1 MB`);
+          skipped.push(`${file.name} is larger than 10 MB`);
           continue;
         }
         let text;
@@ -688,7 +714,7 @@ export function useCoworkLive({ notify }) {
         }
       }
       if (added.length) notify(added.length === 1 ? `Uploaded ${added[0]}.` : `Uploaded ${added.length} files: ${added.join(', ')}.`);
-      if (skipped.length) notify(`Not uploaded: ${skipped.join('; ')}. Shared projects take UTF-8 text files up to 1 MB.`);
+      if (skipped.length) notify(`Not uploaded: ${skipped.join('; ')}. Shared projects take UTF-8 text files up to 10 MB.`);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lostAccess, notify]
@@ -1020,7 +1046,10 @@ export function useCoworkLive({ notify }) {
     conflicts,
     resolveConflict,
     reloadProject: pull,
-    flushSaves: flush, // save edits still waiting (the shared AI reads saved files)
+    flushSaves: flush, // save edits still waiting (the shared AI reads saved files, backups take saved files)
+    // Files changed on the server by something else than a save here (a
+    // restore): teammates' apps reload them at once.
+    announceChanged: (paths) => paths.forEach((path) => typing.announceSaved(path, 0)),
     presence,
     presenceState: live.state,
     presenceReason: live.reason,

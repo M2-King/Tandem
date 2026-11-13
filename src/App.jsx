@@ -59,7 +59,9 @@ import { useSharedPython } from './cowork/useSharedPython.js';
 import { useSharedAI } from './cowork/live/useSharedAI.js';
 import PreparePythonDialog from './cowork/PreparePythonDialog.jsx';
 import { CursorReportContext, LiveTextContext } from './cowork/cursorReport.js';
-import { AvatarStack, CoworkTitle, DeviceChip, LiveStatus, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
+import { AvatarStack, BackupsButton, CoworkTitle, DeviceChip, LiveStatus, PreviewMenu, SettingsButton, ShareButton, SyncStatus } from './cowork/CoworkBits.jsx';
+import VersionsDialog from './cowork/VersionsDialog.jsx';
+import { useVersions } from './cowork/live/useVersions.js';
 import ProjectSettingsDialog from './cowork/ProjectSettingsDialog.jsx';
 import { RemoveFileDialog, RenameFileDialog } from './cowork/FileDialogs.jsx';
 import SharedProjectsPage from './cowork/SharedProjectsPage.jsx';
@@ -311,6 +313,9 @@ export default function App() {
   // A live shared project: the AI an owner shares with it, used when this
   // device has no AI of its own (cowork-ai Edge Function; the key stays there).
   const sharedAI = useSharedAI({ projectId: cowork.live && inCowork ? cowork.project.id : null });
+  // Backups and restore of the open shared project (and its automatic backups).
+  const versions = useVersions({ cowork, projectId: cowork.live && inCowork ? cowork.project.id : null });
+  const [backupsOpen, setBackupsOpen] = useState(false);
   const sharedAIRef = useRef(sharedAI);
   sharedAIRef.current = sharedAI;
   const realRequest = useMemo(
@@ -909,6 +914,7 @@ export default function App() {
       <AvatarStack entries={peopleEntries} onClick={openShare} offline={offline} arrivingId={arrivingId} />
       <SyncStatus sync={cowork.sync} />
       {cowork.live && <LiveStatus state={cowork.presenceState} reason={cowork.presenceReason} />}
+      {cowork.live && <BackupsButton onClick={() => setBackupsOpen(true)} />}
       <ShareButton onClick={openShare} />
       <SettingsButton onClick={() => setSettingsOpen(true)} />
     </>
@@ -1046,6 +1052,7 @@ export default function App() {
           {cowork.live && <LiveStatus state={cowork.presenceState} reason={cowork.presenceReason} />}
           {!cowork.live && <PreviewMenu cowork={cowork} inProject />}
           {!cowork.live && <DeviceChip />}
+          {cowork.live && <BackupsButton onClick={() => setBackupsOpen(true)} />}
           <ShareButton onClick={openShare} />
           <SettingsButton onClick={() => setSettingsOpen(true)} />
         </div>
@@ -1337,6 +1344,17 @@ export default function App() {
 
       {projectsOpen && <ProjectsDialog backend={backend} onClose={() => setProjectsOpen(false)} />}
 
+      {backupsOpen && inCowork && cowork.live && (
+        <VersionsDialog
+          versions={versions}
+          project={cowork.project}
+          isOwner={cowork.roleIn(cowork.project) === 'owner'}
+          me={cowork.viewer?.id}
+          files={ws.files}
+          notify={notify}
+          onClose={() => setBackupsOpen(false)}
+        />
+      )}
       {aiChoiceOpen && share && (
         <AIChoiceDialog
           share={share}
