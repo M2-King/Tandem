@@ -155,7 +155,7 @@ async function showUpdatingWindow({
     const until = Date.now() + waitMs;
     while (Date.now() < until) {
       if (fs.existsSync(readyFile)) {
-        note('the window is on screen; quitting into the installer');
+        note(preview ? 'the window is on screen' : 'the window is on screen; quitting into the installer');
         return true;
       }
       await new Promise((r) => setTimeout(r, 100));
