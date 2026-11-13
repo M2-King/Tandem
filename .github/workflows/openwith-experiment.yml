@@ -1,0 +1,11 @@
+name: Open with experiment (temporary)
+on:
+  push:
+    branches: [claude/tandem-cowork-staging-verify-7kd94b]
+    paths: [packaging/experiments/**, .github/workflows/openwith-experiment.yml]
+jobs:
+  try:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/experiments/openwith.ps1
