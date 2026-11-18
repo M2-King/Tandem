@@ -175,7 +175,7 @@ export function createLocalBackend(config, { socket = true } = {}) {
     // A Jupyter kernel for a notebook (ipykernel in the project's environment).
     // h: onStatus(state, info), onCount(cell, n), onOutput(cell, output),
     //    onClear(cell, wait), onInput(cell, prompt, password), onDone(cell, status, n),
-    //    onRejected(message, code), onError(message)
+    //    onRejected(message, code), onError(message), onComm(event) (ipywidgets)
     // opts.shared: a Tandem Cowork shared project's id (its working copy).
     startKernel(path, h, opts = {}) {
       const id = uid('kernel');
@@ -183,8 +183,9 @@ export function createLocalBackend(config, { socket = true } = {}) {
         if (e.id !== id) return;
         if (e.type === 'kernel.status') h.onStatus?.(e.state, e);
         else if (e.type === 'kernel.count') h.onCount?.(e.cell, e.count);
-        else if (e.type === 'kernel.output') h.onOutput?.(e.cell, e.output);
-        else if (e.type === 'kernel.clear') h.onClear?.(e.cell, e.wait);
+        else if (e.type === 'kernel.output') h.onOutput?.(e.cell, e.output, e.parent);
+        else if (e.type === 'kernel.clear') h.onClear?.(e.cell, e.wait, e.parent);
+        else if (e.type === 'kernel.comm') h.onComm?.(e);
         else if (e.type === 'kernel.input') h.onInput?.(e.cell, e.prompt, e.password);
         else if (e.type === 'kernel.done') h.onDone?.(e.cell, e.status, e.count);
         else if (e.type === 'kernel.rejected') h.onRejected?.(e.message, e.code);
@@ -198,6 +199,8 @@ export function createLocalBackend(config, { socket = true } = {}) {
       return {
         execute: (cell, code) => send('kernel.execute', { cell, code }),
         input: (text) => send('kernel.input', { text }),
+        // ipywidgets: a control's change or event, to the kernel (cell: where the control is).
+        comm: (commId, data, cell) => send('kernel.comm', { comm_id: commId, data, cell }),
         interrupt: () => send('kernel.interrupt'),
         restart: () => send('kernel.restart'),
         shutdown: () => {

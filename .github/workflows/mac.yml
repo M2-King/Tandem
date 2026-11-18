@@ -53,7 +53,7 @@ jobs:
           "${{ steps.py311.outputs.python-path }}" -m venv runtime/.test-envs/py311
           "${{ steps.py312.outputs.python-path }}" -m venv runtime/.test-envs/py312
           for v in py311 py312; do
-            "runtime/.test-envs/$v/bin/python" -m pip install --quiet numpy pandas matplotlib ipykernel
+            "runtime/.test-envs/$v/bin/python" -m pip install --quiet numpy pandas matplotlib ipykernel ipywidgets
           done
 
       - name: Install the runtime
@@ -93,7 +93,7 @@ jobs:
       - name: Check the bundled runtime
         run: |
           python -m venv smoke-project-env
-          smoke-project-env/bin/python -m pip install --quiet numpy pandas matplotlib ipykernel
+          smoke-project-env/bin/python -m pip install --quiet numpy pandas matplotlib ipykernel ipywidgets
           python packaging/windows/smoke.py out/tandem-runtime/tandem-runtime "$PWD/smoke-project-env/bin/python"
 
       - name: Name the staging app

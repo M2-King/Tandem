@@ -24,6 +24,7 @@ import { setCompletionContext } from '../lib/pythonCompletion.js';
 import { createRemoteCursors } from '../cowork/remoteCursors.js';
 import { CursorReportContext, LiveTextContext, cursorOfSelection } from '../cowork/cursorReport.js';
 import { bindModel } from '../cowork/live/monacoBinding.js';
+import WidgetView, { WIDGET_MIME } from './NotebookWidgets.jsx';
 
 // A Jupyter notebook: code and Markdown cells, run in a real kernel.
 // Keyboard (like Jupyter): Shift+Enter runs and moves on, Ctrl/Cmd+Enter
@@ -44,7 +45,20 @@ const KERNEL_TEXT = {
   shutdown: 'Kernel stopped',
 };
 
-function Output({ output }) {
+function Output({ output, session = null, cellId = null }) {
+  // ipywidgets: the controls, drawn from the kernel's models (NotebookWidgets.jsx).
+  const view = output.data?.[WIDGET_MIME];
+  if (view && session) {
+    return (
+      <WidgetView
+        session={session}
+        view={view}
+        cellId={cellId}
+        fallback={output.data['text/plain'] ? stripAnsi(joinText(output.data['text/plain'])) : null}
+        renderOutput={(o) => <Output output={o} session={session} cellId={cellId} />}
+      />
+    );
+  }
   if (output.output_type === 'stream') {
     return <pre className={`nb-stream ${output.name === 'stderr' ? 'is-stderr' : ''}`}>{stripAnsi(joinText(output.text))}</pre>;
   }
@@ -307,7 +321,7 @@ const Cell = memo(function Cell({ cell, index, count, path, fontSize, state, sel
         {code && (cell.outputs?.length > 0 || input) && (
           <div className="nb-outputs" aria-live="polite">
             {cell.outputs.map((o, i) => (
-              <Output key={i} output={o} />
+              <Output key={i} output={o} session={session} cellId={cell.id} />
             ))}
             {input && <InputPrompt input={input} onSubmit={(v) => session.sendInput(v)} />}
           </div>

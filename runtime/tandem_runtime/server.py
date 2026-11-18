@@ -488,6 +488,12 @@ def create_app(project_root: Path, policy: AccessPolicy, ui_dir: Path | None, cl
                 kernels.execute(kernel_id, str(message.get("cell", "")), str(message.get("code", ""))[:2_000_000])
             elif kind == "kernel.input":
                 kernels.send_input(kernel_id, str(message.get("text", ""))[:100_000])
+            elif kind == "kernel.comm":
+                data = message.get("data")
+                buffers = message.get("buffers")
+                kernels.comm(kernel_id, str(message.get("comm_id", "")), data if isinstance(data, dict) else {},
+                             str(message["cell"]) if message.get("cell") else None,
+                             buffers if isinstance(buffers, list) else None)
             elif kind == "kernel.interrupt":
                 await kernels.interrupt(kernel_id)
             elif kind == "kernel.restart":

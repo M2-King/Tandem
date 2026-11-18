@@ -228,3 +228,30 @@ def test_an_interrupted_shutdown_still_leaves_the_kernel_to_be_stopped(project, 
     while pid_alive(pid) and time.monotonic() < deadline:
         time.sleep(0.2)
     assert not pid_alive(pid), "the kernel should stop when the runtime stops all kernels"
+
+
+def test_ipywidgets_controls_talk_both_ways(session):
+    # The notebook draws the controls from the kernel's widget messages, and
+    # a change made there reaches Python (a later cell reads it).
+    outputs, done = session.run("c1", "import ipywidgets as w\nslider = w.IntSlider(value=5, min=1, max=15, description='Epochs')\ndisplay(slider)")
+    if done["status"] != "ok":
+        pytest.skip("ipywidgets isn't installed in the test environment")
+    opens = [e for e in session.events if e["type"] == "kernel.comm" and e["msg_type"] == "comm_open"]
+    states = {e["comm_id"]: e["data"]["state"] for e in opens}
+    slider_id = next(cid for cid, st in states.items() if st.get("_model_name") == "IntSliderModel")
+    assert states[slider_id]["value"] == 5 and states[slider_id]["description"] == "Epochs"
+    view = next(o for o in outputs if o["output_type"] == "display_data")
+    assert view["data"]["application/vnd.jupyter.widget-view+json"]["model_id"] == slider_id
+    # The person drags it to 9: Python sees 9.
+    session.send("kernel.comm", comm_id=slider_id, cell="c1", data={"method": "update", "state": {"value": 9}, "buffer_paths": []})
+    outputs, _ = session.run("c2", "print(slider.value)")
+    assert text_of(outputs).strip() == "9"
+    # A button's callback prints: its output belongs to the button's cell, and that cell's run isn't ended again.
+    outputs, _ = session.run("c3", "b = w.Button(description='Go')\nb.on_click(lambda _: print('clicked!'))\ndisplay(b)")
+    button_id = next(e["comm_id"] for e in session.events if e["type"] == "kernel.comm" and e["msg_type"] == "comm_open"
+                     and e["data"]["state"].get("_model_name") == "ButtonModel")
+    before = len(session.events)
+    session.send("kernel.comm", comm_id=button_id, cell="c3", data={"method": "custom", "content": {"event": "click"}})
+    clicked = session.until(lambda e: e["type"] == "kernel.output" and e["cell"] == "c3")
+    assert clicked["output"]["text"] == "clicked!\n" and clicked["parent"]
+    assert not any(e["type"] == "kernel.done" for e in session.events[before:])

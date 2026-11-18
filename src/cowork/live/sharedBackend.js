@@ -159,6 +159,7 @@ export function createSharedBackend({ device, getProject, getFiles, confirmTrust
             real.execute(cell, code);
           }),
         input: (text) => real?.input(text),
+        comm: (commId, data, cell) => real?.comm?.(commId, data, cell),
         interrupt: () => real?.interrupt(),
         restart: () =>
           step(async () => {

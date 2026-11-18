@@ -19,6 +19,7 @@ kernel sent.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import os
 import shutil
@@ -89,6 +90,7 @@ class Kernel:
     kc: object
     folder: str
     pending: dict = field(default_factory=dict)  # msg_id -> cell id
+    comm_cells: dict = field(default_factory=dict)  # msg_id of a widget message we sent -> the cell its widget is in
     replies: dict = field(default_factory=dict)  # msg_id -> execute_reply content
     idle: set = field(default_factory=set)  # msg_ids whose output has all arrived
     tasks: list = field(default_factory=list)
@@ -167,7 +169,23 @@ class KernelHub:
                 continue
             k.heard.set()
             kind, content = msg["msg_type"], msg["content"]
-            cell = k.pending.get(msg.get("parent_header", {}).get("msg_id"))
+            parent = msg.get("parent_header", {}).get("msg_id")
+            # Output of a widget's callback (a button click…) belongs to the
+            # cell that shows the widget; it never ends that cell's run.
+            from_widget = parent in k.comm_cells
+            cell = k.pending.get(parent) if not from_widget else k.comm_cells[parent]
+            if kind in ("comm_open", "comm_msg", "comm_close"):
+                # ipywidgets (and other comms): the notebook draws the controls.
+                await k.send({"type": "kernel.comm", "id": k.id, "msg_type": kind, "cell": cell,
+                              "comm_id": content.get("comm_id"), "target_name": content.get("target_name"),
+                              "data": content.get("data", {}), "metadata": msg.get("metadata", {}),
+                              "buffers": [base64.b64encode(bytes(b)).decode("ascii") for b in msg.get("buffers") or []]})
+                continue
+            if kind == "status" and from_widget:
+                await k.send({"type": "kernel.status", "id": k.id, "state": content.get("execution_state"), "cell": None})
+                if content.get("execution_state") == "idle":
+                    k.comm_cells.pop(parent, None)
+                continue
             if kind == "status":
                 await k.send({"type": "kernel.status", "id": k.id, "state": content.get("execution_state"), "cell": cell})
                 parent = msg.get("parent_header", {}).get("msg_id")
@@ -182,21 +200,21 @@ class KernelHub:
             elif kind == "stream":
                 text = self._throttle(k, content.get("text", ""))
                 if text:
-                    await k.send({"type": "kernel.output", "id": k.id, "cell": cell,
+                    await k.send({"type": "kernel.output", "id": k.id, "cell": cell, "parent": parent,
                                   "output": {"output_type": "stream", "name": content.get("name", "stdout"),
                                              "text": text}})
             elif kind in ("display_data", "execute_result"):
                 output = {"output_type": kind, "data": content.get("data", {}), "metadata": content.get("metadata", {})}
                 if kind == "execute_result":
                     output["execution_count"] = content.get("execution_count")
-                await k.send({"type": "kernel.output", "id": k.id, "cell": cell, "output": output})
+                await k.send({"type": "kernel.output", "id": k.id, "cell": cell, "parent": parent, "output": output})
             elif kind == "error":
-                await k.send({"type": "kernel.output", "id": k.id, "cell": cell,
+                await k.send({"type": "kernel.output", "id": k.id, "cell": cell, "parent": parent,
                               "output": {"output_type": "error", "ename": content.get("ename", ""),
                                          "evalue": content.get("evalue", ""),
                                          "traceback": content.get("traceback", [])}})
             elif kind == "clear_output":
-                await k.send({"type": "kernel.clear", "id": k.id, "cell": cell, "wait": bool(content.get("wait"))})
+                await k.send({"type": "kernel.clear", "id": k.id, "cell": cell, "parent": parent, "wait": bool(content.get("wait"))})
 
     @staticmethod
     def _throttle(k: Kernel, text: str) -> str:
@@ -300,6 +318,18 @@ class KernelHub:
         k = self._get(kernel_id)
         msg_id = k.kc.execute(code, allow_stdin=True, stop_on_error=True)
         k.pending[msg_id] = cell
+
+    def comm(self, kernel_id: str, comm_id: str, data: dict, cell: str | None = None, buffers: list | None = None) -> None:
+        """A widget's message from the notebook (a value changed, a button clicked) to the kernel."""
+        k = self._get(kernel_id)
+        msg = k.kc.session.msg("comm_msg", {"comm_id": comm_id, "data": data})
+        if buffers:
+            msg["buffers"] = [base64.b64decode(b) for b in buffers]
+        k.kc.shell_channel.send(msg)
+        if cell is not None:
+            k.comm_cells[msg["header"]["msg_id"]] = cell
+            while len(k.comm_cells) > 500:  # replies that never came
+                k.comm_cells.pop(next(iter(k.comm_cells)))
 
     def send_input(self, kernel_id: str, text: str) -> None:
         self._get(kernel_id).kc.input(text)

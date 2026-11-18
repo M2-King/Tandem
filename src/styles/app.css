@@ -7083,3 +7083,175 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
   color: var(--text-primary);
   text-decoration-style: solid;
 }
+
+/* ---------------------------------------------------------------- notebook widgets */
+/* ipywidgets in a cell's output (NotebookWidgets.jsx). */
+.nbw-root {
+  padding: 6px 0;
+  font-size: 13px;
+}
+.nbw-box {
+  display: flex;
+  gap: 6px;
+}
+.nbw-box.is-column {
+  flex-direction: column;
+  align-items: stretch;
+}
+.nbw-box.is-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.nbw-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  max-width: 100%;
+}
+.nbw-label {
+  flex: none;
+  min-width: 90px;
+  color: var(--text-secondary);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nbw-control {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.nbw-input {
+  height: 30px;
+  min-width: 0;
+  width: min(320px, 100%);
+}
+textarea.nbw-input {
+  height: auto;
+  padding-top: 6px;
+  resize: vertical;
+}
+.nbw-number {
+  width: 120px;
+}
+.nbw-select {
+  min-width: 180px;
+  max-width: min(360px, 100%);
+}
+.nbw-slider {
+  width: min(280px, 100%);
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.nbw-slider:disabled {
+  cursor: default;
+}
+.nbw-readout {
+  min-width: 3ch;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.nbw-check,
+.nbw-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.nbw-check input,
+.nbw-radio input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
+.nbw-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nbw-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.nbw-text {
+  color: var(--text-primary);
+}
+.nbw-html {
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.nbw-progress {
+  width: min(280px, 100%);
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+.nbw-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.2s var(--ease);
+}
+.nbw-progress.is-success span {
+  background: var(--success);
+}
+.nbw-progress.is-warning span {
+  background: var(--warning);
+}
+.nbw-progress.is-danger span {
+  background: var(--danger, #e8828a);
+}
+.nbw-output:empty {
+  display: none;
+}
+.nbw-success {
+  color: #fff;
+  background: #3f8a63;
+}
+.nbw-info {
+  color: #fff;
+  background: #3f7a9a;
+}
+.nbw-warning {
+  color: #1b1d24;
+  background: var(--warning);
+}
+.nbw-danger {
+  color: #fff;
+  background: #b4505a;
+}
+.nbw-tab-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.nbw-accordion-head {
+  width: 100%;
+  margin: 2px 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.nbw-unsupported,
+.nbw-note {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}

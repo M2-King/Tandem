@@ -27,6 +27,11 @@ export class NotebookSession {
     this.error = parsed.error || null;
     this.nb = parsed.notebook || null;
     this.kernel = null;
+    // ipywidgets: the kernel's widget models by id ({ state }), and which
+    // Output widget captures the output of which request (msg_id).
+    this.widgets = new Map();
+    this.widgetVersion = 0;
+    this.captures = new Map(); // msg_id -> Output widget's model id
     this.kernelState = 'none'; // none | starting | idle | busy | restarting | dead | shutdown
     this.kernelProblem = null; // { message, code }
     this.python = null;
@@ -242,6 +247,7 @@ export class NotebookSession {
     this.kernel = this.backend.startKernel(this.path, {
       onStatus: (state, info) => {
         if (info?.python) this.python = info.python;
+        if (state === 'starting' || state === 'restarting' || state === 'dead' || state === 'shutdown') this.dropWidgets();
         if (state === 'dead' || state === 'shutdown') {
           this.abortAll();
           this.kernelState = state;
@@ -262,7 +268,9 @@ export class NotebookSession {
         this.updateCell(cell, (c) => ({ ...c, execution_count: count }));
         this.emit({ changed: true });
       },
-      onOutput: (cell, output) => {
+      onComm: (e) => this.onComm(e),
+      onOutput: (cell, output, parent) => {
+        if (this.capture(parent, output)) return;
         this.updateCell(cell, (c) => {
           const base = this.pendingClear.has(cell) ? [] : c.outputs || [];
           this.pendingClear.delete(cell);
@@ -270,7 +278,8 @@ export class NotebookSession {
         });
         this.emit({ changed: 'output' });
       },
-      onClear: (cell, wait) => {
+      onClear: (cell, wait, parent) => {
+        if (this.capture(parent, null, { clear: true, wait })) return;
         if (wait) this.pendingClear.add(cell);
         else this.updateCell(cell, (c) => ({ ...c, outputs: [] }));
         this.emit({ changed: 'output' });
@@ -303,6 +312,94 @@ export class NotebookSession {
     });
     this.emit();
     return this.kernel;
+  }
+
+  // ---------------------------------------------------------------- widgets
+  // ipywidgets, from the kernel's comm messages (widget protocol 2): models
+  // open with their state and change with "update"; the notebook draws them
+  // (WidgetView) and sends changes back, so Python sees what was chosen.
+  onComm(e) {
+    if (e.msg_type === 'comm_open') {
+      if (e.target_name !== 'jupyter.widget') return;
+      this.widgets.set(e.comm_id, { id: e.comm_id, state: { ...(e.data?.state || {}) }, cell: e.cell || null });
+      this.watchCapture(e.comm_id);
+    } else if (e.msg_type === 'comm_msg') {
+      const model = this.widgets.get(e.comm_id);
+      const method = e.data?.method;
+      if (!model || (method !== 'update' && method !== 'echo_update')) return;
+      let incoming = e.data.state || {};
+      if (method === 'echo_update') {
+        // The kernel repeating a change made here: while newer changes of
+        // the same keys are on their way, it is out of date (as Jupyter does).
+        incoming = Object.fromEntries(
+          Object.entries(incoming).filter(([key]) => {
+            const sent = model.inFlight?.[key] || 0;
+            if (sent > 0) model.inFlight[key] = sent - 1;
+            return sent <= 1;
+          })
+        );
+      }
+      model.state = { ...model.state, ...incoming };
+      this.watchCapture(e.comm_id);
+    } else if (e.msg_type === 'comm_close') {
+      if (!this.widgets.delete(e.comm_id)) return;
+    } else return;
+    this.widgetChanged();
+  }
+
+  // An Output widget whose msg_id is set captures that request's output.
+  watchCapture(id) {
+    const model = this.widgets.get(id);
+    if (model?.state._model_name !== 'OutputModel') return;
+    for (const [msgId, owner] of this.captures) if (owner === id) this.captures.delete(msgId);
+    if (model.state.msg_id) this.captures.set(model.state.msg_id, id);
+  }
+
+  // Output (or a clear) for a request an Output widget captures: it goes there.
+  capture(parent, output, { clear = false, wait = false } = {}) {
+    const id = parent && this.captures.get(parent);
+    const model = id && this.widgets.get(id);
+    if (!model) return false;
+    if (clear) {
+      if (wait) model.clearNext = true;
+      else model.state = { ...model.state, outputs: [] };
+    } else {
+      const base = model.clearNext ? [] : model.state.outputs || [];
+      model.clearNext = false;
+      model.state = { ...model.state, outputs: appendOutput(base, output) };
+    }
+    this.widgetChanged();
+    return true;
+  }
+
+  widgetChanged() {
+    this.widgetVersion += 1;
+    this.listeners.forEach((fn) => fn());
+  }
+
+  getWidgetVersion = () => this.widgetVersion;
+
+  // The person changed a control (patch: { value } or { index }…).
+  setWidget(id, patch, cell) {
+    const model = this.widgets.get(id);
+    if (!model) return;
+    model.state = { ...model.state, ...patch };
+    model.inFlight ??= {};
+    for (const key of Object.keys(patch)) model.inFlight[key] = (model.inFlight[key] || 0) + 1;
+    this.widgetChanged();
+    this.kernel?.comm?.(id, { method: 'update', state: patch, buffer_paths: [] }, cell);
+  }
+
+  // A control's event (a button's click).
+  widgetEvent(id, content, cell) {
+    this.kernel?.comm?.(id, { method: 'custom', content }, cell);
+  }
+
+  dropWidgets() {
+    if (!this.widgets.size) return;
+    this.widgets = new Map();
+    this.captures = new Map();
+    this.widgetChanged();
   }
 
   abortAll() {
