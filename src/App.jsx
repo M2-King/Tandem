@@ -818,8 +818,11 @@ export default function App() {
     if (exec.session && !exec.session.finished) exec.stop();
     return undefined;
   };
-  // Ctrl+` (as in VS Code): the Terminal tab of this device's project.
-  const terminalAvailable = !IS_IPAD && !inCowork && !!backend?.startTerminal;
+  // Ctrl+` (as in VS Code): the Terminal tab, in this device's project or
+  // in a shared project's working copy on this computer (desktop only).
+  const terminalBackend =
+    IS_IPAD || !backend?.startTerminal ? null : !inCowork ? backend : cowork.live && coworkBackend.startTerminal ? coworkBackend : null;
+  const terminalAvailable = !!terminalBackend;
   useEffect(() => {
     if (!terminalAvailable) setResultsTab((t) => (t === 'Terminal' ? 'Output' : t));
   }, [terminalAvailable]);
@@ -1015,6 +1018,16 @@ export default function App() {
       setReviewingId(null);
       setRevealRequest({ path, line, key: Date.now() });
       setFlash({ path, lines: [line], key: Date.now() });
+    },
+    // A traceback's File "…", line N in the output: the project file it is
+    // (paths there are absolute: the project folder or a shared project's
+    // working copy on this computer), or null for library code.
+    frameFile: (absolute) => {
+      const given = absolute.replace(/\\/g, '/').toLowerCase();
+      const found = ws.fileOrder
+        .filter((p) => given === p.toLowerCase() || given.endsWith(`/${p.toLowerCase()}`))
+        .sort((a, b) => b.length - a.length)[0];
+      return found || null;
     },
     onResetFile: resetFile,
     isCodeCurrent: (run) => shortHash(ws.files[run.path] ?? '') === run.snapshotHash,
@@ -1428,7 +1441,8 @@ export default function App() {
             <ResultsPanel
               tab={resultsTab}
               onTab={setResultsTab}
-              terminalBackend={!IS_IPAD && !inCowork && backend?.startTerminal ? backend : null}
+              terminalBackend={terminalBackend}
+              terminalScope={inCowork ? cowork.project.id : 'device'}
               session={session}
               traceView={traceView}
               notice={exec.notice}

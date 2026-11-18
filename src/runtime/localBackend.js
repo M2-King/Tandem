@@ -114,7 +114,8 @@ export function createLocalBackend(config, { socket = true } = {}) {
 
     // The Terminal panel: a shell in the project folder with the project's
     // environment first on PATH (runtime/terminals.py). Only the person types here.
-    startTerminal({ cols, rows }, { onStart, onOutput, onExit, onRejected }) {
+    // shared: a Tandem Cowork shared project's id (a terminal in its working copy).
+    startTerminal({ cols, rows, shared = null }, { onStart, onOutput, onExit, onRejected }) {
       const id = uid('term');
       let ended = false;
       const end = (fn) => {
@@ -134,7 +135,7 @@ export function createLocalBackend(config, { socket = true } = {}) {
       const offState = client.onState((state) => {
         if (state === 'disconnected') end(() => onExit?.(null, 'The connection to the runtime was lost.'));
       });
-      if (!client.send({ type: 'term.start', id, cols, rows })) end(() => onRejected?.('The runtime isn’t connected.'));
+      if (!client.send({ type: 'term.start', id, cols, rows, ...(shared ? { shared } : {}) })) end(() => onRejected?.('The runtime isn’t connected.'));
       return {
         write: (data) => !ended && client.send({ type: 'term.input', id, data }),
         resize: (c, r) => !ended && client.send({ type: 'term.resize', id, cols: c, rows: r }),

@@ -7064,3 +7064,22 @@ html[data-shell='ipad'][data-windowed='true'] .toolbar {
 .terminal-surface .xterm-viewport {
   background: transparent !important;
 }
+
+/* A traceback line of a project file: click to go there. */
+.frame-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.frame-link:hover,
+.frame-link:focus-visible {
+  color: var(--text-primary);
+  text-decoration-style: solid;
+}

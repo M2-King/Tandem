@@ -175,6 +175,22 @@ const model = http.createServer((req, res) => {
   await page.getByRole('tab', { name: 'Terminal' }).click();
   check((await termText()).includes('TERM-PREFIX='), 'switching tabs keeps the shell and what it printed');
 
+  // ---- A syntax error (Python prints no "Traceback" line): Go to line, Ask AI to fix, and a link in the output.
+  fs.writeFileSync(path.join(project, 'bad.py'), 'record = {"song_id": "S1"}\nif record["song_id"].lower() == song_id,lower():\n    pass\n');
+  await page.reload();
+  await page.waitForSelector('.assistant-inner', { timeout: 30000 });
+  await page.locator('.file-row', { hasText: 'bad.py' }).first().click();
+  await page.locator('.tab.is-active', { hasText: 'bad.py' }).waitFor({ timeout: 15000 });
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /^Run$/ }).first().click();
+  const callout = page.locator('.callout-error');
+  await callout.waitFor({ timeout: 60000 });
+  const calloutText = await callout.innerText();
+  check(/SyntaxError in bad\.py, line 2/.test(calloutText) && /Go to line 2/.test(calloutText) && /Ask AI to fix/.test(calloutText),
+    'a syntax error names its file and line, with Go to line and Ask AI to fix');
+  check((await page.locator('.output-lines .frame-link', { hasText: 'bad.py", line 2' }).count()) === 1, 'the traceback line in the output is a link to the code');
+  await page.screenshot({ path: path.join(OUT, 'syntax-error.png') });
+
   // ---- A notebook: some of its cells, run in its kernel; the error comes back.
   execFileSync(venvPy, ['-m', 'pip', 'install', '-q', 'ipykernel'], { stdio: 'ignore' });
   const nb = (src) => ({ cell_type: 'code', metadata: {}, execution_count: null, outputs: [], source: [src] });

@@ -70,6 +70,21 @@ def test_exception_reports_real_traceback_and_line(client, project, python):
     assert {"x", "y"} <= names
 
 
+def test_a_syntax_error_points_at_its_line_too(client, project, python):
+    # Python prints no "Traceback" line when the file can't be compiled.
+    use_python(project, python)
+    (project / "Combination.py").write_text(
+        'def find(song_id, record):\n    if record["song_id"].lower() == song_id,lower():\n        return record\n')
+    events, _ = run_script(client, "Combination.py")
+    exit_ = first(events, "run.exit")
+    assert exit_["status"] == "error"
+    assert exit_["error"] == {"type": "SyntaxError", "message": "invalid syntax", "path": "Combination.py", "line": 2}
+    (project / "indent.py").write_text("x = 1\n    print(x)\n")
+    events, _ = run_script(client, "indent.py")
+    error = first(events, "run.exit")["error"]
+    assert error["type"] == "IndentationError" and error["path"] == "indent.py" and error["line"] == 2
+
+
 def test_exit_code_and_stderr(client, project, python):
     use_python(project, python)
     (project / "code.py").write_text("import sys\nprint('to err', file=sys.stderr)\nsys.exit(3)\n")

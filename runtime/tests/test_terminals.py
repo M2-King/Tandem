@@ -100,3 +100,18 @@ def test_the_environment_stays_first_after_the_persons_own_startup_files(client,
         assert "RC=yes" in out  # their startup file ran
         assert next(l for l in out.splitlines() if l.startswith("PREFIX=")).strip() == f"PREFIX={env}"  # and the project's Python is first
         assert "(.venv)" in out  # activated, so the prompt says so
+
+
+def test_a_shared_projects_terminal_opens_in_its_working_copy(client, project, config_dir):
+    from test_shared import PID, shared_root, sync
+
+    sync(client, {"main.py": "print('FROM-' + 'SHARED')\n", "songs.txt": "S001|Song|Artist|Pop|P01\n"})
+    with client.websocket_connect(f"ws://127.0.0.1:{PORT}/ws?token={TOKEN}") as ws:
+        ws.send_text(json.dumps({"type": "term.start", "id": "ts", "shared": PID}))
+        started = json.loads(ws.receive_text())
+        assert started["type"] == "term.started", started
+        assert Path(started["cwd"]) == shared_root(config_dir) / PID  # not the device project
+        ws.send_text(json.dumps({"type": "term.input", "id": "ts", "data": "python main.py\r"}))
+        out, _ = collect_until(ws, lambda o: re.search(r"^FROM-SHARED", o, re.M) is not None)
+        assert "FROM-SHARED" in out
+        ws.send_text(json.dumps({"type": "term.kill", "id": "ts"}))

@@ -42,7 +42,7 @@ def parse_traceback(stderr: str, root: Path) -> dict | None:
     lines = stderr.rstrip().splitlines()
     start = max((i for i, l in enumerate(lines) if l.startswith("Traceback (most recent call last)")), default=None)
     if start is None:
-        return None
+        return _parse_syntax_error(lines, root)
     frame = None
     for line in lines[start:]:
         m = _FRAME.match(line)
@@ -57,6 +57,28 @@ def parse_traceback(stderr: str, root: Path) -> dict | None:
     m = _EXC.match(last.strip())
     err_type, message = (m["type"], m["msg"] or "") if m else (last.split(":")[0] or "Error", last)
     return {"type": err_type.split(".")[-1], "message": message.strip(), **(frame or {})}
+
+
+def _parse_syntax_error(lines: list[str], root: Path) -> dict | None:
+    """A file that can't be compiled: Python prints no "Traceback" line, only
+    File "...", line N, the line, a caret, and SyntaxError: message (or
+    IndentationError, TabError)."""
+    last = next((l.strip() for l in reversed(lines) if l.strip()), "")
+    m = _EXC.match(last)
+    if not m or not m["type"].split(".")[-1].endswith(("SyntaxError", "IndentationError", "TabError")):
+        return None
+    out = {"type": m["type"].split(".")[-1], "message": (m["msg"] or "").strip()}
+    for i in range(len(lines) - 1, -1, -1):
+        frame = _FRAME.match(lines[i])
+        if not frame:
+            continue
+        try:
+            rel = Path(frame["file"]).resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            break  # not one of the project's files
+        out.update(path=rel, line=int(frame["line"]))
+        break
+    return out
 
 
 @dataclass

@@ -82,6 +82,44 @@ export function createSharedBackend({ device, getProject, getFiles, confirmTrust
       };
     },
 
+    // The Terminal panel, in the working copy, with the Python shared
+    // projects use. Before each command (Enter), the working copy gets the
+    // project's current files, so `python main.py` runs what everyone sees.
+    startTerminal(size, h) {
+      let real = null;
+      let ended = false;
+      let chain = Promise.resolve();
+      const step = (fn) => {
+        chain = chain.then(fn).catch(() => {});
+        return chain;
+      };
+      step(async () => {
+        let ready;
+        try {
+          ready = await prepare();
+        } catch (e) {
+          ended = true;
+          h.onRejected?.(e.message);
+          return;
+        }
+        if (ended) return;
+        real = device.startTerminal({ ...size, shared: ready.shared }, h);
+      });
+      return {
+        write: (data) =>
+          step(async () => {
+            if (!real) return;
+            if (/[\r\n]/.test(data)) await prepare({ ask: false }).catch(() => {});
+            real.write(data);
+          }),
+        resize: (cols, rows) => step(() => real?.resize(cols, rows)),
+        kill: () => {
+          ended = true;
+          step(() => real?.kill());
+        },
+      };
+    },
+
     // A notebook's kernel, started in the working copy. Cells run in order;
     // before each, the working copy gets the project's current files (a
     // teammate may have changed a module the notebook imports).

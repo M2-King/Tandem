@@ -61,7 +61,28 @@ function RunMeta({ run, actions }) {
 }
 
 // A traceback is mostly context; only its last line (the error itself) is red.
-function OutputLines({ lines, partial = '', dropped = 0 }) {
+const FRAME_LINE = /^(\s*File ")(.+?)(", line )(\d+)(.*)$/;
+
+// A traceback line (File "…", line N) of a project file: a link to that line.
+function FrameLink({ text, actions }) {
+  const m = FRAME_LINE.exec(text);
+  const path = m && actions?.frameFile?.(m[2]);
+  if (!path) return text || ' ';
+  const line = Number(m[4]);
+  return (
+    <>
+      {m[1]}
+      <button type="button" className="frame-link" onClick={() => actions.onGoToLine(path, line)} data-tooltip={`Go to ${path}, line ${line}`}>
+        {m[2]}
+        {m[3]}
+        {m[4]}
+      </button>
+      {m[5]}
+    </>
+  );
+}
+
+function OutputLines({ lines, partial = '', dropped = 0, actions = null }) {
   const lastErr = lines.map((l) => l.kind).lastIndexOf('err');
   return (
     <pre className="output-lines">
@@ -77,6 +98,8 @@ function OutputLines({ lines, partial = '', dropped = 0 }) {
               {l.text.slice(0, l.text.length - l.typed.length)}
               <span className="line-typed">{l.typed}</span>
             </>
+          ) : l.kind === 'err' && actions ? (
+            <FrameLink text={l.text} actions={actions} />
           ) : (
             l.text || ' '
           )}
@@ -173,7 +196,7 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
             </button>
           )}
         </div>
-        <OutputLines lines={session.output} partial={session.partial} dropped={session.dropped} />
+        <OutputLines lines={session.output} partial={session.partial} dropped={session.dropped} actions={actions} />
         {!paused && <InputBox prompt={session.partial} onInput={actions.onInput} onEndInput={actions.onEndInput} />}
       </div>
     );
@@ -259,7 +282,7 @@ function OutputView({ session, traceView, notice, run, runTarget, actions }) {
           {run.status === 'stopped' && (
             <p className="muted-text pad">Stopped before finishing. Output above is partial.</p>
           )}
-          <OutputLines lines={run.output} dropped={run.droppedLines} />
+          <OutputLines lines={run.output} dropped={run.droppedLines} actions={actions} />
         </>
       ) : (
         <Empty title="No output yet" text={`Run ${runTarget} to see its output here.`}>
@@ -539,8 +562,9 @@ function missingModule(error) {
   return match ? match[1].split('.')[0] : null;
 }
 
-// terminalBackend: the runtime, for the Terminal tab (this device's project only).
-export default function ResultsPanel({ tab, onTab, session, traceView, notice, runs, run, runTarget, newCharts, actions, onClose, terminalBackend }) {
+// terminalBackend: for the Terminal tab (this device's project, or a shared
+// project's working copy on this computer); terminalScope: which project.
+export default function ResultsPanel({ tab, onTab, session, traceView, notice, runs, run, runTarget, newCharts, actions, onClose, terminalBackend, terminalScope }) {
   const tabs = terminalBackend ? [...TABS, 'Terminal'] : TABS;
   const [terminalShown, setTerminalShown] = useState(tab === 'Terminal');
   useEffect(() => {
@@ -599,7 +623,7 @@ export default function ResultsPanel({ tab, onTab, session, traceView, notice, r
         {terminalBackend && terminalShown && (
           <div className="terminal-tab" hidden={tab !== 'Terminal'}>
             <Suspense fallback={<p className="terminal-note">Starting the terminal…</p>}>
-              <TerminalView backend={terminalBackend} visible={tab === 'Terminal'} />
+              <TerminalView backend={terminalBackend} scope={terminalScope} visible={tab === 'Terminal'} />
             </Suspense>
           </div>
         )}

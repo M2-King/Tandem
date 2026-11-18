@@ -42,8 +42,9 @@ function startShell(session) {
   );
 }
 
-async function ensureSession(backend) {
-  if (current && current.backend === backend) return current;
+// scope: which project it belongs to (this device's, or a shared project's id).
+async function ensureSession(backend, scope) {
+  if (current && current.backend === backend && current.scope === scope) return current;
   current?.handle?.kill();
   current?.term?.dispose();
   const { Terminal, FitAddon } = await load();
@@ -65,7 +66,7 @@ async function ensureSession(backend) {
   term.loadAddon(fit);
   const element = document.createElement('div');
   element.className = 'terminal-surface';
-  const session = { term, fit, element, handle: null, ended: true, backend, onState: null };
+  const session = { term, fit, element, handle: null, ended: true, backend, scope, onState: null };
   term.onData((data) => {
     if (session.ended) startShell(session);
     else session.handle?.write(data);
@@ -75,7 +76,7 @@ async function ensureSession(backend) {
   return session;
 }
 
-export default function TerminalView({ backend, visible }) {
+export default function TerminalView({ backend, scope = 'device', visible }) {
   const host = useRef(null);
   const [session, setSession] = useState(null);
   const [info, setInfo] = useState(null);
@@ -83,14 +84,14 @@ export default function TerminalView({ backend, visible }) {
 
   useEffect(() => {
     let alive = true;
-    ensureSession(backend).then(
+    ensureSession(backend, scope).then(
       (s) => alive && setSession(s),
       (e) => alive && setError(e?.message || String(e))
     );
     return () => {
       alive = false;
     };
-  }, [backend]);
+  }, [backend, scope]);
 
   useEffect(() => {
     if (!session || !host.current) return undefined;
