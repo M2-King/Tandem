@@ -99,6 +99,10 @@ jobs:
           python -m pip install ./runtime "pyinstaller==6.11.1"
           pyinstaller --noconfirm --distpath out --workpath build-pyi packaging/tandem-runtime.spec
 
+      # What the app installs on SSH servers (the runtime wheel, bootstrap.sh, constraints.txt).
+      - name: Files for projects on SSH servers
+        run: python packaging/remote-files.py
+
       - name: Check the bundled runtime
         shell: pwsh
         run: |
@@ -106,11 +110,11 @@ jobs:
           smoke-project-env/Scripts/python.exe -m pip install --quiet numpy pandas matplotlib ipykernel ipywidgets
           python packaging/windows/smoke.py out/tandem-runtime/tandem-runtime.exe (Resolve-Path smoke-project-env/Scripts/python.exe).Path
 
-      - name: Update channel unit tests
+      - name: Desktop unit tests (updates, secure store, SSH)
         if: github.ref == 'refs/heads/cowork'
         run: |
           npm ci --prefix desktop
-          node --test packaging/staging-app.test.cjs desktop/updater.test.cjs desktop/secureStore.test.cjs desktop/updatingWindow.test.cjs
+          node --test packaging/staging-app.test.cjs desktop/updater.test.cjs desktop/secureStore.test.cjs desktop/updatingWindow.test.cjs desktop/ssh/ssh.test.cjs
 
       # The "Updating Tandem" window that shows while the installer runs
       # (desktop/updating.ps1), started exactly as Tandem starts it, through a

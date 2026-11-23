@@ -91,9 +91,22 @@ def resolve_interpreter(root: Path, cli_python: str | None = None) -> tuple[Path
         found = _mac_python()
     else:
         found = shutil.which("python3") or shutil.which("python")
-    if found and Path(found).resolve() != Path(sys.executable).resolve():
+    if found and not is_runtime_python(found):
         return Path(found), "PATH"
     return None, "none"
+
+
+def is_runtime_python(path: str | Path) -> bool:
+    """Is this the runtime's own Python (which holds the runtime's packages, not the project's)?
+
+    When the runtime has an environment of its own (a venv, as on an SSH server),
+    only that environment is off limits: the system Python it was made from is
+    an ordinary interpreter for projects."""
+    p = Path(path)
+    if sys.prefix != sys.base_prefix:
+        prefix = Path(sys.prefix).absolute()
+        return p.absolute() == Path(sys.executable).absolute() or prefix in p.absolute().parents
+    return p.resolve() == Path(sys.executable).resolve()
 
 
 _WIN_CACHE: list = []

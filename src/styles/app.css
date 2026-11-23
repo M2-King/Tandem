@@ -7255,3 +7255,28 @@ textarea.nbw-input {
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* A project on an SSH server: where the code runs. */
+.remote-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 220px;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--material-1, rgba(255, 255, 255, 0.04));
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.remote-chip svg {
+  flex: none;
+  color: var(--accent);
+}
+.remote-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

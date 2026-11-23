@@ -31,12 +31,23 @@
       "updatingWindow.js",
       "build/icon.ico",
       "build/icon.png",
-      "package.json"
+      "package.json",
+      "ssh/**",
+      "!node_modules/ssh2/lib/protocol/crypto/build/**",
+      "!node_modules/cpu-features/**",
+      "!node_modules/nan/**"
     ],
     "extraResources": [
       {
         "from": "../out/tandem-runtime",
         "to": "runtime",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../out/remote",
+        "to": "remote",
         "filter": [
           "**/*"
         ]
@@ -94,9 +105,11 @@
       ],
       "icon": "build/icon.png",
       "category": "Development"
-    }
+    },
+    "npmRebuild": false
   },
   "dependencies": {
-    "electron-updater": "6.8.10"
+    "electron-updater": "6.8.10",
+    "ssh2": "1.17.0"
   }
 }

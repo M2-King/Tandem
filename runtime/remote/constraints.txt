@@ -1,0 +1,35 @@
+# Tandem on an SSH server: the runtime's dependencies, pinned to the versions
+# Tandem is tested with (runtime/remote/bootstrap.sh installs with -c this file).
+# Regenerate from a fresh venv with the runtime installed: pip freeze.
+annotated-doc==0.0.7
+annotated-types==0.8.0
+anthropic==2.12.0
+anyio==4.16.0
+click==8.5.1
+docstring_parser==0.18.0
+fastapi==0.165.0
+h11==0.16.0
+httpcore2==2.16.2
+httpx2==2.16.2
+idna==3.20
+jedi==0.20.1
+jiter==0.19.0
+jupyter_client==8.10.0
+jupyter_core==5.9.1
+opentelemetry-api==1.45.2
+parso==0.8.7
+platformdirs==4.14.8
+pydantic==2.14.4
+pydantic_core==2.50.5
+python-dateutil==4.0.0
+pyzmq==27.3.0
+sniffio==1.3.1
+starlette==1.10.0
+tornado==6.6.1
+traitlets==5.16.1
+truststore==0.10.5
+typing-inspection==0.4.5
+typing_extensions==4.16.0
+tzdata==2026.6
+uvicorn==0.54.0
+websockets==17.4

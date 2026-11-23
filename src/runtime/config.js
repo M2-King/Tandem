@@ -24,3 +24,6 @@ export const IS_LOCAL = RUNTIME_CONFIG !== null;
 export const MODE = IS_LOCAL ? 'local' : 'demo';
 // Tandem for iPad: the iPad app serves the page; Python runs in the page (Pyodide).
 export const IS_IPAD = IS_LOCAL && RUNTIME_CONFIG.platform === 'ipad';
+// A project on an SSH server: the app's gateway serves this page and passes
+// the API to Tandem's runtime on the server. { label, host, user, folder }.
+export const REMOTE = IS_LOCAL && RUNTIME_CONFIG.remote && typeof RUNTIME_CONFIG.remote === 'object' ? RUNTIME_CONFIG.remote : null;

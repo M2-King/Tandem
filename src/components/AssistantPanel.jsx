@@ -7,7 +7,7 @@ import Markdown from './Markdown.jsx';
 import ProposalCard from './ProposalCard.jsx';
 import IconButton from './IconButton.jsx';
 import { DEMO_PROMPTS } from '../services/aiService.js';
-import { IS_LOCAL } from '../runtime/config.js';
+import { IS_LOCAL, REMOTE } from '../runtime/config.js';
 
 const chipIcon = (type) => (type === 'chart' ? BarChart3 : type === 'error' ? AlertCircle : Code2);
 
@@ -659,7 +659,11 @@ export default function AssistantPanel({
     <section className="assistant-inner" aria-label="AI assistant">
       <div className="panel-header">
         <span className="panel-title">Assistant</span>
-        {IS_LOCAL ? (
+        {REMOTE ? (
+          <span className="sim-tag" data-tooltip="On an SSH server the assistant isn’t available yet: AI keys stay on this device, never on a server.">
+            Not on servers yet
+          </span>
+        ) : IS_LOCAL ? (
           aiModel ? (
             <span
               className={`sim-tag ai-model-tag${aiModel.shared ? ' is-shared' : ''}`}

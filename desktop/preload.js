@@ -35,4 +35,10 @@ contextBridge.exposeInMainWorld('tandemDesktop', {
     onState: listen('desktop:updates'),
   }),
   onOpenFile: listen('desktop:open-file'),
+  // Projects on an SSH server: the app shows its own connect window (the page
+  // never sees passwords or keys).
+  ssh: Object.freeze({
+    connect: () => ipcRenderer.invoke('desktop:ssh-connect'),
+    disconnect: () => ipcRenderer.invoke('desktop:ssh-disconnect'),
+  }),
 });

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'" />
+<title>Connect to an SSH server</title>
+<style>
+  :root { color-scheme: dark; --bg: #1b1d24; --panel: #232631; --line: #343847; --text: #e6e9ef; --muted: #9aa3b5; --accent: #7aa2ff; --warn: #e8b85c; --err: #ef8a80; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px 22px; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+  .servers { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .server { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; }
+  .server:hover, .server:focus-visible { border-color: var(--accent); outline: none; }
+  .server .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .server .folder { color: var(--muted); font-size: 12px; }
+  .server button { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 12px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=password], input[type=number] { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line); background: #15171d; color: var(--text); font: inherit; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  .row > div.port { flex: 0 0 90px; }
+  .tabs { display: flex; gap: 4px; margin: 14px 0 2px; }
+  .tabs button { flex: 1; padding: 7px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; font: inherit; }
+  .tabs button[aria-pressed=true] { border-color: var(--accent); background: #2b3350; }
+  .key { display: flex; gap: 8px; }
+  .key input { flex: 1; }
+  .btn { padding: 8px 14px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; font: inherit; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #0d1020; font-weight: 600; }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--muted); font-size: 13px; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .status { margin-top: 14px; font-size: 13px; color: var(--muted); min-height: 20px; }
+  .status.error { color: var(--err); white-space: pre-wrap; }
+  .hostkey { margin-top: 14px; padding: 12px; border: 1px solid var(--warn); border-radius: 8px; background: #2c2618; }
+  .hostkey code { display: block; margin: 6px 0; word-break: break-all; font-size: 12px; color: var(--text); }
+  .note { margin-top: 16px; color: var(--muted); font-size: 12px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<h1>Connect to an SSH server</h1>
+<p class="sub">Open a folder on a server: you edit its files here, and Run, notebooks and the Terminal use the server’s Python.</p>
+
+<div class="servers" id="servers" aria-label="Saved servers"></div>
+
+<form id="form" autocomplete="off" novalidate>
+  <div class="row">
+    <div><label for="host">Server</label><input id="host" type="text" placeholder="lab.example.edu" spellcheck="false" /></div>
+    <div class="port"><label for="port">Port</label><input id="port" type="number" min="1" max="65535" value="22" /></div>
+  </div>
+  <label for="username">Username</label>
+  <input id="username" type="text" spellcheck="false" />
+  <label for="folder">Folder on the server</label>
+  <input id="folder" type="text" value="~" spellcheck="false" />
+
+  <div class="tabs" role="group" aria-label="Sign in with">
+    <button type="button" id="use-password" aria-pressed="true">Password</button>
+    <button type="button" id="use-key" aria-pressed="false">SSH key</button>
+  </div>
+  <div id="password-box">
+    <label for="password">Password</label>
+    <input id="password" type="password" />
+  </div>
+  <div id="key-box" hidden>
+    <label for="key-path">Private key</label>
+    <div class="key"><input id="key-path" type="text" spellcheck="false" placeholder="~/.ssh/id_ed25519" /><button type="button" class="btn" id="pick-key">Choose…</button></div>
+    <label for="passphrase">Passphrase (if the key has one)</label>
+    <input id="passphrase" type="password" />
+  </div>
+  <label class="check"><input type="checkbox" id="remember" /> <span id="remember-label">Remember the password on this computer</span></label>
+
+  <div class="hostkey" id="hostkey" hidden>
+    <strong>First connection to <span id="hk-host"></span></strong>
+    <div>The server identifies itself with this <span id="hk-type"></span> key:</div>
+    <code id="hk-fp"></code>
+    <div>If you can, check it with the server’s admin. Tandem remembers it and warns if it ever changes.</div>
+    <div class="actions"><button type="button" class="btn" id="hk-no">Cancel</button><button type="button" class="btn primary" id="hk-yes">Trust and connect</button></div>
+  </div>
+
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+  <div class="actions"><button type="button" class="btn" id="cancel">Cancel</button><button type="submit" class="btn primary" id="connect">Connect</button></div>
+</form>
+<p class="note">Tandem installs its runtime in <code>~/.tandem</code> on the server the first time (Linux or macOS, Python from PyPI). Code you run there runs with your account on that server. The assistant and Shared projects stay on this computer.</p>
+<script src="connect.js"></script>
+</body>
+</html>

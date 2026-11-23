@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import socket
 import sys
@@ -34,6 +35,23 @@ def _bind(port: int) -> socket.socket:
     return sock
 
 
+def _exit_with_stdin(server, grace: float = 10.0) -> None:
+    """Stop when stdin closes: on a server, the SSH connection that started
+    this runtime has ended. Runs, kernels and terminals are shut down as on a
+    normal stop; if that hangs, the process ends anyway."""
+
+    def watch():
+        try:
+            while sys.stdin.buffer.read(65536):
+                pass
+        except (OSError, ValueError):
+            pass
+        server.should_exit = True
+        threading.Timer(grace, lambda: os._exit(0)).start()
+
+    threading.Thread(target=watch, name="tandem-stdin-watch", daemon=True).start()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tandem", description="Run Tandem with real Python on this computer.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -47,6 +65,12 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--ui", type=Path, default=DEFAULT_UI, help="folder with the built Tandem UI")
         p.add_argument("--print-url", action="store_true", help="print only the URL (for desktop shells)")
         p.add_argument("--watch-pid", type=int, help="exit when this process (the desktop app) exits")
+        # Tandem on an SSH server (the apps start it there; see remote_bootstrap.sh).
+        p.add_argument("--print-token", action="store_true",
+                       help="after the URL, print the session token (for an app that serves its own UI)")
+        p.add_argument("--exit-with-stdin", action="store_true",
+                       help="stop when standard input closes (an SSH connection ending)")
+        p.add_argument("--no-ui", action="store_true", help="serve only the API, not the UI")
         p.add_argument("--shared-root", type=Path, default=None,
                        help="folder for working copies of Tandem Cowork shared projects "
                             "(default: Tandem's settings folder, shared/)")
@@ -76,12 +100,14 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     port = sock.getsockname()[1]
     policy = AccessPolicy(token=new_token(), port=port)
-    ui_dir = args.ui.resolve() if args.ui and args.ui.exists() else None
+    ui_dir = None if args.no_ui else (args.ui.resolve() if args.ui and args.ui.exists() else None)
     app = create_app(project, policy, ui_dir, cli_python=args.python, shared_root=args.shared_root)
 
     url = f"http://127.0.0.1:{port}/"
     if args.print_url:
         print(url, flush=True)
+        if args.print_token:
+            print(f"token={policy.token}", flush=True)
     else:
         print(f"Tandem runtime for {project}\n  {url}\n"
               "  Code runs on this computer with your permissions. This is not a sandbox.\n"
@@ -96,6 +122,8 @@ def main(argv: list[str] | None = None) -> int:
 
         exit_with(args.watch_pid)
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="on"))
+    if args.exit_with_stdin:
+        _exit_with_stdin(server)
     server.run(sockets=[sock])
     return 0
 

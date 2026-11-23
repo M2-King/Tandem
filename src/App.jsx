@@ -20,7 +20,8 @@ import { applyGlass } from './lib/glass.js';
 import { useWorkspace } from './state/useWorkspace.js';
 import { requestedFile, useDiskWorkspace } from './state/useDiskWorkspace.js';
 import { useRuntimeStatus } from './state/useRuntimeStatus.js';
-import { IS_IPAD, IS_LOCAL, RUNTIME_CONFIG } from './runtime/config.js';
+import { IS_IPAD, IS_LOCAL, REMOTE, RUNTIME_CONFIG } from './runtime/config.js';
+import { SSH } from './runtime/sshBridge.js';
 import { setupIpadShell } from './runtime/ipadShell.js';
 import { createLocalBackend } from './runtime/localBackend.js';
 import { createIpadBackend } from './runtime/ipadBackend.js';
@@ -321,7 +322,14 @@ export default function App() {
   sharedAIRef.current = sharedAI;
   const realRequest = useMemo(
     () =>
-      IS_LOCAL
+      REMOTE
+        ? // On an SSH server: AI keys stay on this device, so the assistant isn't there yet.
+          async () => {
+            const error = new Error('The assistant isn’t available in projects on an SSH server yet.');
+            error.userMessage = 'The assistant isn’t available in projects on an SSH server yet: its API keys stay on this device. No files were changed.';
+            throw error;
+          }
+        : IS_LOCAL
         ? createRealAssistant({
             backend,
             getLastRun: (path) => runsRef.current.filter((r) => r.path === path).at(-1) || null,
@@ -1151,7 +1159,10 @@ export default function App() {
           ) : null
         }
         hideWork={onSharedHome}
-        onSharedProjects={onSharedHome ? null : () => cowork.go('home')}
+        onSharedProjects={onSharedHome || REMOTE ? null : () => cowork.go('home')}
+        remote={REMOTE}
+        onConnectSsh={SSH && !inCowork && !onSharedHome ? () => SSH.connect() : null}
+        onDisconnectSsh={SSH && REMOTE ? () => SSH.disconnect() : null}
         projectName={projectName}
         modeBadge={IS_LOCAL ? <RuntimeStatus {...runtime} onOpenEnv={(tab) => setEnvDialog({ tab })} /> : <DemoBadge />}
         savesToDisk={IS_LOCAL}
@@ -1199,7 +1210,7 @@ export default function App() {
         diffInline={prefs.diffInline}
         onDiffInline={(inline) => update({ diffInline: inline })}
         onReset={IS_LOCAL || inCowork || onSharedHome ? null : () => setConfirmReset(true)}
-        onAISettings={IS_LOCAL ? openAISettings : null}
+        onAISettings={IS_LOCAL && !REMOTE ? openAISettings : null}
         onAddFiles={IS_LOCAL && !inCowork ? handleAddFiles : null}
         desktop={{ ...desktop, setMaterial: (m) => desktop.setMaterial(m, { busy: !!exec.session }) }}
         onOpenFolder={
@@ -1281,7 +1292,7 @@ export default function App() {
       ) : (
       <div className={`workspace ${entering ? 'cw-enter' : ''}`}>
         <NavRail
-          shared={{ active: false, onOpen: () => cowork.go('home'), badge: cowork.invitations.length > 0 }}
+          shared={REMOTE ? null : { active: false, onOpen: () => cowork.go('home'), badge: cowork.invitations.length > 0 }}
           filesOpen={sidebarVisible}
           onToggleFiles={toggleFiles}
           resultsOpen={resultsOpen}
@@ -1490,7 +1501,7 @@ export default function App() {
             onRetry={(r) => sendPrompt(r.prompt, { intent: r.intent, context: r.context })}
             composerRef={composerRef}
             onClose={closeAssistant}
-            onConnectAI={IS_LOCAL ? openAISettings : null}
+            onConnectAI={IS_LOCAL && !REMOTE ? openAISettings : null}
             composerSuggestions={composerSuggestions}
             onGoToCode={(chip) => {
               ws.openFile(chip.path);

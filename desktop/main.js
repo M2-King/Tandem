@@ -9,6 +9,10 @@
 // It may only load the local runtime's own address; other links open in the
 // browser. The preload exposes a few window actions and, in Tandem Staging,
 // the update state (updater.js), nothing else.
+//
+// A project can also be on an SSH server (ssh/): Tandem's runtime runs there,
+// and the window shows the app's own UI through a gateway on this computer
+// (ssh/gateway.js) that reaches the server's runtime through the connection.
 
 const { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, shell } = require('electron');
 const { spawn } = require('node:child_process');
@@ -27,6 +31,7 @@ if (DATA_FOLDER && !app.commandLine.hasSwitch('user-data-dir')) {
 }
 const { showUpdatingWindow } = require('./updatingWindow.js');
 const { createSecureStore } = require('./secureStore.js');
+const { connectToServer } = require('./ssh/connectWindow.js');
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -38,7 +43,7 @@ const MATERIALS = !SYSTEM_GLASS ? ['clear'] : IS_WIN ? ['clear', 'acrylic', 'mic
 const DEFAULT_MATERIAL = !SYSTEM_GLASS ? 'clear' : IS_WIN ? 'acrylic' : 'vibrancy';
 
 let win = null;
-let runtime = null; // { proc, url, origin, folder }
+let runtime = null; // { proc, url, origin, folder } or, on an SSH server, { remote: { session, gateway, server }, url, origin, folder }
 let quitting = false;
 
 // ---------------------------------------------------------------- settings
@@ -118,6 +123,14 @@ function startRuntime(folder) {
 
 // Resolves once the runtime has exited (or after `waitMs`).
 function stopRuntime(waitMs = 0) {
+  if (runtime?.remote) {
+    // On a server: closing the connection stops Tandem there.
+    const { session, gateway } = runtime.remote;
+    runtime = null;
+    session.close();
+    gateway.close();
+    return Promise.resolve();
+  }
   const proc = runtime?.proc;
   runtime = null;
   if (!proc || proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve();
@@ -368,6 +381,46 @@ async function openFolder(folder, openRel = null) {
   return true;
 }
 
+// ---------------------------------------------------------------- projects on an SSH server
+
+// The UI the gateway serves (the same build the runtime here serves) and the
+// files Tandem installs on servers.
+function uiDir() {
+  if (process.env.TANDEM_UI) return process.env.TANDEM_UI;
+  if (app.isPackaged) {
+    const internal = path.join(process.resourcesPath, 'runtime', '_internal', 'ui');
+    return fs.existsSync(internal) ? internal : path.join(process.resourcesPath, 'runtime', 'ui');
+  }
+  return path.join(__dirname, '..', 'dist');
+}
+function remoteDir() {
+  if (process.env.TANDEM_REMOTE_DIR) return process.env.TANDEM_REMOTE_DIR;
+  return app.isPackaged ? path.join(process.resourcesPath, 'remote') : path.join(__dirname, '..', 'out', 'remote');
+}
+
+async function connectRemote(prefill = null) {
+  const result = await connectToServer({
+    parent: win && !win.isDestroyed() ? win : null,
+    userData: app.getPath('userData'),
+    secure: secure(),
+    remoteDir: remoteDir(),
+    uiDir: uiDir(),
+    version: app.getVersion(),
+    prefill,
+  });
+  if (!result) return false;
+  const { session, gateway, server } = result;
+  stopRuntime(); // this computer's project (or an earlier server)
+  runtime = { remote: { session, gateway, server }, url: gateway.url, origin: gateway.origin, folder: `${server.label}:${server.folder}` };
+  session.on('lost', () => {
+    if (runtime?.remote?.session !== session) return;
+    if (!quitting && win && !win.isDestroyed()) win.webContents.send('desktop:runtime-exit', null);
+  });
+  if (win && !win.isDestroyed()) win.loadURL(gateway.url);
+  else createWindow(null, gateway.url);
+  return true;
+}
+
 // ---------------------------------------------------------------- IPC (from the page)
 
 function fromOurPage(event) {
@@ -394,6 +447,7 @@ handle('desktop:info', () => ({
   materials: MATERIALS,
   maximized: win?.isMaximized() ?? false,
   folder: runtime?.folder ?? null,
+  remote: runtime?.remote ? { label: runtime.remote.server.label, host: runtime.remote.server.host, folder: runtime.remote.server.folder } : null,
   name: require('./package.json').tandemDisplayName || app.getName(),
   version: app.getVersion(),
   wallpaperLuminance: wallpaperLuminance(),
@@ -425,7 +479,22 @@ handle('desktop:open-folder', async () => {
   return openFolder(folder);
 });
 
-handle('desktop:restart-runtime', () => (runtime?.folder || loadSettings().lastFolder ? openFolder(runtime?.folder || loadSettings().lastFolder) : false));
+handle('desktop:restart-runtime', () => {
+  // On a server: connect again (the connect window, filled in).
+  if (runtime?.remote) return connectRemote(runtime.remote.server);
+  return runtime?.folder || loadSettings().lastFolder ? openFolder(runtime?.folder || loadSettings().lastFolder) : false;
+});
+
+// Projects on an SSH server.
+handle('desktop:ssh-connect', () => connectRemote());
+handle('desktop:ssh-disconnect', async () => {
+  if (!runtime?.remote) return false;
+  const folder = loadSettings().lastFolder;
+  stopRuntime();
+  if (folder && fs.existsSync(folder)) return openFolder(folder);
+  const chosen = await chooseFolder(win);
+  return chosen ? openFolder(chosen) : false;
+});
 
 // Tandem Staging updates itself; in other builds these only report "off".
 const updates = setupUpdates({

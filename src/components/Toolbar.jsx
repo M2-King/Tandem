@@ -19,6 +19,8 @@ import {
   Code2,
   Database,
   Users,
+  Server,
+  Unplug,
   RefreshCw,
   Download,
   Eye,
@@ -159,6 +161,9 @@ export default function Toolbar({
   onSharedProjects,
   updates,
   onRestartToUpdate,
+  remote,
+  onConnectSsh,
+  onDisconnectSsh,
 }) {
   const fileInput = useRef(null);
   const addInput = useRef(null);
@@ -176,6 +181,12 @@ export default function Toolbar({
               /
             </span>
             <span className="project-name">{projectName}</span>
+            {remote && (
+              <span className="remote-chip" tabIndex={0} data-tooltip={`On ${remote.label}, in ${remote.folder}. Code runs on that server.`}>
+                <Server size={12} aria-hidden="true" />
+                <span className="remote-chip-text">{remote.label}</span>
+              </span>
+            )}
             {modeBadge}
             <SaveStatus state={saveState} onDisk={savesToDisk} />
           </>
@@ -259,6 +270,12 @@ export default function Toolbar({
                     description="Switch to another project"
                     onSelect={onOpenFolder}
                   />
+                )}
+                {onConnectSsh && !remote && (
+                  <MenuItem close={close} icon={Server} label="Connect to SSH server…" description="Open a folder on a server; code runs there" onSelect={onConnectSsh} />
+                )}
+                {onDisconnectSsh && (
+                  <MenuItem close={close} icon={Unplug} label={`Disconnect from ${remote.label}`} description="Back to this device" onSelect={onDisconnectSsh} />
                 )}
                 {onAddFiles && (
                   <MenuItem

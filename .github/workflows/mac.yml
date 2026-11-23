@@ -90,6 +90,10 @@ jobs:
           python -m pip install ./runtime "pyinstaller==6.11.1"
           pyinstaller --noconfirm --distpath out --workpath build-pyi packaging/tandem-runtime.spec
 
+      # What the app installs on SSH servers (the runtime wheel, bootstrap.sh, constraints.txt).
+      - name: Files for projects on SSH servers
+        run: python packaging/remote-files.py
+
       - name: Check the bundled runtime
         run: |
           python -m venv smoke-project-env
@@ -130,6 +134,37 @@ jobs:
           npm install --no-save "playwright@1.64.1"
           node packaging/desktop-smoke.cjs "${{ steps.app.outputs.path }}/Contents/MacOS/${{ steps.app.outputs.name }}" "$PWD/smoke-project-env/bin/python" desktop-screen-mac.png
 
+      # Projects on an SSH server: a real sshd on this runner (port 2222, its
+      # own test user with a password and a key), and the packaged app
+      # connects to it. The user's python3 is the system's 3.9, so Tandem
+      # installs its own Python there (uv), as on an older server.
+      - name: Projects on an SSH server
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          set -e
+          PW="T$(openssl rand -hex 12)a!"
+          echo "::add-mask::$PW"
+          sudo sysadminctl -addUser tandemssh -fullName "Tandem SSH test" -password "$PW" -home /Users/tandemssh -shell /bin/zsh
+          sudo createhomedir -c -u tandemssh > /dev/null
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/ssh_key"
+          sudo mkdir -p /Users/tandemssh/.ssh
+          sudo cp "$RUNNER_TEMP/ssh_key.pub" /Users/tandemssh/.ssh/authorized_keys
+          sudo chown -R tandemssh /Users/tandemssh/.ssh
+          sudo chmod 700 /Users/tandemssh/.ssh && sudo chmod 600 /Users/tandemssh/.ssh/authorized_keys
+          sudo ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/host_key"
+          printf '%s\n' "Port 2222" "ListenAddress 127.0.0.1" "HostKey $RUNNER_TEMP/host_key" "PasswordAuthentication yes" \
+            "KbdInteractiveAuthentication yes" "UsePAM yes" "PubkeyAuthentication yes" "AllowTcpForwarding local" "PidFile $RUNNER_TEMP/sshd.pid" > "$RUNNER_TEMP/sshd_config"
+          sudo /usr/sbin/sshd -f "$RUNNER_TEMP/sshd_config" -E "$RUNNER_TEMP/sshd.log"
+          sleep 1
+          SSH="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i $RUNNER_TEMP/ssh_key -p 2222 tandemssh@127.0.0.1"
+          $SSH 'mkdir -p proj && printf "import helper\nprint(\"from the server:\", helper.X)\n" > proj/main.py && echo "X = 42" > proj/helper.py && /opt/homebrew/bin/python3 -m venv proj/.venv && proj/.venv/bin/pip install -q ipykernel && python3 --version'
+          mkdir -p "$RUNNER_TEMP/device-project" && echo 'print("on this computer")' > "$RUNNER_TEMP/device-project/local.py"
+          mkdir -p ssh-shots
+          SSH_HOST=127.0.0.1 SSH_PORT=2222 SSH_USER=tandemssh SSH_PASSWORD="$PW" SSH_KEY="$RUNNER_TEMP/ssh_key" SSH_FOLDER='~/proj' \
+          SSH_FINGERPRINT="$(ssh-keygen -lf "$RUNNER_TEMP/host_key.pub" | cut -d' ' -f2)" DEVICE_PROJECT="$RUNNER_TEMP/device-project" \
+            node packaging/ssh-e2e.cjs "${{ steps.app.outputs.path }}/Contents/MacOS/${{ steps.app.outputs.name }}" ssh-shots
+
       - name: Pack the .dmg
         id: dmg
         run: |
@@ -156,5 +191,7 @@ jobs:
         if: always()
         with:
           name: mac-desktop-screenshot
-          path: desktop-screen-mac.png
+          path: |
+            desktop-screen-mac.png
+            ssh-shots/
           if-no-files-found: ignore

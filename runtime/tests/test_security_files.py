@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from pathlib import Path
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
@@ -157,3 +158,21 @@ def test_raw_bytes_round_trip_inside_the_project_only(client, project):
         assert client.get("/api/raw", params={"path": bad}).status_code in (400, 404)
         assert client.put("/api/raw", params={"path": bad}, content=b"x").status_code == 400
     assert client.get("/api/raw", params={"path": "data/practice.db"}, headers={"x-tandem-token": "no"}).status_code == 403
+
+
+def test_the_system_python_a_runtime_venv_was_made_from_is_usable(monkeypatch, tmp_path):
+    # On an SSH server Tandem's own venv is made from the system python3: that
+    # python3 is still the default for projects; only the venv itself isn't.
+    import sys
+    from tandem_runtime import interpreters
+
+    env = tmp_path / "runtime-venv"
+    (env / "bin").mkdir(parents=True)
+    own = env / "bin" / "python"
+    own.symlink_to(sys.base_prefix + "/bin/python3" if (Path(sys.base_prefix) / "bin" / "python3").exists() else sys.executable)
+    monkeypatch.setattr(sys, "prefix", str(env))
+    monkeypatch.setattr(sys, "base_prefix", "/usr")
+    monkeypatch.setattr(sys, "executable", str(own))
+    assert interpreters.is_runtime_python(own)
+    assert interpreters.is_runtime_python(env / "bin" / "python3")
+    assert not interpreters.is_runtime_python(own.resolve())  # the system python it points to
