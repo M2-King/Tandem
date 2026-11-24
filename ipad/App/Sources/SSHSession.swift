@@ -8,7 +8,8 @@ import NIOSSH
 // desktop/ssh/session.js): sign in with a password or a private key, check
 // the server's host key (confirmed the first time, refused if it changes),
 // install Tandem's runtime on the server the first time (the bundled
-// runtime/remote/bootstrap.sh, sent over SFTP), start it for one folder, and
+// runtime/remote/bootstrap.sh and the runtime, sent through shell commands,
+// so the server needs no SFTP), start it for one folder, and
 // open tunnels to it for LocalServer, which shows the app's own UI and passes
 // the API and WebSocket through. The runtime on the server listens on its
 // 127.0.0.1 only and stops when this connection closes.
@@ -254,11 +255,28 @@ final class SSHSession: @unchecked Sendable {
         return (out, ok)
     }
 
+    // Writes a file in the home folder on the server through shell commands
+    // (not SFTP, which some servers don't offer): base64 in chunks well under
+    // the servers' command-length limits, decoded there, then its size checked.
+    // path: relative to the home folder, letters, digits and . _ / - only.
     private func upload(_ data: Data, to path: String) async throws {
-        let sftp = try await client.openSFTP()
-        defer { Task { try? await sftp.close() } }
-        try await sftp.withFile(filePath: path, flags: [.write, .create, .truncate]) { file in
-            try await file.write(ByteBuffer(bytes: data))
+        let target = "\"$HOME/\(path)\""
+        let staged = "\"$HOME/\(path).b64\""
+        let text = data.base64EncodedString()
+        let chunk = 48 * 1024
+        var start = text.startIndex
+        var first = true
+        repeat {
+            let end = text.index(start, offsetBy: chunk, limitedBy: text.endIndex) ?? text.endIndex
+            // The base64 alphabet has no quotes, so the chunk is safe inside '…'.
+            let written = try await run("printf '%s' '\(text[start..<end])' \(first ? ">" : ">>") \(staged)")
+            guard written.ok else { throw SSHFailure(message: "Tandem couldn't write to ~/.tandem on the server (is the disk full?).") }
+            first = false
+            start = end
+        } while start < text.endIndex
+        let decoded = try await run("{ base64 -d < \(staged) > \(target) 2>/dev/null || base64 -D < \(staged) > \(target); } && rm -f \(staged) && wc -c < \(target)")
+        guard decoded.ok, Int(decoded.out.trimmingCharacters(in: .whitespacesAndNewlines)) == data.count else {
+            throw SSHFailure(message: "Tandem couldn't copy its files to the server (\(path.split(separator: "/").last ?? "")).")
         }
     }
 

@@ -39,5 +39,5 @@ The same, from the iPad app: ⋯ → **Connect to SSH server…** opens a native
 
 - `runtime/tests/test_remote_flags.py`: the runtime's server flags (`--print-token`, `--exit-with-stdin`, `--no-ui`).
 - `desktop/ssh/ssh.test.cjs`: connection details, host key fingerprints, known hosts, and the gateway (the server's Host and Origin, what stays on this device).
-- `ipad/tests/ssh.cjs`: the iPad app in the simulator connected to the CI Mac's `sshd` (Citadel, the SFTP install, the gateway): Run and the Terminal on the server, in the iPad layout.
+- `ipad/tests/ssh.cjs`: the iPad app in the simulator connected to the CI Mac's `sshd` (Citadel, the install through shell commands, with no SFTP on that server, the gateway): Run and the Terminal on the server, in the iPad layout.
 - `packaging/ssh-e2e.cjs`: the desktop app against a real `sshd` (CI: the macOS runner, with a packaged app; the server's Python is 3.9 there, so Tandem installs its own): host key confirmation, install, Run, Step through, a notebook cell, the Terminal, Disconnect (Tandem stops on the server), a key sign-in, and a changed host key refused.
