@@ -25,10 +25,11 @@ def test_token_is_printed_only_when_asked(tmp_path):
         assert line.startswith("token=") and len(line) > 30
         token = line.split("=", 1)[1]
         port = url.rsplit(":", 1)[1].strip("/")
-        status = httpx.get(f"{url}api/status", headers={"x-tandem-token": token, "host": f"127.0.0.1:{port}"})
+        # /api/status asks the interpreters for their versions: slow on a cold Windows runner.
+        status = httpx.get(f"{url}api/status", headers={"x-tandem-token": token, "host": f"127.0.0.1:{port}"}, timeout=120)
         assert status.status_code == 200 and status.json()["project"]["root"] == str(tmp_path.resolve())
-        assert httpx.get(f"{url}api/status").status_code == 403  # no token
-        assert httpx.get(url).status_code == 503  # --no-ui: no UI served
+        assert httpx.get(f"{url}api/status", timeout=60).status_code == 403  # no token
+        assert httpx.get(url, timeout=60).status_code == 503  # --no-ui: no UI served
     finally:
         proc.kill()
         proc.wait()
