@@ -167,7 +167,8 @@ jobs:
           sleep 1
           SSH="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=15 -i $RUNNER_TEMP/ssh_key -p 2222 tandemssh@127.0.0.1"
           $SSH 'mkdir -p proj && printf "import helper\nprint(\"from the server:\", helper.X)\n" > proj/main.py && echo "X = 42" > proj/helper.py && /opt/homebrew/bin/python3 -m venv proj/.venv && proj/.venv/bin/pip install -q ipykernel && python3 --version'
-          mkdir -p "$RUNNER_TEMP/device-project" && echo 'print("on this computer")' > "$RUNNER_TEMP/device-project/local.py"
+          mkdir -p "$RUNNER_TEMP/device-project/.tandem" && echo 'print("on this computer")' > "$RUNNER_TEMP/device-project/local.py"
+          printf '{"python": "%s"}' "$PWD/smoke-project-env/bin/python" > "$RUNNER_TEMP/device-project/.tandem/settings.json"
           mkdir -p ssh-shots
           SSH_HOST=127.0.0.1 SSH_PORT=2222 SSH_USER=tandemssh SSH_PASSWORD="$PW" SSH_KEY="$RUNNER_TEMP/ssh_key" SSH_FOLDER='~/proj' \
           SSH_FINGERPRINT="$(ssh-keygen -lf "$RUNNER_TEMP/host_key.pub" | cut -d' ' -f2)" DEVICE_PROJECT="$RUNNER_TEMP/device-project" \

@@ -69,13 +69,15 @@ async function fillTarget(connect) {
   await connect.locator('#folder').fill(E.SSH_FOLDER);
 }
 
+// This computer's project: the runtime is connected (whether or not it found a Python here).
+const DEVICE_READY = '.runtime-status.tone-up, .runtime-status.tone-warn';
 const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines')?.innerText || '');
 
 (async () => {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-ssh-e2e-'));
   const app = await launch(userData);
   let win = await app.firstWindow();
-  await win.locator('.runtime-status.tone-up').waitFor({ timeout: 90000 });
+  await win.locator(DEVICE_READY).first().waitFor({ timeout: 90000 });
   check(true, 'the app opened this computer’s project');
 
   // ---- first connection: password, host key confirmed
@@ -141,7 +143,7 @@ const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines
   // Disconnect: back to this computer's project; Tandem stops on the server.
   await win.getByRole('button', { name: 'More options' }).click();
   await win.getByRole('menuitem', { name: /Disconnect from/ }).click();
-  await win.waitForFunction(() => !document.querySelector('.remote-chip') && document.querySelector('.runtime-status.tone-up'), null, { timeout: 60000 });
+  await win.waitForFunction((sel) => !document.querySelector('.remote-chip') && document.querySelector(sel), DEVICE_READY, { timeout: 60000 });
   const back = await win
     .waitForFunction(() => [...document.querySelectorAll('.file-sidebar, .sidebar')].some((el) => el.innerText.includes('local.py')), null, { timeout: 30000 })
     .then(() => true, () => false);
