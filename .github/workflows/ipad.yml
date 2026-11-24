@@ -141,9 +141,11 @@ jobs:
           sudo ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/host_key"
           printf '%s\n' "Port 2222" "ListenAddress 127.0.0.1" "HostKey $RUNNER_TEMP/host_key" "PasswordAuthentication yes" \
             "KbdInteractiveAuthentication yes" "UsePAM yes" "PubkeyAuthentication yes" "AllowTcpForwarding local" "PidFile $RUNNER_TEMP/sshd.pid" > "$RUNNER_TEMP/sshd_config"
+          trap 'echo "--- sshd log"; sudo cat "$RUNNER_TEMP/sshd.log" 2>/dev/null || true' ERR
+          sudo /usr/sbin/sshd -t -f "$RUNNER_TEMP/sshd_config"
           sudo /usr/sbin/sshd -f "$RUNNER_TEMP/sshd_config" -E "$RUNNER_TEMP/sshd.log"
           sleep 1
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i "$RUNNER_TEMP/ssh_key" -p 2222 tandemssh@127.0.0.1 \
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=15 -i "$RUNNER_TEMP/ssh_key" -p 2222 tandemssh@127.0.0.1 \
             'mkdir -p proj && printf "import helper\nprint(\"from the server:\", helper.X)\n" > proj/main.py && echo "X = 42" > proj/helper.py'
           TEST=$(python3 -c 'import base64, json, sys; print(base64.b64encode(json.dumps({"host": "127.0.0.1", "port": 2222, "user": "tandemssh", "folder": "~/proj", "key": open(sys.argv[1]).read(), "fingerprint": sys.argv[2]}).encode()).decode())' \
             "$RUNNER_TEMP/ssh_key" "$(ssh-keygen -lf "$RUNNER_TEMP/host_key.pub" | cut -d' ' -f2)")

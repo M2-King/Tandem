@@ -158,9 +158,11 @@ jobs:
           sudo ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/host_key"
           printf '%s\n' "Port 2222" "ListenAddress 127.0.0.1" "HostKey $RUNNER_TEMP/host_key" "PasswordAuthentication yes" \
             "KbdInteractiveAuthentication yes" "UsePAM yes" "PubkeyAuthentication yes" "AllowTcpForwarding local" "PidFile $RUNNER_TEMP/sshd.pid" > "$RUNNER_TEMP/sshd_config"
+          trap 'echo "--- sshd log"; sudo cat "$RUNNER_TEMP/sshd.log" 2>/dev/null || true' ERR
+          sudo /usr/sbin/sshd -t -f "$RUNNER_TEMP/sshd_config"
           sudo /usr/sbin/sshd -f "$RUNNER_TEMP/sshd_config" -E "$RUNNER_TEMP/sshd.log"
           sleep 1
-          SSH="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i $RUNNER_TEMP/ssh_key -p 2222 tandemssh@127.0.0.1"
+          SSH="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=15 -i $RUNNER_TEMP/ssh_key -p 2222 tandemssh@127.0.0.1"
           $SSH 'mkdir -p proj && printf "import helper\nprint(\"from the server:\", helper.X)\n" > proj/main.py && echo "X = 42" > proj/helper.py && /opt/homebrew/bin/python3 -m venv proj/.venv && proj/.venv/bin/pip install -q ipykernel && python3 --version'
           mkdir -p "$RUNNER_TEMP/device-project" && echo 'print("on this computer")' > "$RUNNER_TEMP/device-project/local.py"
           mkdir -p ssh-shots
