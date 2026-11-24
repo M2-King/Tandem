@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PEOPLE, PRESENCE_SCRIPT, initialProjects, starterFiles } from './fixtures.js';
 import { addressOf, normalizeUsername, passwordProblem, personForUsername, usernameProblem } from './accounts.js';
 import { safeFileName, uniqueFileName } from '../state/useDiskWorkspace.js';
+import { REMOTE } from '../runtime/config.js';
 
 // Who can do what in a shared project. The UI reads this table, so the
 // buttons people see always match their role.
@@ -30,8 +31,9 @@ const RECONNECT_AFTER = 6000;
 const PRESENCE_EVERY = 3200;
 
 // A review build can open on Shared projects (VITE_COWORK_START=shared); this
-// device's project then has its own route, #/device.
-const START_SHARED = import.meta.env.VITE_COWORK_START === 'shared';
+// device's project then has its own route, #/device. A project on an SSH
+// server always opens on that project (Shared projects aren't offered there).
+const START_SHARED = import.meta.env.VITE_COWORK_START === 'shared' && !REMOTE;
 const LOCAL_HASH = START_SHARED ? '#/device' : '';
 
 function parseHash() {

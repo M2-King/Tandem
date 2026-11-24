@@ -71,13 +71,20 @@ async function fillTarget(connect) {
 
 // This computer's project: the runtime is connected (whether or not it found a Python here).
 const DEVICE_READY = '.runtime-status.tone-up, .runtime-status.tone-warn';
+// Staging builds open on sign-in / the projects page (VITE_COWORK_START=shared);
+// this computer's project is then at #/device.
+async function deviceProject(w, timeout) {
+  await w.locator('.runtime-status, #signin-username, .shared-page').first().waitFor({ timeout });
+  if (!(await w.locator('.runtime-status').count())) await w.evaluate(() => { window.location.hash = '#/device'; });
+  await w.locator(DEVICE_READY).first().waitFor({ timeout });
+}
 const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines')?.innerText || '');
 
 (async () => {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-ssh-e2e-'));
   const app = await launch(userData);
   let win = await app.firstWindow();
-  await win.locator(DEVICE_READY).first().waitFor({ timeout: 90000 });
+  await deviceProject(win, 90000);
   check(true, 'the app opened this computer’s project');
 
   // ---- first connection: password, host key confirmed
@@ -143,7 +150,8 @@ const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines
   // Disconnect: back to this computer's project; Tandem stops on the server.
   await win.getByRole('button', { name: 'More options' }).click();
   await win.getByRole('menuitem', { name: /Disconnect from/ }).click();
-  await win.waitForFunction((sel) => !document.querySelector('.remote-chip') && document.querySelector(sel), DEVICE_READY, { timeout: 60000 });
+  await win.waitForFunction(() => !document.querySelector('.remote-chip'), null, { timeout: 60000 });
+  await deviceProject(win, 60000);
   const back = await win
     .waitForFunction(() => [...document.querySelectorAll('.file-sidebar, .sidebar')].some((el) => el.innerText.includes('local.py')), null, { timeout: 30000 })
     .then(() => true, () => false);
@@ -166,6 +174,7 @@ const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines
   await win.getByRole('button', { name: 'More options' }).click();
   await win.getByRole('menuitem', { name: /Disconnect from/ }).click();
   await win.waitForFunction(() => !document.querySelector('.remote-chip'), null, { timeout: 60000 });
+  await deviceProject(win, 60000);
 
   // ---- a changed host key is refused
   const known = path.join(userData, 'ssh-known-hosts.json');
