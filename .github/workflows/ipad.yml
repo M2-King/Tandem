@@ -133,6 +133,9 @@ jobs:
           echo "::add-mask::$PW"
           sudo sysadminctl -addUser tandemssh -fullName "Tandem SSH test" -password "$PW" -home /Users/tandemssh -shell /bin/zsh
           sudo mkdir -p /Users/tandemssh && sudo chown tandemssh:staff /Users/tandemssh && sudo chmod 755 /Users/tandemssh
+          # macOS lets only the Remote Login group (com.apple.access_ssh) sign in over SSH.
+          sudo dseditgroup -o read com.apple.access_ssh > /dev/null 2>&1 || sudo dseditgroup -o create -q com.apple.access_ssh
+          sudo dseditgroup -o edit -a tandemssh -t user com.apple.access_ssh
           ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/ssh_key"
           sudo mkdir -p /Users/tandemssh/.ssh
           sudo cp "$RUNNER_TEMP/ssh_key.pub" /Users/tandemssh/.ssh/authorized_keys
