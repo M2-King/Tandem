@@ -122,6 +122,36 @@ jobs:
           STOP_BUDGET_MS=30000 node ipad/tests/web.cjs http://127.0.0.1:47831/ webkit --full
           xcrun simctl io "$UDID" screenshot ipad-simulator-after.png || true
 
+      # Projects on an SSH server from the iPad app: a real sshd on this Mac
+      # (the simulator shares its network), its own test user and key. The app
+      # connects at launch (TANDEM_SSH_TEST, simulator only), as if from the
+      # sheet; the page is then driven from WebKit.
+      - name: Projects on an SSH server (iPad)
+        run: |
+          set -e
+          PW="T$(openssl rand -hex 12)a!"
+          echo "::add-mask::$PW"
+          sudo sysadminctl -addUser tandemssh -fullName "Tandem SSH test" -password "$PW" -home /Users/tandemssh -shell /bin/zsh
+          sudo mkdir -p /Users/tandemssh && sudo chown tandemssh:staff /Users/tandemssh && sudo chmod 755 /Users/tandemssh
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/ssh_key"
+          sudo mkdir -p /Users/tandemssh/.ssh
+          sudo cp "$RUNNER_TEMP/ssh_key.pub" /Users/tandemssh/.ssh/authorized_keys
+          sudo chown -R tandemssh /Users/tandemssh/.ssh
+          sudo chmod 700 /Users/tandemssh/.ssh && sudo chmod 600 /Users/tandemssh/.ssh/authorized_keys
+          sudo ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/host_key"
+          printf '%s\n' "Port 2222" "ListenAddress 127.0.0.1" "HostKey $RUNNER_TEMP/host_key" "PasswordAuthentication yes" \
+            "KbdInteractiveAuthentication yes" "UsePAM yes" "PubkeyAuthentication yes" "AllowTcpForwarding local" "PidFile $RUNNER_TEMP/sshd.pid" > "$RUNNER_TEMP/sshd_config"
+          sudo /usr/sbin/sshd -f "$RUNNER_TEMP/sshd_config" -E "$RUNNER_TEMP/sshd.log"
+          sleep 1
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i "$RUNNER_TEMP/ssh_key" -p 2222 tandemssh@127.0.0.1 \
+            'mkdir -p proj && printf "import helper\nprint(\"from the server:\", helper.X)\n" > proj/main.py && echo "X = 42" > proj/helper.py'
+          TEST=$(python3 -c 'import base64, json, sys; print(base64.b64encode(json.dumps({"host": "127.0.0.1", "port": 2222, "user": "tandemssh", "folder": "~/proj", "key": open(sys.argv[1]).read(), "fingerprint": sys.argv[2]}).encode()).decode())' \
+            "$RUNNER_TEMP/ssh_key" "$(ssh-keygen -lf "$RUNNER_TEMP/host_key.pub" | cut -d' ' -f2)")
+          xcrun simctl terminate "$UDID" app.tandem.ipad || true
+          SIMCTL_CHILD_TANDEM_SSH_TEST="$TEST" xcrun simctl launch "$UDID" app.tandem.ipad
+          node ipad/tests/ssh.cjs http://127.0.0.1:47831/ tandemssh || { sudo tail -40 "$RUNNER_TEMP/sshd.log"; xcrun simctl io "$UDID" screenshot ipad-simulator-ssh.png || true; exit 1; }
+          xcrun simctl io "$UDID" screenshot ipad-simulator-ssh.png || true
+
       - name: Build the .ipa (unsigned)
         run: |
           xcodebuild -project ipad/App/Tandem.xcodeproj -scheme Tandem -configuration Release \

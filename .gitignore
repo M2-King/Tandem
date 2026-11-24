@@ -15,6 +15,7 @@ build-pyi/
 out/
 desktop/release/
 ipad/App/Resources/web/
+ipad/App/Resources/remote/
 ipad/App/Tandem.xcodeproj/
 build/
 

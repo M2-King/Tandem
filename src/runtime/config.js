@@ -27,3 +27,6 @@ export const IS_IPAD = IS_LOCAL && RUNTIME_CONFIG.platform === 'ipad';
 // A project on an SSH server: the app's gateway serves this page and passes
 // the API to Tandem's runtime on the server. { label, host, user, folder }.
 export const REMOTE = IS_LOCAL && RUNTIME_CONFIG.remote && typeof RUNTIME_CONFIG.remote === 'object' ? RUNTIME_CONFIG.remote : null;
+// The iPad app's window: its own projects (IS_IPAD) or a project on an SSH
+// server shown in the iPad app (shell: 'ipad'); either way the iPad layout.
+export const IPAD_SHELL = IS_IPAD || (IS_LOCAL && RUNTIME_CONFIG.shell === 'ipad');

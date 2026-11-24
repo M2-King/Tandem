@@ -11,11 +11,18 @@ import WebKit
 struct WebView: UIViewRepresentable {
     let url: URL
     let origin: String
+    // Changing it loads the page again (connecting to or leaving an SSH server).
+    var reloadToken: Int = 0
+    // "Connect to SSH server…" / "Disconnect" from the page's ⋯ menu.
+    var onSSH: (String) -> Void = { _ in }
 
-    func makeCoordinator() -> Coordinator { Coordinator(origin: origin) }
+    func makeCoordinator() -> Coordinator { Coordinator(origin: origin, onSSH: onSSH) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
+        // The page asks; the app shows its own sheet. Nothing secret goes to the page.
+        config.userContentController.add(context.coordinator, name: "tandemSSH")
+        context.coordinator.lastReload = reloadToken
         config.allowsInlineMediaPlayback = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         let view = TandemWebView(frame: .zero, configuration: config)
@@ -34,14 +41,32 @@ struct WebView: UIViewRepresentable {
 
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.origin = origin
-        if view.url == nil || !(view.url!.absoluteString.hasPrefix(origin)) {
+        context.coordinator.onSSH = onSSH
+        if context.coordinator.lastReload != reloadToken {
+            context.coordinator.lastReload = reloadToken
+            view.load(URLRequest(url: url))
+        } else if view.url == nil || !(view.url!.absoluteString.hasPrefix(origin)) {
             view.load(URLRequest(url: url))
         }
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var origin: String
-        init(origin: String) { self.origin = origin }
+        var onSSH: (String) -> Void
+        var lastReload = 0
+        init(origin: String, onSSH: @escaping (String) -> Void) {
+            self.origin = origin
+            self.onSSH = onSSH
+        }
+
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            // Only from Tandem's own page.
+            guard message.name == "tandemSSH", message.frameInfo.isMainFrame,
+                  message.frameInfo.request.url?.absoluteString.hasPrefix(origin) == true,
+                  let body = message.body as? [String: Any], let type = body["type"] as? String,
+                  ["connect", "disconnect"].contains(type) else { return }
+            onSSH(type)
+        }
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {

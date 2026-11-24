@@ -2,10 +2,10 @@
 // the desktop app's Clear window. It keeps its controls clear of the status
 // bar and of the window buttons iPadOS draws in the top-left corner, and fits
 // itself above the on-screen keyboard instead of being scrolled by it.
-import { IS_IPAD } from './config.js';
+import { IPAD_SHELL } from './config.js';
 
 export function setupIpadShell() {
-  if (!IS_IPAD) return;
+  if (!IPAD_SHELL) return;
   const root = document.documentElement;
   root.dataset.shell = 'ipad';
 

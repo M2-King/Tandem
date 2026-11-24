@@ -5,6 +5,23 @@ options:
   bundleIdPrefix: app.tandem
   deploymentTarget:
     iOS: "16.4"
+# Projects on an SSH server (SSHSession.swift): Citadel, an SSH client built
+# on SwiftNIO SSH, pinned; the other three are what it builds on, named here
+# because the app uses them directly. swift-nio-ssh comes from the fork
+# Citadel itself uses (its author's), with the same version range.
+packages:
+  Citadel:
+    url: https://github.com/orlandos-nl/Citadel
+    exactVersion: 0.11.1
+  swift-nio-ssh:
+    url: https://github.com/Joannis/swift-nio-ssh
+    minorVersion: 0.3.4
+  swift-nio:
+    url: https://github.com/apple/swift-nio
+    majorVersion: 2.65.0
+  swift-crypto:
+    url: https://github.com/apple/swift-crypto
+    majorVersion: 3.12.3
 targets:
   Tandem:
     type: application
@@ -15,6 +32,18 @@ targets:
       - path: Resources/web
         type: folder
         buildPhase: resources
+      # What Tandem installs on SSH servers (runtime wheel, bootstrap.sh, constraints.txt).
+      - path: Resources/remote
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: Citadel
+      - package: swift-nio-ssh
+        product: NIOSSH
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-crypto
+        product: Crypto
     info:
       path: Resources/Info.plist
       properties:

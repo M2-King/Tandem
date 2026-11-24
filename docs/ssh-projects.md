@@ -1,8 +1,8 @@
 # Projects on an SSH server
 
-Tandem can open a folder on a server over SSH, like VS Code's Remote-SSH. You edit the server's files in Tandem; Run, Step through, Debug, notebooks, environments and the Terminal all use the **server's** Python, as your user on that server.
+Tandem can open a folder on a server over SSH, like VS Code's Remote-SSH, on Windows, Mac and iPad. You edit the server's files in Tandem; Run, Step through, Debug, notebooks, environments and the Terminal all use the **server's** Python, as your user on that server.
 
-⋯ → **Connect to SSH server…** (Windows and Mac; iPad: see below). ⋯ → **Disconnect from …** goes back to the project on this device.
+⋯ → **Connect to SSH server…** (Windows, Mac and iPad). ⋯ → **Disconnect from …** goes back to the project on this device.
 
 ## How it works
 
@@ -33,10 +33,11 @@ Project code runs with the project's own environment on the server (`.venv`, or 
 
 ## iPad
 
-Coming in the next step: the same connection from the iPad app (SwiftNIO SSH), with the same gateway in the app's local server.
+The same, from the iPad app: ⋯ → **Connect to SSH server…** opens a native sheet (saved servers, password or SSH key pasted or picked from Files, the host key confirmed the first time). The SSH client is [Citadel](https://github.com/orlandos-nl/Citadel) 0.11.1 (on SwiftNIO SSH); keys can be ed25519 or RSA in OpenSSH format. Remembered passwords and keys are kept in the iPad Keychain. While connected, the app's local server is the gateway: it serves the app's UI with the server's settings, keeps the iPad layout, and passes `/api` and `/ws` through the connection (`/api/ai` and `/api/shared` stay refused). Python projects on the iPad itself (Pyodide) are unchanged; ⋯ → **Disconnect** goes back to them.
 
 ## Tests
 
 - `runtime/tests/test_remote_flags.py`: the runtime's server flags (`--print-token`, `--exit-with-stdin`, `--no-ui`).
 - `desktop/ssh/ssh.test.cjs`: connection details, host key fingerprints, known hosts, and the gateway (the server's Host and Origin, what stays on this device).
+- `ipad/tests/ssh.cjs`: the iPad app in the simulator connected to the CI Mac's `sshd` (Citadel, the SFTP install, the gateway): Run and the Terminal on the server, in the iPad layout.
 - `packaging/ssh-e2e.cjs`: the desktop app against a real `sshd` (CI: the macOS runner, with a packaged app; the server's Python is 3.9 there, so Tandem installs its own): host key confirmation, install, Run, Step through, a notebook cell, the Terminal, Disconnect (Tandem stops on the server), a key sign-in, and a changed host key refused.

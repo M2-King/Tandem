@@ -21,6 +21,9 @@ final class LocalServer {
     let selftest: Bool
     private(set) var port: UInt16 = 0
     private var listener: NWListener?
+    // A project on an SSH server (SSHSession): the page is the app's own UI,
+    // and its API and WebSocket go through the connection to Tandem's runtime there.
+    var remote: SSHSession?
     private let queue = DispatchQueue(label: "tandem.server", attributes: .concurrent)
     private let webRoot: URL
     private let cacheRoot: URL
@@ -116,6 +119,7 @@ final class LocalServer {
             guard let self else { return }
             var buffer = buffer
             if let data { buffer.append(data) }
+            if let remote = self.remote, self.passthrough(connection, buffer: buffer, remote: remote) { return }
             if let request = self.parse(buffer) {
                 self.handle(request) { response in self.send(response, on: connection) }
             } else if isComplete || error != nil || buffer.count > 64 * 1024 * 1024 {
@@ -176,6 +180,76 @@ final class LocalServer {
     }
 
     private func error(_ status: Int, _ message: String) -> Response { json(["detail": message], status: status) }
+
+    // MARK: projects on an SSH server
+
+    // /api and /ws go to the runtime on the server as they are, with its own
+    // Host and Origin, one request per connection. What stays on this iPad
+    // (AI settings and keys, Cowork's shared projects) is refused.
+    private func passthrough(_ connection: NWConnection, buffer: Data, remote: SSHSession) -> Bool {
+        guard let end = buffer.range(of: Data("\r\n\r\n".utf8)),
+              let head = String(data: buffer[buffer.startIndex..<end.lowerBound], encoding: .utf8) else { return false }
+        var lines = head.components(separatedBy: "\r\n")
+        let first = lines.removeFirst()
+        let parts = first.split(separator: " ")
+        guard parts.count >= 2 else { return false }
+        let target = String(parts[1])
+        let path = String(target.split(separator: "?", maxSplits: 1).first ?? "")
+        guard path.hasPrefix("/api/") || path == "/ws" else { return false }
+
+        var headers: [(String, String)] = []
+        var host = ""
+        var origin: String?
+        var upgrade = false
+        for line in lines {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let name = line[..<colon].trimmingCharacters(in: .whitespaces)
+            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            switch name.lowercased() {
+            case "host": host = value.lowercased()
+            case "origin": origin = value
+            case "connection", "keep-alive", "proxy-connection": if value.lowercased().contains("upgrade") { upgrade = true }
+            default: headers.append((name, value))
+            }
+        }
+        let own = "127.0.0.1:\(port)"
+        if host != own && host != "localhost:\(port)" { send(error(403, "Unexpected host"), on: connection); return true }
+        if let origin, origin != "http://\(own)", origin != "http://localhost:\(port)" { send(error(403, "Origin not allowed"), on: connection); return true }
+        if path.hasPrefix("/api/ai") || path.hasPrefix("/api/shared") {
+            send(error(403, "Not available in projects on an SSH server."), on: connection)
+            return true
+        }
+        let remoteHost = "127.0.0.1:\(remote.remotePort)"
+        var out = "\(first)\r\n"
+        for (name, value) in headers { out += "\(name): \(value)\r\n" }
+        out += "Host: \(remoteHost)\r\n"
+        if origin != nil { out += "Origin: http://\(remoteHost)\r\n" }
+        out += upgrade ? "Connection: Upgrade\r\n\r\n" : "Connection: close\r\n\r\n"
+        var first_ = Data(out.utf8)
+        first_.append(buffer[end.upperBound...])
+        let start = first_
+
+        Task {
+            do {
+                let tunnel = try await remote.tunnel(
+                    onData: { data in connection.send(content: data, completion: .contentProcessed { _ in }) },
+                    onClose: { connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() }) }
+                )
+                tunnel.write(start)
+                self.pump(connection, into: tunnel)
+            } catch {
+                self.send(self.error(502, "The connection to the server is closed."), on: connection)
+            }
+        }
+        return true
+    }
+
+    private func pump(_ connection: NWConnection, into tunnel: SSHTunnel) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 16) { [weak self] data, _, isComplete, error in
+            if let data, !data.isEmpty { tunnel.write(data) }
+            if isComplete || error != nil { tunnel.close() } else { self?.pump(connection, into: tunnel) }
+        }
+    }
 
     // MARK: routing
 
@@ -328,7 +402,12 @@ final class LocalServer {
         guard var html = try? String(contentsOf: webRoot.appendingPathComponent("index.html"), encoding: .utf8) else {
             return reply(error(500, "The app is missing its web files."))
         }
-        let config: [String: Any] = ["mode": "local", "platform": "ipad", "token": token, "selftest": selftest]
+        var config: [String: Any] = ["mode": "local", "platform": "ipad", "token": token, "selftest": selftest]
+        if let remote {
+            // The server's runtime: a desktop-style page (no Pyodide) in the iPad's layout.
+            config = ["mode": "local", "shell": "ipad", "token": remote.token,
+                      "remote": ["label": remote.server.label, "host": remote.server.host, "user": remote.server.username, "folder": remote.server.folder]]
+        }
         let configJSON = String(data: try! JSONSerialization.data(withJSONObject: config), encoding: .utf8)!.replacingOccurrences(of: "</", with: "<\\/")
         html = html.replacingOccurrences(of: "</head>", with: "<script id=\"tandem-runtime\" type=\"application/json\">\(configJSON)</script></head>")
         reply(Response(status: 200, body: Data(html.utf8), contentType: "text/html; charset=utf-8", headers: ["Cache-Control": "no-store"]))
