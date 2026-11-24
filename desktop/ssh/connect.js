@@ -65,8 +65,13 @@ function busy(on) {
   for (const el of document.querySelectorAll('input, #connect, #pick-key, .tabs button')) el.disabled = on;
 }
 
+// Progress is shown only while connecting: a fast answer (say, a refused host
+// key) can arrive before the last progress message, which mustn't replace it.
+let connecting = false;
+
 async function connect(e) {
   e?.preventDefault();
+  connecting = true;
   busy(true);
   status('Connecting…');
   const r = await window.tandemSsh.connect({
@@ -80,13 +85,14 @@ async function connect(e) {
     passphrase: auth === 'key' ? $('passphrase').value : undefined,
     remember: $('remember').checked,
   });
+  connecting = false;
   $('hostkey').hidden = true;
   if (r.ok) return status('Connected. Opening…');
   busy(false);
   status(r.message, true);
 }
 
-window.tandemSsh.onProgress(({ text }) => status(text));
+window.tandemSsh.onProgress(({ text }) => connecting && status(text));
 window.tandemSsh.onHostKey((info) => {
   $('hk-host').textContent = `${info.host}${info.port !== 22 ? `:${info.port}` : ''}`;
   $('hk-type').textContent = info.type;

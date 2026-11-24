@@ -29,7 +29,11 @@ const check = (ok, msg) => {
   await page.locator('.runtime-status.tone-up').waitFor({ timeout: 120000 });
   check(true, `the server's Python: ${(await page.locator('.runtime-status').innerText()).trim()}`);
 
-  await page.locator('.file-sidebar, .sidebar').getByText('main.py', { exact: true }).first().click();
+  // The file list can be folded away (portrait, small windows); open it first.
+  await page.locator('[role=treeitem]:visible, button[aria-label="Show files"]:visible').first().waitFor({ timeout: 30000 });
+  if (!(await page.locator('[role=treeitem]:visible').count())) await page.locator('button[aria-label="Show files"]:visible').first().click();
+  await page.getByRole('treeitem', { name: 'main.py' }).click();
+  if (await page.locator('.scrim:visible').count()) await page.keyboard.press('Escape');
   await page.locator('.run-control .split-main').click();
   await page.waitForFunction(() => /from the server/.test(document.querySelector('.output-lines')?.innerText || ''), null, { timeout: 120000 });
   check(true, `Run on the server: ${(await page.locator('.output-lines').innerText()).trim().split('\n').pop()}`);

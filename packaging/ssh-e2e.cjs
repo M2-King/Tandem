@@ -78,12 +78,28 @@ async function deviceProject(w, timeout) {
   if (!(await w.locator('.runtime-status').count())) await w.evaluate(() => { window.location.hash = '#/device'; });
   await w.locator(DEVICE_READY).first().waitFor({ timeout });
 }
+// On a small screen Tandem folds the file list away; this opens it.
+async function showFiles(w) {
+  await w.locator('[role=treeitem]:visible, button[aria-label="Show files"]:visible').first().waitFor({ timeout: 30000 });
+  if (!(await w.locator('[role=treeitem]:visible').count())) await w.locator('button[aria-label="Show files"]:visible').first().click();
+  await w.locator('[role=treeitem]:visible').first().waitFor({ timeout: 10000 });
+}
+// …and folds it away again (on a small screen it covers the editor).
+async function hideFiles(w) {
+  const scrim = w.locator('.scrim:visible');
+  if (!(await scrim.count())) return;
+  await w.keyboard.press('Escape');
+  if (await scrim.count()) await w.locator('button[aria-label="Hide files"]:visible').first().click();
+  await scrim.first().waitFor({ state: 'hidden', timeout: 10000 });
+}
+let electronApp = null; // for screenshots of every window if a check fails // the Tandem window, for a screenshot if a check fails
 const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines')?.innerText || '');
 
 (async () => {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'tandem-ssh-e2e-'));
   const app = await launch(userData);
   let win = await app.firstWindow();
+  electronApp = app;
   await deviceProject(win, 90000);
   check(true, 'the app opened this computer’s project');
 
@@ -108,7 +124,8 @@ const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines
   check(!pagePassword, 'the password never reached the Tandem page');
 
   // Run: a script that imports another file of the server's project.
-  await win.locator('.file-sidebar, .sidebar').getByText('main.py', { exact: true }).first().click();
+  await showFiles(win);
+  await win.getByRole('treeitem', { name: 'main.py' }).click();
   await win.locator('.run-control .split-main').click();
   await win.waitForFunction(() => /from the server/.test(document.querySelector('.output-lines')?.innerText || ''), null, { timeout: 90000 });
   check(true, `Run on the server: ${(await editorText(win)).trim().split('\n').pop()}`);
@@ -122,9 +139,12 @@ const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines
   await win.locator('.banner-session').getByRole('button', { name: /Stop|Close/ }).click();
 
   // A notebook cell.
+  await showFiles(win);
   await win.getByRole('button', { name: 'New file' }).click();
   await win.locator('.dialog-newfile .newfile-name input').fill('remote_nb.ipynb');
   await win.keyboard.press('Enter');
+  await win.locator('.nb-cell').first().waitFor({ timeout: 30000 });
+  await hideFiles(win);
   await win.locator('.nb-cell').first().locator('.view-lines').click();
   await win.keyboard.type('import socket, getpass; print(getpass.getuser())');
   await win.keyboard.press('Shift+Enter');
@@ -152,8 +172,8 @@ const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines
   await win.getByRole('menuitem', { name: /Disconnect from/ }).click();
   await win.waitForFunction(() => !document.querySelector('.remote-chip'), null, { timeout: 60000 });
   await deviceProject(win, 60000);
-  const back = await win
-    .waitForFunction(() => [...document.querySelectorAll('.file-sidebar, .sidebar')].some((el) => el.innerText.includes('local.py')), null, { timeout: 30000 })
+  const back = await showFiles(win)
+    .then(() => win.waitForFunction(() => [...document.querySelectorAll('[role=treeitem]')].some((el) => el.textContent.includes('local.py')), null, { timeout: 30000 }))
     .then(() => true, () => false);
   check(back, 'Disconnect: back to this computer’s project');
   let left = 1;
@@ -195,7 +215,11 @@ const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines
   await app.close();
   console.log(failures ? `\n${failures} SSH check(s) FAILED` : '\nAll SSH checks passed.');
   process.exit(failures ? 1 : 0);
-})().catch((e) => {
+})().catch(async (e) => {
   console.error('FAILED:', e.message);
+  for (const [i, w] of (electronApp?.windows() || []).entries()) {
+    await w.screenshot({ path: path.join(out, `ssh-failed-${i + 1}.png`) }).catch(() => {});
+    console.error(`window ${i + 1}: ${await w.title().catch(() => '?')}`);
+  }
   process.exit(1);
 });
