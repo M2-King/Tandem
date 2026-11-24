@@ -126,6 +126,35 @@ jobs:
       # (the simulator shares its network), its own test user and key. The app
       # connects at launch (TANDEM_SSH_TEST, simulator only), as if from the
       # sheet; the page is then driven from WebKit.
+      - name: Build the .ipa (unsigned)
+        run: |
+          xcodebuild -project ipad/App/Tandem.xcodeproj -scheme Tandem -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/device \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee device-build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          test -f build/device/Build/Products/Release-iphoneos/Tandem.app/Tandem || { tail -60 device-build.log; exit 1; }
+          mkdir -p Payload
+          cp -R build/device/Build/Products/Release-iphoneos/Tandem.app Payload/
+          zip -qry Tandem-iPad.ipa Payload
+          ls -la Tandem-iPad.ipa
+
+      # ipad branch and releases: a zip with the .ipa (the release job downloads it by name).
+      - uses: actions/upload-artifact@v4
+        if: github.ref != 'refs/heads/cowork'
+        with:
+          name: Tandem-iPad
+          path: Tandem-iPad.ipa
+          retention-days: 30
+          if-no-files-found: error
+      # cowork (staging): the .ipa itself, not zipped, so the artifact link
+      # downloads Tandem-iPad.ipa directly.
+      - name: Upload the staging .ipa (not zipped)
+        if: github.ref == 'refs/heads/cowork'
+        uses: actions/upload-artifact@v7
+        with:
+          path: Tandem-iPad.ipa
+          archive: false
+          retention-days: 30
+          if-no-files-found: error
       - name: Projects on an SSH server (iPad)
         run: |
           set -e
@@ -157,35 +186,6 @@ jobs:
           node ipad/tests/ssh.cjs http://127.0.0.1:47831/ tandemssh || { sudo tail -40 "$RUNNER_TEMP/sshd.log"; xcrun simctl io "$UDID" screenshot ipad-simulator-ssh.png || true; exit 1; }
           xcrun simctl io "$UDID" screenshot ipad-simulator-ssh.png || true
 
-      - name: Build the .ipa (unsigned)
-        run: |
-          xcodebuild -project ipad/App/Tandem.xcodeproj -scheme Tandem -configuration Release \
-            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/device \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee device-build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
-          test -f build/device/Build/Products/Release-iphoneos/Tandem.app/Tandem || { tail -60 device-build.log; exit 1; }
-          mkdir -p Payload
-          cp -R build/device/Build/Products/Release-iphoneos/Tandem.app Payload/
-          zip -qry Tandem-iPad.ipa Payload
-          ls -la Tandem-iPad.ipa
-
-      # ipad branch and releases: a zip with the .ipa (the release job downloads it by name).
-      - uses: actions/upload-artifact@v4
-        if: github.ref != 'refs/heads/cowork'
-        with:
-          name: Tandem-iPad
-          path: Tandem-iPad.ipa
-          retention-days: 30
-          if-no-files-found: error
-      # cowork (staging): the .ipa itself, not zipped, so the artifact link
-      # downloads Tandem-iPad.ipa directly.
-      - name: Upload the staging .ipa (not zipped)
-        if: github.ref == 'refs/heads/cowork'
-        uses: actions/upload-artifact@v7
-        with:
-          path: Tandem-iPad.ipa
-          archive: false
-          retention-days: 30
-          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
