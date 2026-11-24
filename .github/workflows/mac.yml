@@ -138,6 +138,28 @@ jobs:
       # own test user with a password and a key), and the packaged app
       # connects to it. The user's python3 is the system's 3.9, so Tandem
       # installs its own Python there (uv), as on an older server.
+      - name: Pack the .dmg
+        id: dmg
+        run: |
+          version=$(node -p "require('./desktop/package.json').version")
+          base=Tandem
+          dmg="$base-$version-arm64.dmg"
+          mkdir dmg-root
+          cp -R "${{ steps.app.outputs.path }}" dmg-root/Tandem.app
+          ln -s /Applications dmg-root/Applications
+          hdiutil create -volname "Tandem" -srcfolder dmg-root -ov -format UDZO "$dmg"
+          ls -la "$dmg"
+          echo "file=$dmg" >> "$GITHUB_OUTPUT"
+
+      # The .dmg itself, not zipped: the artifact link downloads it directly.
+      - name: Upload the .dmg (not zipped)
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.dmg.outputs.file }}
+          archive: false
+          retention-days: 30
+          if-no-files-found: error
+
       - name: Projects on an SSH server
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
@@ -173,28 +195,6 @@ jobs:
           SSH_HOST=127.0.0.1 SSH_PORT=2222 SSH_USER=tandemssh SSH_PASSWORD="$PW" SSH_KEY="$RUNNER_TEMP/ssh_key" SSH_FOLDER='~/proj' \
           SSH_FINGERPRINT="$(ssh-keygen -lf "$RUNNER_TEMP/host_key.pub" | cut -d' ' -f2)" DEVICE_PROJECT="$RUNNER_TEMP/device-project" \
             node packaging/ssh-e2e.cjs "${{ steps.app.outputs.path }}/Contents/MacOS/${{ steps.app.outputs.name }}" ssh-shots
-
-      - name: Pack the .dmg
-        id: dmg
-        run: |
-          version=$(node -p "require('./desktop/package.json').version")
-          base=Tandem
-          dmg="$base-$version-arm64.dmg"
-          mkdir dmg-root
-          cp -R "${{ steps.app.outputs.path }}" dmg-root/Tandem.app
-          ln -s /Applications dmg-root/Applications
-          hdiutil create -volname "Tandem" -srcfolder dmg-root -ov -format UDZO "$dmg"
-          ls -la "$dmg"
-          echo "file=$dmg" >> "$GITHUB_OUTPUT"
-
-      # The .dmg itself, not zipped: the artifact link downloads it directly.
-      - name: Upload the .dmg (not zipped)
-        uses: actions/upload-artifact@v7
-        with:
-          path: ${{ steps.dmg.outputs.file }}
-          archive: false
-          retention-days: 30
-          if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         if: always()
