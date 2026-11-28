@@ -282,7 +282,8 @@ final class SSHSession: @unchecked Sendable {
 
     static func connect(server: SSHServer, auth: SSHAuthInput, known: KnownHosts,
                         confirm: @escaping (HostKeyInfo) async -> Bool,
-                        progress: @escaping (String) -> Void) async throws -> SSHSession {
+                        progress: @escaping (String) -> Void,
+                        onClient: @escaping (SSHClient) -> Void = { _ in }) async throws -> SSHSession {
         let files = try remoteFiles()
         progress("Connecting to \(server.label)…")
         let check = HostKeyCheck(host: server.host, port: server.port, known: known, confirm: confirm)
@@ -306,8 +307,11 @@ final class SSHSession: @unchecked Sendable {
             throw SSHFailure(message: "Couldn't connect to \(server.host) on port \(server.port) (\(error.localizedDescription)).")
         }
 
+        // Cancel closes this connection while Tandem is set up on the server.
+        onClient(client)
         let session = SSHSession(server: server, client: client, remotePort: 0, token: "")
         do {
+            try Task.checkCancellation()
             return try await session.start(files: files, progress: progress)
         } catch {
             try? await client.close()
@@ -334,10 +338,16 @@ final class SSHSession: @unchecked Sendable {
         }
         if facts["installed"] != "1" {
             progress("Installing Tandem on the server (the first time takes a minute)…")
+            try Task.checkCancellation()
             try await upload(files.wheel, to: "\(dir)/\(files.wheelName)")
             try await upload(files.constraints, to: "\(dir)/constraints.txt")
+            try Task.checkCancellation()
+            // The server says what it's doing every couple of seconds (what's
+            // downloaded, how long it has taken), e.g. "Downloading uv (3.2 of 17.2 MB)".
             let install = try await run("sh ~/\(dir)/bootstrap.sh install \(files.id)") { line in
-                if line.hasPrefix("tandem-step ") { progress(String(line.dropFirst("tandem-step ".count)) + "…") }
+                guard line.hasPrefix("tandem-step ") else { return }
+                let step = String(line.dropFirst("tandem-step ".count))
+                progress(step.hasSuffix(")") ? step : step + "…")
             }
             let lines = install.out.components(separatedBy: "\n")
             if let problem = lines.first(where: { $0.hasPrefix("tandem-error ") }) {
@@ -345,6 +355,7 @@ final class SSHSession: @unchecked Sendable {
             }
             guard lines.contains("tandem-installed") else { throw SSHFailure(message: "Installing Tandem on the server failed.") }
         }
+        try Task.checkCancellation()
         progress("Starting Tandem on the server…")
         let (port, token) = try await serve(id: files.id)
         progress("Connected.")

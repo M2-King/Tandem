@@ -1,3 +1,4 @@
+import Citadel
 import Crypto
 import SwiftUI
 import UniformTypeIdentifiers
@@ -27,6 +28,10 @@ final class ConnectModel: ObservableObject {
     private let secure = SecureStore()
     private let known = KnownHosts()
     private var hostKeyAnswer: CheckedContinuation<Bool, Never>?
+    // The connection being set up, so Cancel can stop it.
+    private var connecting: Task<Void, Never>?
+    private var pendingClient: SSHClient?
+    private var cancelled = false
     let onConnected: (SSHSession) -> Void
     private static let savedKey = "tandem.ssh.servers"
 
@@ -121,14 +126,24 @@ final class ConnectModel: ObservableObject {
         if !useKey && password.isEmpty { error = "Enter your password."; return }
         let auth: SSHAuthInput = useKey ? .key(text: keyText, passphrase: passphrase) : .password(password)
         busy = true
+        cancelled = false
         status = "Connecting…"
-        Task {
+        connecting = Task {
             do {
                 let session = try await SSHSession.connect(
                     server: server, auth: auth, known: known,
                     confirm: { [weak self] info in await self?.askHostKey(info) ?? false },
-                    progress: { [weak self] text in Task { @MainActor in self?.status = text } }
+                    progress: { [weak self] text in Task { @MainActor in if self?.cancelled == false { self?.status = text } } },
+                    onClient: { [weak self] client in
+                        Task { @MainActor in
+                            guard let self else { return }
+                            self.pendingClient = client
+                            if self.cancelled { try? await client.close() }
+                        }
+                    }
                 )
+                pendingClient = nil
+                if cancelled { session.close(); return }
                 save(server)
                 // Kept only when asked; forgotten when the switch is off.
                 let secrets: [(String, String)] = useKey ? [("key", keyText), ("passphrase", passphrase)] : [("password", password)]
@@ -136,11 +151,26 @@ final class ConnectModel: ObservableObject {
                 busy = false
                 onConnected(session)
             } catch {
+                pendingClient = nil
+                if cancelled { return }
                 busy = false
                 status = ""
                 self.error = error.localizedDescription
             }
         }
+    }
+
+    // Stops connecting. An install already under way carries on on the
+    // server by itself; the next connection finds it finished, or waits for it.
+    func cancel() {
+        guard busy else { return }
+        cancelled = true
+        connecting?.cancel()
+        answerHostKey(false)
+        if let client = pendingClient { Task { try? await client.close() } }
+        pendingClient = nil
+        busy = false
+        status = ""
     }
 }
 
@@ -213,6 +243,10 @@ struct ConnectView: View {
                                 if model.busy { ProgressView() }
                                 Text(model.status).font(.callout).foregroundStyle(.secondary)
                             }
+                            if model.busy {
+                                Text("You can cancel: an install already under way finishes on the server by itself, and the next connection uses it.")
+                                    .font(.caption).foregroundStyle(.tertiary)
+                            }
                         }
                     }
                 }
@@ -224,7 +258,12 @@ struct ConnectView: View {
             .navigationTitle("Connect to an SSH server")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onCancel).disabled(model.busy && model.hostKey == nil) }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        model.cancel()
+                        onCancel()
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) { Button("Connect") { model.connect() }.disabled(model.busy) }
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.data, .text, .item]) { result in

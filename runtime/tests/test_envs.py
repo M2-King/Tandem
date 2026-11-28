@@ -1,6 +1,8 @@
 """Environment manager: discovery, creating and selecting environments,
 packages, missing imports and approved installs."""
 
+from __future__ import annotations
+
 import json
 import sys
 import time

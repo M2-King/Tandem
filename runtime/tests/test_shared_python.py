@@ -1,6 +1,8 @@
 """Is this computer ready to run shared projects? (/api/shared/python, the
 app's "Preparing Python" step.)"""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 

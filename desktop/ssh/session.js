@@ -76,7 +76,12 @@ class RemoteSession extends EventEmitter {
       await this.exec(`cat > ~/.tandem/remote/${files.id}/${files.wheelName}`, { stdin: files.wheel });
       await this.exec(`cat > ~/.tandem/remote/${files.id}/constraints.txt`, { stdin: files.constraints });
       const install = await this.exec(`sh ~/.tandem/remote/${files.id}/bootstrap.sh install ${files.id}`, {
-        onLine: (l) => l.startsWith('tandem-step ') && this.progress('installing', `${l.slice('tandem-step '.length)}…`),
+        // The server says what it's doing every couple of seconds, e.g. "Downloading uv (3.2 of 17.2 MB)".
+        onLine: (l) => {
+          if (!l.startsWith('tandem-step ')) return;
+          const step = l.slice('tandem-step '.length);
+          this.progress('installing', step.endsWith(')') ? step : `${step}…`);
+        },
       });
       const problem = errorIn(install.stdout);
       if (problem || !lines(install.stdout).includes('tandem-installed')) {

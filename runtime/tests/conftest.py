@@ -47,6 +47,9 @@ def utf8_test_files(monkeypatch):
     original = Path.write_text
 
     def write_text(self, data, encoding="utf-8", errors=None, newline="\n"):
+        if sys.version_info < (3, 10):  # no newline= before 3.10 (servers' Pythons)
+            with open(self, "w", encoding=encoding, errors=errors, newline=newline) as f:
+                return f.write(data)
         return original(self, data, encoding=encoding, errors=errors, newline=newline)
 
     monkeypatch.setattr(Path, "write_text", write_text)

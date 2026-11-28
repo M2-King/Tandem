@@ -2,12 +2,18 @@
 name = "tandem-runtime"
 version = "0.1.0"
 description = "Local Python runtime for Tandem: runs your project's code on your machine."
-requires-python = ">=3.11"
+# 3.9 and 3.10 for projects on SSH servers (their own python3); the apps
+# themselves bundle 3.12.
+requires-python = ">=3.9"
 dependencies = [
   "fastapi>=0.110",
   "uvicorn>=0.29",
   "websockets>=12",
-  "anthropic>=2.4",
+  "anthropic>=2.4; python_version >= '3.10'",
+  # Python 3.9 (servers only, where the assistant isn't used): the last SDK for it.
+  "anthropic>=0.40; python_version < '3.10'",
+  # Python 3.9: lets pydantic read the `str | None` annotations of the API models.
+  "eval_type_backport>=0.2; python_version < '3.10'",
   "jupyter_client>=8",
   "jedi>=0.19",
   # The Terminal panel on Windows (ConPTY); elsewhere the standard pty module.

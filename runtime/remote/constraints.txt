@@ -1,35 +1,114 @@
 # Tandem on an SSH server: the runtime's dependencies, pinned to the versions
 # Tandem is tested with (runtime/remote/bootstrap.sh installs with -c this file).
-# Regenerate from a fresh venv with the runtime installed: pip freeze.
-annotated-doc==0.0.7
-annotated-types==0.8.0
-anthropic==2.12.0
-anyio==4.16.0
-click==8.5.1
-docstring_parser==0.18.0
-fastapi==0.165.0
-h11==0.16.0
-httpcore2==2.16.2
-httpx2==2.16.2
-idna==3.20
-jedi==0.20.1
-jiter==0.19.0
-jupyter_client==8.10.0
-jupyter_core==5.9.1
-opentelemetry-api==1.45.2
-parso==0.8.7
-platformdirs==4.14.8
-pydantic==2.14.4
-pydantic_core==2.50.5
-python-dateutil==4.0.0
-pyzmq==27.3.0
-sniffio==1.3.1
-starlette==1.10.0
-tornado==6.6.1
-traitlets==5.16.1
-truststore==0.10.5
-typing-inspection==0.4.5
-typing_extensions==4.16.0
-tzdata==2026.6
-uvicorn==0.54.0
-websockets==17.4
+# One set per Python the runtime can use on a server, chosen by the markers:
+# 3.11+ (pip freeze in a fresh venv with the runtime installed), and 3.9 and
+# 3.10 (uv pip compile --python-version 3.x runtime/pyproject.toml).
+
+# Python 3.11 and newer
+annotated-doc==0.0.7 ; python_version >= "3.11"
+annotated-types==0.8.0 ; python_version >= "3.11"
+anthropic==2.12.0 ; python_version >= "3.11"
+anyio==4.16.0 ; python_version >= "3.11"
+click==8.5.1 ; python_version >= "3.11"
+docstring_parser==0.18.0 ; python_version >= "3.11"
+fastapi==0.165.0 ; python_version >= "3.11"
+h11==0.16.0 ; python_version >= "3.11"
+httpcore2==2.16.2 ; python_version >= "3.11"
+httpx2==2.16.2 ; python_version >= "3.11"
+idna==3.20 ; python_version >= "3.11"
+jedi==0.20.1 ; python_version >= "3.11"
+jiter==0.19.0 ; python_version >= "3.11"
+jupyter_client==8.10.0 ; python_version >= "3.11"
+jupyter_core==5.9.1 ; python_version >= "3.11"
+opentelemetry-api==1.45.2 ; python_version >= "3.11"
+parso==0.8.7 ; python_version >= "3.11"
+platformdirs==4.14.8 ; python_version >= "3.11"
+pydantic==2.14.4 ; python_version >= "3.11"
+pydantic_core==2.50.5 ; python_version >= "3.11"
+python-dateutil==4.0.0 ; python_version >= "3.11"
+pyzmq==27.3.0 ; python_version >= "3.11"
+sniffio==1.3.1 ; python_version >= "3.11"
+starlette==1.10.0 ; python_version >= "3.11"
+tornado==6.6.1 ; python_version >= "3.11"
+traitlets==5.16.1 ; python_version >= "3.11"
+truststore==0.10.5 ; python_version >= "3.11"
+typing-inspection==0.4.5 ; python_version >= "3.11"
+typing_extensions==4.16.0 ; python_version >= "3.11"
+tzdata==2026.6 ; python_version >= "3.11"
+uvicorn==0.54.0 ; python_version >= "3.11"
+websockets==17.4 ; python_version >= "3.11"
+
+# Python 3.10
+annotated-doc==0.0.6 ; python_version == "3.10"
+annotated-types==0.8.0 ; python_version == "3.10"
+anthropic==2.14.0 ; python_version == "3.10"
+anyio==4.16.0 ; python_version == "3.10"
+click==8.5.1 ; python_version == "3.10"
+docstring-parser==0.18.0 ; python_version == "3.10"
+exceptiongroup==1.3.2 ; python_version == "3.10"
+fastapi==0.162.5 ; python_version == "3.10"
+h11==0.16.0 ; python_version == "3.10"
+httpcore2==2.14.0 ; python_version == "3.10"
+httpx2==2.14.0 ; python_version == "3.10"
+idna==3.20 ; python_version == "3.10"
+jedi==0.20.1 ; python_version == "3.10"
+jiter==0.18.0 ; python_version == "3.10"
+jupyter-client==8.10.0 ; python_version == "3.10"
+jupyter-core==5.9.1 ; python_version == "3.10"
+opentelemetry-api==1.45.2 ; python_version == "3.10"
+parso==0.8.7 ; python_version == "3.10"
+platformdirs==4.12.4 ; python_version == "3.10"
+pydantic==2.14.4 ; python_version == "3.10"
+pydantic-core==2.50.5 ; python_version == "3.10"
+python-dateutil==3.0.0 ; python_version == "3.10"
+pyzmq==27.3.0 ; python_version == "3.10"
+six==1.17.0 ; python_version == "3.10"
+sniffio==1.3.1 ; python_version == "3.10"
+starlette==1.7.0 ; python_version == "3.10"
+tornado==6.5.10 ; python_version == "3.10"
+traitlets==5.16.1 ; python_version == "3.10"
+truststore==0.10.5 ; python_version == "3.10"
+typing-extensions==4.16.0 ; python_version == "3.10"
+typing-inspection==0.4.5 ; python_version == "3.10"
+tzdata==2026.6 ; python_version == "3.10"
+uvicorn==0.54.0 ; python_version == "3.10"
+websockets==16.1.1 ; python_version == "3.10"
+
+# Python 3.9
+annotated-doc==0.0.5 ; python_version < "3.10"
+annotated-types==0.7.0 ; python_version < "3.10"
+anthropic==0.125.0 ; python_version < "3.10"
+anyio==4.12.1 ; python_version < "3.10"
+certifi==2026.11.20 ; python_version < "3.10"
+click==8.1.8 ; python_version < "3.10"
+distro==1.9.0 ; python_version < "3.10"
+docstring-parser==0.18.0 ; python_version < "3.10"
+eval-type-backport==0.4.0 ; python_version < "3.10"
+exceptiongroup==1.3.2 ; python_version < "3.10"
+fastapi==0.128.8 ; python_version < "3.10"
+h11==0.16.0 ; python_version < "3.10"
+httpcore==1.0.9 ; python_version < "3.10"
+httpx==0.28.1 ; python_version < "3.10"
+idna==3.20 ; python_version < "3.10"
+importlib-metadata==8.7.1 ; python_version < "3.10"
+jedi==0.19.2 ; python_version < "3.10"
+jiter==0.16.0 ; python_version < "3.10"
+jupyter-client==8.6.3 ; python_version < "3.10"
+jupyter-core==5.8.1 ; python_version < "3.10"
+parso==0.8.7 ; python_version < "3.10"
+platformdirs==4.4.0 ; python_version < "3.10"
+pydantic==2.13.5 ; python_version < "3.10"
+pydantic-core==2.46.5 ; python_version < "3.10"
+python-dateutil==3.0.0 ; python_version < "3.10"
+pyzmq==27.3.0 ; python_version < "3.10"
+six==1.17.0 ; python_version < "3.10"
+sniffio==1.3.1 ; python_version < "3.10"
+starlette==0.49.3 ; python_version < "3.10"
+tornado==6.5.10 ; python_version < "3.10"
+traitlets==5.15.1 ; python_version < "3.10"
+typing-extensions==4.16.0 ; python_version < "3.10"
+typing-inspection==0.4.2 ; python_version < "3.10"
+tzdata==2026.6 ; python_version < "3.10"
+uvicorn==0.39.0 ; python_version < "3.10"
+websockets==15.0.1 ; python_version < "3.10"
+zipp==3.23.1 ; python_version < "3.10"
