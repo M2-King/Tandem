@@ -187,13 +187,17 @@ jobs:
             echo "--- the app"; grep -a "TANDEM-SSH" "$RUNNER_TEMP/app-ssh.log" || true
             echo "--- on the server"; sudo ls -la /Users/tandemssh/.tandem/remote/*/ 2>/dev/null || true
             ps -axo user,pid,etime,args | grep -E "[l]ite\.py|[b]ootstrap\.sh|[t]andem serve" || true
-            echo "--- lite.py on its own, as the server user (same Python)"
+            echo "--- lite.py on its own, as the server user: several requests in a row"
             LITE_PY=$(ps -axo args | grep "[l]ite\.py" | head -n 1 | awk '{print $1}')
             LITE=$(ls /Users/tandemssh/.tandem/remote/*/lite.py | head -n 1)
-            sudo -u tandemssh -H sh -c "cd ~ && (sleep 120 | '$LITE_PY' '$LITE' ~/proj > /tmp/lite-probe.out 2>&1 &)"
-            sleep 5; cat /tmp/lite-probe.out || true
-            PORT=$(sed -n 's#^http://127.0.0.1:\([0-9]*\)/$#\1#p' /tmp/lite-probe.out); TOKEN=$(sed -n 's/^token=//p' /tmp/lite-probe.out)
-            for p in status files; do curl -s -m 60 -o /dev/null -w "/api/$p: %{http_code} in %{time_total}s\n" -H "x-tandem-token: $TOKEN" "http://127.0.0.1:$PORT/api/$p" || echo "/api/$p: no answer"; done
+            for PY in "$LITE_PY" /usr/bin/python3; do
+              echo "with $PY"; OUT=/tmp/lite-probe-$RANDOM.out
+              sudo -u tandemssh -H sh -c "cd ~ && (sleep 300 | '$PY' '$LITE' ~/proj > $OUT 2>&1 &)"
+              for i in $(seq 60); do grep -q '^token=' $OUT 2>/dev/null && break; sleep 1; done
+              echo "  started after ${i} s"; cat $OUT
+              PORT=$(sed -n 's#^http://127.0.0.1:\([0-9]*\)/$#\1#p' $OUT); TOKEN=$(sed -n 's/^token=//p' $OUT)
+              for p in status files status files files; do curl -s -m 30 -o /dev/null -w "  /api/$p: %{http_code} in %{time_total}s\n" -H "x-tandem-token: $TOKEN" "http://127.0.0.1:$PORT/api/$p" || echo "  /api/$p: no answer in 30 s"; done
+            done
             sudo -u tandemssh -H sh -c 'cd ~ && time /usr/bin/python3 -c "import sys; print(sys.version)"' || true
             echo "--- sshd log"; sudo tail -40 "$RUNNER_TEMP/sshd.log"
             xcrun simctl io "$UDID" screenshot ipad-simulator-ssh.png || true; exit 1; }

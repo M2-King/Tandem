@@ -811,6 +811,12 @@ class Server(socketserver.ThreadingMixIn, HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
+    def server_bind(self):
+        # As HTTPServer's, without its reverse DNS lookup of the address
+        # (socket.getfqdn), which can take seconds on some servers.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
 
 def main(argv):
     if len(argv) != 2:
