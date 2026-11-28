@@ -78,15 +78,20 @@ final class AppHost: ObservableObject {
                 let session = try await SSHSession.connect(
                     server: server, auth: .key(text: key, passphrase: nil), known: KnownHosts(),
                     confirm: { info in info.fingerprint == expected },
-                    progress: { print("TANDEM-SSH " + $0) }
+                    progress: { Self.testLog($0) }
                 )
-                print("TANDEM-SSH connected to \(server.label)")
+                Self.testLog("connected to \(server.label)")
                 connected(session)
             } catch {
-                print("TANDEM-SSH failed: \(error.localizedDescription)")
+                Self.testLog("failed: \(error.localizedDescription)")
             }
         }
         #endif
+    }
+
+    // CI: progress to stderr, unbuffered (simctl launch --stderr keeps it).
+    private nonisolated static func testLog(_ text: String) {
+        FileHandle.standardError.write(Data("TANDEM-SSH \(text)\n".utf8))
     }
 
     // Projects on an SSH server: the sheet, then the page again with the server's runtime behind it.

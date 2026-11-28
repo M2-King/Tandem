@@ -235,8 +235,31 @@ final class SSHSession: @unchecked Sendable {
         }
     }
 
-    // stdout of a command and whether it exited with 0.
-    private func run(_ command: String, onLine: ((String) -> Void)? = nil) async throws -> (out: String, ok: Bool) {
+    // stdout of a command and whether it exited with 0. timeout: give up (with
+    // a message) after that many seconds rather than wait for ever.
+    private func run(_ command: String, timeout: Double? = nil, onLine: ((String) -> Void)? = nil) async throws -> (out: String, ok: Bool) {
+        guard let timeout else { return try await stream(command, onLine: onLine) }
+        let once = Once()
+        return try await withCheckedThrowingContinuation { continuation in
+            let work = Task {
+                do {
+                    let result = try await self.stream(command, onLine: onLine)
+                    if once.claim() { continuation.resume(returning: result) }
+                } catch {
+                    if once.claim() { continuation.resume(throwing: error) }
+                }
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                if once.claim() {
+                    work.cancel()
+                    continuation.resume(throwing: SSHFailure(message: "The server didn't answer within \(Int(timeout)) seconds."))
+                }
+            }
+        }
+    }
+
+    private func stream(_ command: String, onLine: ((String) -> Void)?) async throws -> (out: String, ok: Bool) {
         var out = ""
         var partial = ""
         var ok = true
@@ -332,7 +355,7 @@ final class SSHSession: @unchecked Sendable {
         _ = try await run("mkdir -p ~/\(dir)")
         try await upload(files.bootstrap, to: "\(dir)/bootstrap.sh")
         try await upload(files.lite, to: "\(dir)/lite.py")
-        let check = try await run("sh ~/\(dir)/bootstrap.sh check \(files.id)")
+        let check = try await run("sh ~/\(dir)/bootstrap.sh check \(files.id)", timeout: 60)
         guard let line = check.out.components(separatedBy: "\n").first(where: { $0.hasPrefix("tandem-check ") }) else {
             throw SSHFailure(message: "The server didn't answer as expected. Is it Linux or macOS with a POSIX shell?")
         }
@@ -383,6 +406,13 @@ final class SSHSession: @unchecked Sendable {
         let stream = try await client.executeCommandStream("sh ~/.tandem/remote/\(id)/bootstrap.sh serve \(id) \(folder)")
         return try await withCheckedThrowingContinuation { continuation in
             let once = Once()
+            // As on desktop: a runtime that doesn't start says so instead of waiting.
+            Task {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                if once.claim() {
+                    continuation.resume(throwing: SSHFailure(message: "Tandem didn't start on the server within 60 seconds."))
+                }
+            }
             serveTask = Task {
                 var out = ""
                 do {
