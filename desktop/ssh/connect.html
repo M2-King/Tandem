@@ -37,6 +37,7 @@
   .hostkey { margin-top: 14px; padding: 12px; border: 1px solid var(--warn); border-radius: 8px; background: #2c2618; }
   .hostkey code { display: block; margin: 6px 0; word-break: break-all; font-size: 12px; color: var(--text); }
   .note { margin-top: 16px; color: var(--muted); font-size: 12px; }
+  .hint { margin: 4px 0 0 26px; color: var(--muted); font-size: 12px; line-height: 1.4; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -71,6 +72,8 @@
     <input id="passphrase" type="password" />
   </div>
   <label class="check"><input type="checkbox" id="remember" /> <span id="remember-label">Remember the password on this computer</span></label>
+  <label class="check"><input type="checkbox" id="full-tools" /> <span>Also install notebooks and the debugger</span></label>
+  <p class="hint" id="full-tools-hint">Without it, nothing is installed on the server: you get its files, the Terminal and Run, with the server’s own python3. With it, Tandem installs its tools in <code>~/.tandem</code> the first time (about 15–50 MB, from the fastest of PyPI and its mirrors in China).</p>
 
   <div class="hostkey" id="hostkey" hidden>
     <strong>First connection to <span id="hk-host"></span></strong>
@@ -83,7 +86,7 @@
   <div class="status" id="status" role="status" aria-live="polite"></div>
   <div class="actions"><button type="button" class="btn" id="cancel">Cancel</button><button type="submit" class="btn primary" id="connect">Connect</button></div>
 </form>
-<p class="note">Tandem installs its runtime in <code>~/.tandem</code> on the server the first time (Linux or macOS, Python from PyPI). Code you run there runs with your account on that server. The assistant and Shared projects stay on this computer.</p>
+<p class="note">Linux or macOS servers. Code you run there runs with your account on that server. The assistant and Shared projects stay on this computer.</p>
 <script src="connect.js"></script>
 </body>
 </html>

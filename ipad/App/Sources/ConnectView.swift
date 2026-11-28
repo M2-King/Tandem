@@ -19,6 +19,7 @@ final class ConnectModel: ObservableObject {
     @Published var keyText = ""
     @Published var passphrase = ""
     @Published var remember = false
+    @Published var fullTools = false // also install notebooks and the debugger
     @Published var busy = false
     @Published var status = ""
     @Published var error: String?
@@ -134,6 +135,7 @@ final class ConnectModel: ObservableObject {
                     server: server, auth: auth, known: known,
                     confirm: { [weak self] info in await self?.askHostKey(info) ?? false },
                     progress: { [weak self] text in Task { @MainActor in if self?.cancelled == false { self?.status = text } } },
+                    fullTools: fullTools,
                     onClient: { [weak self] client in
                         Task { @MainActor in
                             guard let self else { return }
@@ -234,6 +236,13 @@ struct ConnectView: View {
                     }
                     Toggle(model.useKey ? "Remember the key on this iPad" : "Remember the password on this iPad", isOn: $model.remember)
                 }
+                Section {
+                    Toggle("Also install notebooks and the debugger", isOn: $model.fullTools)
+                } footer: {
+                    Text(model.fullTools
+                         ? "Tandem installs its tools in ~/.tandem on the server the first time (about 15–50 MB, from the fastest of PyPI and its mirrors in China)."
+                         : "Nothing is installed on the server: you get its files, the Terminal and Run, with the server's own python3.")
+                }
                 if !model.status.isEmpty || model.error != nil {
                     Section {
                         if let error = model.error {
@@ -251,7 +260,7 @@ struct ConnectView: View {
                     }
                 }
                 Section {
-                    Text("Tandem installs its runtime in ~/.tandem on the server the first time (Linux or macOS, packages from PyPI). Code you run there runs with your account on that server. The assistant and Shared projects stay on this iPad.")
+                    Text("Linux or macOS servers. Code you run there runs with your account on that server. The assistant and Shared projects stay on this iPad.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

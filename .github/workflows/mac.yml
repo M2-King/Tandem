@@ -180,7 +180,7 @@ jobs:
           sudo cp "$RUNNER_TEMP/ssh_key.pub" /Users/tandemssh/.ssh/authorized_keys
           sudo chown -R tandemssh /Users/tandemssh/.ssh
           sudo chmod 700 /Users/tandemssh/.ssh && sudo chmod 600 /Users/tandemssh/.ssh/authorized_keys
-          # The server's own Python 3.9 (macOS's /usr/bin/python3) runs Tandem there: the 3.9 pins, end to end.
+          # The server's own Python 3.9 (macOS's /usr/bin/python3) runs Tandem there: lite.py, then the full tools with the 3.9 pins.
           echo 'export TANDEM_REMOTE_PYTHON=/usr/bin/python3' | sudo tee /Users/tandemssh/.zshenv > /dev/null && sudo chown tandemssh /Users/tandemssh/.zshenv
           sudo ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/host_key"
           printf '%s\n' "Port 2222" "ListenAddress 127.0.0.1" "HostKey $RUNNER_TEMP/host_key" "PasswordAuthentication yes" \

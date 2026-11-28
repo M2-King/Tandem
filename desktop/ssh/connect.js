@@ -24,6 +24,7 @@ function fill(s) {
   $('password').value = '';
   $('passphrase').value = '';
   $('remember').checked = !!remembered[s.id];
+  $('full-tools').checked = !!s.fullTools;
   $('password').placeholder = remembered[s.id] && s.auth !== 'key' ? 'Remembered' : '';
   $('passphrase').placeholder = remembered[s.id] && s.auth === 'key' ? 'Remembered' : '';
 }
@@ -84,6 +85,7 @@ async function connect(e) {
     keyPath: auth === 'key' ? $('key-path').value : undefined,
     passphrase: auth === 'key' ? $('passphrase').value : undefined,
     remember: $('remember').checked,
+    fullTools: $('full-tools').checked,
   });
   connecting = false;
   $('hostkey').hidden = true;

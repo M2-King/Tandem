@@ -155,7 +155,8 @@ function connectToServer({ parent, userData, secure, remoteDir, uiDir, version, 
     hostKeyAnswer = null;
   });
 
-  // form: { host, port, username, folder, auth: 'password'|'key', password?, keyPath?, passphrase?, remember }
+  // form: { host, port, username, folder, auth: 'password'|'key', password?, keyPath?, passphrase?, remember, fullTools }
+  // fullTools: also install notebooks and the debugger (else nothing is installed: files, the Terminal and Run).
   handle('ssh:connect', async (form) => {
     if (session) return { ok: false, message: 'Already connecting.' };
     let target;
@@ -186,6 +187,7 @@ function connectToServer({ parent, userData, secure, remoteDir, uiDir, version, 
       auth,
       remoteDir,
       knownHosts,
+      fullTools: !!form.fullTools,
       onProgress: (stage, text) => send('ssh:progress', { stage, text }),
       confirmHostKey: (info) =>
         new Promise((resolve) => {
@@ -200,7 +202,7 @@ function connectToServer({ parent, userData, secure, remoteDir, uiDir, version, 
         uiDir,
         info: { version, remote: { host: target.host, port: target.port, user: target.username, folder: target.folder, label: session.label } },
       });
-      servers.save({ id, ...target, auth: useKey ? 'key' : 'password', keyPath: useKey ? String(form.keyPath) : undefined });
+      servers.save({ id, ...target, auth: useKey ? 'key' : 'password', keyPath: useKey ? String(form.keyPath) : undefined, fullTools: !!form.fullTools });
       // Kept only when asked; forgotten when the box is cleared.
       const secretName = `ssh.${id}.${useKey ? 'passphrase' : 'password'}`;
       const secret = useKey ? form.passphrase : form.password;

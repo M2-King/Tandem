@@ -1,28 +1,33 @@
 #!/bin/sh
-# Tandem on an SSH server: installs Tandem's runtime in the SSH user's home
-# folder and starts it for one project folder. The Tandem apps (desktop and
-# iPad) send this script over SSH and run it there; nothing here runs on the
-# person's own device.
+# Tandem on an SSH server. The Tandem apps (desktop and iPad) send this
+# script over SSH and run it there; nothing here runs on the person's own
+# device.
 #
 #   sh bootstrap.sh check   <id>            what this server has
-#   sh bootstrap.sh install <id>            set up ~/.tandem/remote/<id>
-#   sh bootstrap.sh serve   <id> <folder>   start the runtime (folder in base64)
+#   sh bootstrap.sh install <id>            the full tools, in ~/.tandem/remote/<id>
+#   sh bootstrap.sh serve   <id> <folder>   start Tandem there (folder in base64)
 #
-# <id> names one version of the runtime (a hash the app computes). The app
-# uploads the runtime wheel and constraints.txt into ~/.tandem/remote/<id>/
-# before `install`.
+# <id> names one version of these files (a hash the app computes); the app
+# uploads them into ~/.tandem/remote/<id>/ first.
 #
-# The runtime's own Python, quickest first:
+# Without installing anything, `serve` starts lite.py with the server's own
+# python3 (3.6 or newer, standard library only): the project's files, the
+# Terminal and Run. Nothing is downloaded. After `install` (when the person
+# asks for notebooks and the debugger), it starts Tandem's full runtime.
+#
+# The full runtime's own Python, quickest first:
 #   1. the server's Python 3.9 or newer, in a venv with its own pip;
 #   2. the same without ensurepip (Debian and Ubuntu without python3-venv):
 #      a venv without pip, and a pinned pip wheel (1.8 MB) to install with;
 #   3. no Python 3.9 or newer: a standalone Python 3.12 installed with uv (a
 #      pinned uv wheel, about 17 MB, and Python from GitHub, about 30 MB).
-# Pinned downloads come from the server's package index (a mirror set in its
-# pip.conf, or PyPI) and are checked against their sha256. The runtime's
-# packages come from that index too, pinned by constraints.txt (one set per
-# Python version). Project code doesn't use this Python: it runs with the
-# project's own environment, as on a computer.
+# Downloads come from the fastest of PyPI and its mirrors in mainland China
+# (where PyPI is often slow), unless the server's pip.conf names an index;
+# Python for uv from the fastest of its usual sources and npmmirror. Every
+# file is checked against its sha256 (packages: constraints.txt, installed
+# with --require-hashes; uv and pip: here; Python: by uv), so a mirror can
+# only serve the genuine files. Project code doesn't use this Python: it runs
+# with the project's own environment, as on a computer.
 #
 # While installing, "tandem-step" lines say what's happening every couple of
 # seconds (how much is downloaded, how long it has taken); a download that
@@ -41,6 +46,12 @@ PIP_URL=https://files.pythonhosted.org/packages/de/f0/c81e05b613866b76d2d1066490
 PIP_SUM=bdb1b08f4274833d62c1aa29e20907365a2ceb950410df15fc9521bad440122b
 PIP_SIZE=1787723
 PYPI=https://pypi.org/simple
+# Package indexes when the server has none set up: PyPI and mirrors in
+# mainland China. The fastest to answer is used.
+INDEXES="$PYPI https://mirrors.aliyun.com/pypi/simple https://pypi.tuna.tsinghua.edu.cn/simple https://mirrors.cloud.tencent.com/pypi/simple https://repo.huaweicloud.com/repository/pypi/simple"
+# Where uv gets Python: its default (releases.astral.sh, then GitHub), or
+# npmmirror's copy of the same releases.
+PYTHON_SOURCES="https://releases.astral.sh/github/python-build-standalone/releases/download https://github.com/astral-sh/python-build-standalone/releases/download https://registry.npmmirror.com/-/binary/python-build-standalone"
 
 cmd=${1:-}
 id=${2:-}
@@ -63,23 +74,29 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # server's Pythons (tests; a broken system Python).
 find_python() {
   [ "${TANDEM_REMOTE_USE_UV:-}" = 1 ] && return 1
+  newest_python 'import sys, venv; sys.exit(0 if sys.version_info >= (3, 9) else 1)'
+}
+
+# Any python3 3.6 or newer, for lite.py (standard library only).
+find_any_python() {
+  newest_python 'import sys; sys.exit(0 if sys.version_info >= (3, 6) else 1)'
+}
+
+# The newest Python for which the check ($1, Python code) passes.
+newest_python() {
   if [ -n "${TANDEM_REMOTE_PYTHON:-}" ]; then
-    usable_python "$TANDEM_REMOTE_PYTHON" && { say "$TANDEM_REMOTE_PYTHON"; return 0; }
+    "$TANDEM_REMOTE_PYTHON" -c "$1" >/dev/null 2>&1 && { say "$TANDEM_REMOTE_PYTHON"; return 0; }
     return 1
   fi
   dirs=$(printf '%s' "${PATH:-}" | tr ':' ' ')
-  for name in python3.14 python3.13 python3.12 python3.11 python3.10 python3.9 python3; do
+  for name in python3.14 python3.13 python3.12 python3.11 python3.10 python3.9 python3.8 python3.7 python3.6 python3; do
     for d in $dirs /usr/local/bin /opt/homebrew/bin /usr/bin "$HOME/.local/bin" "$HOME/.pyenv/shims" \
       "$HOME/miniforge3/bin" "$HOME/miniconda3/bin" "$HOME/anaconda3/bin" /opt/conda/bin /opt/miniconda3/bin /opt/anaconda3/bin; do
       [ -x "$d/$name" ] || continue
-      usable_python "$d/$name" && { say "$d/$name"; return 0; }
+      "$d/$name" -c "$1" >/dev/null 2>&1 && { say "$d/$name"; return 0; }
     done
   done
   return 1
-}
-
-usable_python() {
-  "$1" -c 'import sys, venv; sys.exit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1
 }
 
 # ---------------------------------------------------------------- progress
@@ -135,8 +152,13 @@ with urllib.request.urlopen(sys.argv[1], timeout=30) as r, open(sys.argv[2], "wb
 }
 
 # Whether the server at a URL answers (with any HTTP status) within 20
-# seconds. Unknown (no tool to ask): yes.
+# seconds, asking twice (a connection can drop once). Unknown (no tool to
+# ask): yes.
 answers() {
+  answers_once "$1" || answers_once "$1"
+}
+
+answers_once() {
   if have curl; then
     code=$(curl -sS -o /dev/null --max-time 20 -w '%{http_code}' "$1" 2>/dev/null)
     [ "${code:-000}" != 000 ]
@@ -180,13 +202,66 @@ pip_proxy() {
   return 1
 }
 
-# Fails within about 20 seconds, saying why, when the server can't reach its
-# package index, instead of each download waiting for its own timeout.
-check_index() {
+host_of() { printf '%s' "$1" | sed 's#^[a-z]*://\([^/:@]*@\)\{0,1\}\([^/:]*\).*#\2#'; }
+
+# Seconds a URL takes to send its first 256 KB (or all of it, if smaller);
+# fails if it doesn't answer with success within 10 seconds.
+probe_time() {
+  if have curl; then
+    curl -fsSL -o /dev/null -r 0-262143 --max-time 10 -w '%{time_total}' "$1" 2>/dev/null
+  elif [ -n "${py:-}" ] || have python3; then
+    "${py:-python3}" -c 'import sys, time, urllib.request
+t = time.time()
+with urllib.request.urlopen(urllib.request.Request(sys.argv[1], headers={"Range": "bytes=0-262143"}), timeout=10) as r:
+    n = 0
+    while n < 262144 and time.time() - t < 10:
+        b = r.read(65536)
+        if not b:
+            break
+        n += len(b)
+if time.time() - t >= 10:
+    sys.exit(1)
+print("%.3f" % (time.time() - t))' "$1" 2>/dev/null
+  else return 1
+  fi
+}
+
+# fastest <path> <base URL>...: the base that serves <base><path> quickest,
+# all tried at once.
+fastest() {
+  ff_path=$1
+  shift
+  ff_dir="$base/.probe.$$"
+  rm -rf "$ff_dir"
+  mkdir -p "$ff_dir" || return 1
+  ff_n=0
+  for ff_base in "$@"; do
+    ff_n=$((ff_n + 1))
+    (t=$(probe_time "$ff_base$ff_path") && [ -n "$t" ] && printf '%s %s\n' "$t" "$ff_base" > "$ff_dir/$ff_n") &
+  done
+  wait
+  ff_best=$(cat "$ff_dir"/* 2>/dev/null | LC_ALL=C sort -n | head -n 1 | cut -d' ' -f2)
+  rm -rf "$ff_dir"
+  [ -n "$ff_best" ] && printf '%s' "$ff_best"
+}
+
+# Sets $index: the index the server's pip is set up with (or
+# TANDEM_REMOTE_INDEX), checked to answer within 20 seconds; else the fastest
+# of PyPI and its mirrors. Fails within seconds, saying why, when none can be
+# reached, instead of each download waiting for its own timeout.
+choose_index() {
+  index=${TANDEM_REMOTE_INDEX:-$(package_index)}
+  if [ -n "${TANDEM_REMOTE_INDEX:-}" ] || [ "$index" != "$PYPI" ]; then
+    say "tandem-step Checking the server can reach $(host_of "$index")"
+    pip_proxy || answers "${index%/}/pip/" ||
+      fail "This server couldn't reach $(host_of "$index") (the package index the server is set up to use) within 20 seconds, so Tandem can't install its tools there. Check the server's internet access, then connect again. The Terminal, files and Run work without them: connect again without \"Also install notebooks and the debugger\"."
+    return 0
+  fi
   pip_proxy && return 0
-  answers "${index%/}/pip/" && return 0
-  host=$(printf '%s' "$index" | sed 's#^[a-z]*://\([^/:@]*@\)\{0,1\}\([^/:]*\).*#\2#')
-  fail "This server couldn't reach $host within 20 seconds, so Tandem can't install its packages there. Check the server's internet access (or its proxy, or set a PyPI mirror in its pip.conf), then connect again."
+  say "tandem-step Finding the fastest package source (PyPI or a mirror in China)"
+  index=$(fastest /pip/ $INDEXES) ||
+    fail "This server couldn't reach PyPI or its mirrors (Aliyun, Tsinghua, Tencent, Huawei) within 10 seconds, so Tandem can't install its tools there. Check the server's internet access, then connect again. The Terminal, files and Run work without them: connect again without \"Also install notebooks and the debugger\"."
+  say "tandem-step Packages from $(host_of "$index")"
 }
 
 # Where the index has file $2 of project $1 (PyPI: its own URL, $3).
@@ -312,66 +387,84 @@ case "$cmd" in
 
     : > "$log"
     rm -rf "$dir/venv"
-    index=$(package_index)
     pip_flags="--disable-pip-version-check --no-input --timeout 30 --retries 2"
     py=$(find_python) || py=
 
     if [ -n "$py" ] && "$py" -m venv "$dir/venv" >> "$log" 2>&1; then
       # 1. The server's Python, with its own pip.
-      say "tandem-step Checking the server can reach its package index"
-      check_index
+      choose_index
       with_progress "Installing Tandem's packages with $("$py" -c 'import sys; print("Python %d.%d" % sys.version_info[:2])' 2>/dev/null)" "$dir/venv" "" \
-        "$dir/venv/bin/python" -m pip install $pip_flags -c "$dir/constraints.txt" "$wheel" \
+        "$dir/venv/bin/python" -m pip install $pip_flags --index-url "$index" --require-hashes -r "$dir/constraints.txt" \
         || fail "Installing Tandem's packages failed (no internet on the server, or its package index unreachable?). Details: $log"
     elif [ -n "$py" ] && { rm -rf "$dir/venv"; "$py" -m venv --without-pip "$dir/venv" >> "$log" 2>&1; }; then
       # 2. The server's Python without ensurepip: pip from a pinned wheel.
-      say "tandem-step Checking the server can reach its package index"
-      check_index
+      choose_index
       pipwhl="$base/$PIP_FILE"
       [ -f "$pipwhl" ] || fetch_wheel pip "$PIP_FILE" "$PIP_URL" "$PIP_SUM" "$PIP_SIZE" "Downloading pip" "$pipwhl" \
         || fail "Couldn't download pip (1.8 MB) for the server's Python. Install python3-venv (or python3-pip) on the server, or check its internet access, then connect again."
       with_progress "Installing Tandem's packages with $("$py" -c 'import sys; print("Python %d.%d" % sys.version_info[:2])' 2>/dev/null)" "$dir/venv" "" \
-        "$dir/venv/bin/python" "$pipwhl/pip" install $pip_flags -c "$dir/constraints.txt" "$wheel" \
+        "$dir/venv/bin/python" "$pipwhl/pip" install $pip_flags --index-url "$index" --require-hashes -r "$dir/constraints.txt" \
         || fail "Installing Tandem's packages failed (no internet on the server, or its package index unreachable?). Details: $log"
     else
       # 3. No usable Python: uv, and Python 3.12 for Tandem.
       rm -rf "$dir/venv"
-      say "tandem-step Checking the server can reach its package index"
-      check_index
+      choose_index
       get_uv
-      [ "$index" = "$PYPI" ] || [ -n "${UV_DEFAULT_INDEX:-}${UV_INDEX_URL:-}" ] || export UV_DEFAULT_INDEX="$index"
       export UV_HTTP_TIMEOUT=60
       if [ -n "$py" ]; then
         with_progress "Setting up Tandem's Python environment" "$dir/venv" "" \
           "$uv" venv --quiet --python "$py" "$dir/venv" \
           || fail "Couldn't create a Python environment with $py. Details: $log"
       else
-        # uv gets Python from releases.astral.sh, else GitHub.
-        if [ -z "${UV_PYTHON_INSTALL_MIRROR:-}" ] && ! answers https://releases.astral.sh/ && ! answers https://github.com/astral-sh/python-build-standalone/releases/latest; then
-          fail "This server has no Python 3.9 or newer, and couldn't reach GitHub within 20 seconds to get one for Tandem. Install python3 (3.9 or newer, with venv) on the server, then connect again."
+        # The fastest source of the build uv would download (uv checks its sha256).
+        if [ -z "${UV_PYTHON_INSTALL_MIRROR:-}" ]; then
+          say "tandem-step Finding the fastest source for Python 3.12"
+          build=$("$uv" python list 3.12 --only-downloads --output-format json 2>/dev/null |
+            grep -o '"url": *"[^"]*python-build-standalone/releases/download/[^"]*"' | head -n 1 |
+            sed 's#.*/releases/download/##; s#"$##')
+          if [ -n "$build" ]; then
+            source=$(fastest "/$build" $PYTHON_SOURCES) ||
+              fail "This server has no Python 3.9 or newer, and couldn't reach GitHub or its mirror (npmmirror) within 10 seconds to get one for Tandem. Install python3 (3.9 or newer, with venv) on the server, then connect again."
+            case "$source" in https://releases.astral.sh/*) ;; *) export UV_PYTHON_INSTALL_MIRROR="$source" ;; esac
+            say "tandem-step Python from $(host_of "$source")"
+          fi
         fi
         UV_PYTHON_INSTALL_DIR="$base/python" with_progress "Downloading Python 3.12 for Tandem" "$base/python" "" \
           "$uv" venv --quiet --python 3.12 --python-preference only-managed "$dir/venv" \
           || fail "Couldn't install Python 3.12 for Tandem (no internet on the server?). Details: $log"
       fi
       with_progress "Installing Tandem's packages" "$dir/venv" "" \
-        "$uv" pip install --quiet --python "$dir/venv/bin/python" -c "$dir/constraints.txt" "$wheel" \
+        "$uv" pip install --quiet --python "$dir/venv/bin/python" --index-url "$index" --require-hashes -r "$dir/constraints.txt" \
         || fail "Installing Tandem's packages failed (no internet on the server, or its package index unreachable?). Details: $log"
     fi
+    # The runtime itself, uploaded by the app (its packages are all in place).
+    if [ -x "$dir/venv/bin/pip" ] || "$dir/venv/bin/python" -m pip --version >/dev/null 2>&1; then
+      "$dir/venv/bin/python" -m pip install $pip_flags --no-deps --no-index "$wheel" >> "$log" 2>&1
+    elif [ -n "${pipwhl:-}" ]; then
+      "$dir/venv/bin/python" "$pipwhl/pip" install $pip_flags --no-deps --no-index "$wheel" >> "$log" 2>&1
+    else
+      "$uv" pip install --quiet --python "$dir/venv/bin/python" --no-deps --no-index "$wheel" >> "$log" 2>&1
+    fi || fail "Couldn't install Tandem's runtime on the server. Details: $log"
     "$dir/venv/bin/tandem" --help > /dev/null 2>&1 || fail "Tandem was installed but doesn't start (see $log)."
     touch "$dir/ok"
     say tandem-installed
     ;;
 
   serve)
-    [ -f "$dir/ok" ] || fail "Tandem isn't installed on this server yet."
     folder=$(decode "${3:-}") || fail "Bad folder name."
     case "$folder" in
       '' | '~') folder=$HOME ;;
       '~/'*) folder="$HOME/${folder#\~/}" ;;
     esac
     [ -d "$folder" ] || fail "There's no folder $folder on this server."
-    exec "$dir/venv/bin/tandem" serve "$folder" --port 0 --print-url --print-token --exit-with-stdin --no-ui
+    if [ -f "$dir/ok" ]; then
+      exec "$dir/venv/bin/tandem" serve "$folder" --port 0 --print-url --print-token --exit-with-stdin --no-ui
+    fi
+    # Nothing installed: files, the Terminal and Run with the server's python3.
+    [ -f "$dir/lite.py" ] || fail "Tandem's files weren't uploaded to the server."
+    lite_py=$(find_any_python) ||
+      fail "This server has no python3 (3.6 or newer), which Tandem needs to show its files, open the Terminal and run code. Install python3 on the server, then connect again."
+    exec "$lite_py" "$dir/lite.py" "$folder"
     ;;
 
   *)

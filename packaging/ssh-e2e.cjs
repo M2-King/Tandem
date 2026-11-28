@@ -12,12 +12,14 @@
 //   TANDEM_RUNTIME, TANDEM_UI, TANDEM_REMOTE_DIR   for the unpackaged app (desktop/ with Electron)
 //
 // Checks: first connection shows the host key and connects only once it's
-// trusted; Tandem installs and starts on the server; the window shows the
-// server; Run, Step through, a notebook cell and the Terminal run there;
-// the assistant and Shared projects aren't offered; Disconnect returns to
-// this computer's project and Tandem stops on the server; a second
-// connection with the SSH key needs no confirmation; a changed host key is
-// refused.
+// trusted; without "Also install notebooks and the debugger", nothing is
+// installed (the server's python3 runs lite.py): the window shows the
+// server, Run and the Terminal run there, notebooks say they need the full
+// tools; the assistant and Shared projects aren't offered; Disconnect
+// returns to this computer's project and Tandem stops on the server; a
+// second connection with the SSH key needs no confirmation and, with the
+// box ticked, installs the full tools: Step through and a notebook cell run
+// there; a changed host key is refused.
 
 const { _electron: electron } = require('playwright');
 const { execFileSync } = require('node:child_process');
@@ -36,7 +38,7 @@ const check = (ok, msg) => {
 
 // Tandem processes running on the server for this user.
 function serverRuntimes() {
-  const args = ['-o', 'BatchMode=yes', '-o', 'LogLevel=ERROR', '-o', 'StrictHostKeyChecking=no', '-o', `UserKnownHostsFile=${os.devNull}`, '-i', E.SSH_KEY, '-p', E.SSH_PORT, `${E.SSH_USER}@${E.SSH_HOST}`, 'ps -u "$(id -u)" -o args= | grep -c "[t]andem serve" || true'];
+  const args = ['-o', 'BatchMode=yes', '-o', 'LogLevel=ERROR', '-o', 'StrictHostKeyChecking=no', '-o', `UserKnownHostsFile=${os.devNull}`, '-i', E.SSH_KEY, '-p', E.SSH_PORT, `${E.SSH_USER}@${E.SSH_HOST}`, 'ps -u "$(id -u)" -o args= | grep -cE "[t]andem serve|[l]ite\\.py" || true'];
   try {
     return Number(execFileSync('ssh', args, { encoding: 'utf8' }).trim()) || 0;
   } catch {
@@ -93,6 +95,12 @@ async function hideFiles(w) {
   await scrim.first().waitFor({ state: 'hidden', timeout: 10000 });
 }
 let electronApp = null; // for screenshots of every window if a check fails // the Tandem window, for a screenshot if a check fails
+// The runtime's /api/status, as the page sees it.
+const runtimeStatus = (p) =>
+  p.evaluate(async () => {
+    const { token } = JSON.parse(document.getElementById('tandem-runtime').textContent);
+    return (await fetch('/api/status', { headers: { 'x-tandem-token': token } })).json();
+  });
 const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines')?.innerText || '');
 
 (async () => {
@@ -114,8 +122,10 @@ const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines
   await connect.screenshot({ path: path.join(out, 'ssh-1-host-key.png') });
   await connect.locator('#hk-yes').click();
   const t0 = Date.now();
-  await win.locator('.remote-chip').waitFor({ timeout: 300000 });
-  check(true, `connected; Tandem installed and started on the server (${Math.round((Date.now() - t0) / 1000)} s)`);
+  await win.locator('.remote-chip').waitFor({ timeout: 60000 });
+  check(true, `connected without installing anything (${Math.round((Date.now() - t0) / 1000)} s)`);
+  const light = await runtimeStatus(win);
+  check(light.runtime?.light === true && light.python?.ok, `the server's own Python runs it: ${light.python?.version} (${light.python?.path})`);
   await win.locator('.runtime-status.tone-up').waitFor({ timeout: 60000 });
   const chip = (await win.locator('.remote-chip').innerText()).trim();
   check(chip === `${E.SSH_USER}@${E.SSH_HOST}${E.SSH_PORT !== '22' ? `:${E.SSH_PORT}` : ''}`, `the window shows the server: ${chip}`);
@@ -131,26 +141,20 @@ const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines
   check(true, `Run on the server: ${(await editorText(win)).trim().split('\n').pop()}`);
   await win.screenshot({ path: path.join(out, 'ssh-2-run.png') });
 
-  // Step through.
-  await win.locator('.run-control .split-toggle').click();
-  await win.getByRole('menuitem', { name: /Step through/ }).click();
-  await win.waitForFunction(() => /Next line: 1\b/.test(document.querySelector('.banner-session')?.innerText || ''), null, { timeout: 60000 });
-  check(true, 'Step through pauses on line 1 on the server');
-  await win.locator('.banner-session').getByRole('button', { name: /Stop|Close/ }).click();
-
-  // A notebook cell.
+  // Notebooks need the full tools.
   await showFiles(win);
   await win.getByRole('button', { name: 'New file' }).click();
-  await win.locator('.dialog-newfile .newfile-name input').fill('remote_nb.ipynb');
+  await win.locator('.dialog-newfile .newfile-name input').fill('light_nb.ipynb');
   await win.keyboard.press('Enter');
   await win.locator('.nb-cell').first().waitFor({ timeout: 30000 });
   await hideFiles(win);
   await win.locator('.nb-cell').first().locator('.view-lines').click();
-  await win.keyboard.type('import socket, getpass; print(getpass.getuser())');
+  await win.keyboard.type('1 + 1');
   await win.keyboard.press('Shift+Enter');
-  await win.locator('.nb-outputs').first().waitFor({ timeout: 120000 });
-  const cell = (await win.locator('.nb-outputs').first().innerText()).trim();
-  check(cell === E.SSH_USER, `a notebook cell runs as ${cell} on the server`);
+  const needsFull = await win
+    .waitForFunction(() => /full tools/.test(document.body.innerText), null, { timeout: 30000 })
+    .then(() => true, () => false);
+  check(needsFull, 'a notebook says it needs the full tools on the server');
 
   // The Terminal.
   await win.getByRole('tab', { name: 'Terminal' }).click();
@@ -188,9 +192,37 @@ const editorText = (p) => p.evaluate(() => document.querySelector('.output-lines
   await fillTarget(connect);
   await connect.locator('#use-key').click();
   await connect.locator('#key-path').fill(E.SSH_KEY);
+  await connect.locator('#full-tools').check();
+  const t1 = Date.now();
   await connect.locator('#connect').click();
-  await win.locator('.remote-chip').waitFor({ timeout: 120000 });
-  check(true, 'connected again with the SSH key, without confirming the key again');
+  await win.locator('.remote-chip').waitFor({ timeout: 300000 });
+  check(true, `connected again with the SSH key, without confirming the key again; the full tools installed (${Math.round((Date.now() - t1) / 1000)} s)`);
+  await win.locator('.runtime-status.tone-up').waitFor({ timeout: 60000 });
+  check((await runtimeStatus(win)).runtime?.light !== true, 'Tandem’s full runtime runs on the server');
+  await showFiles(win);
+  await win.getByRole('treeitem', { name: 'main.py' }).click();
+
+  // Step through.
+  await win.locator('.run-control .split-toggle').click();
+  await win.getByRole('menuitem', { name: /Step through/ }).click();
+  await win.waitForFunction(() => /Next line: 1\b/.test(document.querySelector('.banner-session')?.innerText || ''), null, { timeout: 60000 });
+  check(true, 'Step through pauses on line 1 on the server');
+  await win.locator('.banner-session').getByRole('button', { name: /Stop|Close/ }).click();
+
+  // A notebook cell.
+  await showFiles(win);
+  await win.getByRole('button', { name: 'New file' }).click();
+  await win.locator('.dialog-newfile .newfile-name input').fill('remote_nb.ipynb');
+  await win.keyboard.press('Enter');
+  await win.locator('.nb-cell').first().waitFor({ timeout: 30000 });
+  await hideFiles(win);
+  await win.locator('.nb-cell').first().locator('.view-lines').click();
+  await win.keyboard.type('import socket, getpass; print(getpass.getuser())');
+  await win.keyboard.press('Shift+Enter');
+  await win.locator('.nb-outputs').first().waitFor({ timeout: 120000 });
+  const cell = (await win.locator('.nb-outputs').first().innerText()).trim();
+  check(cell === E.SSH_USER, `a notebook cell runs as ${cell} on the server`);
+
   await win.getByRole('button', { name: 'More options' }).click();
   await win.getByRole('menuitem', { name: /Disconnect from/ }).click();
   await win.waitForFunction(() => !document.querySelector('.remote-chip'), null, { timeout: 60000 });

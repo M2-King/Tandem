@@ -21,13 +21,13 @@ const { Client } = require('ssh2');
 function remoteFiles(dir) {
   const names = fs.readdirSync(dir);
   const wheel = names.find((n) => /^tandem_runtime-.+\.whl$/.test(n));
-  if (!wheel || !names.includes('bootstrap.sh') || !names.includes('constraints.txt')) {
+  if (!wheel || !['bootstrap.sh', 'constraints.txt', 'lite.py'].every((n) => names.includes(n))) {
     throw new Error('This copy of Tandem is missing the files it installs on servers.');
   }
   const read = (n) => fs.readFileSync(path.join(dir, n));
-  const files = { bootstrap: read('bootstrap.sh'), constraints: read('constraints.txt'), wheel: read(wheel), wheelName: wheel };
+  const files = { bootstrap: read('bootstrap.sh'), constraints: read('constraints.txt'), lite: read('lite.py'), wheel: read(wheel), wheelName: wheel };
   // One folder on the server per version of these files.
-  files.id = crypto.createHash('sha256').update(files.wheel).update(files.constraints).update(files.bootstrap).digest('hex').slice(0, 16);
+  files.id = crypto.createHash('sha256').update(files.wheel).update(files.constraints).update(files.bootstrap).update(files.lite).digest('hex').slice(0, 16);
   return files;
 }
 
@@ -42,11 +42,15 @@ class RemoteSession extends EventEmitter {
   // target: { host, port, username, folder }
   // auth: { password } | { privateKey (Buffer|string), passphrase? }
   // checkHostKey(info) -> Promise<boolean>; info: { host, port, type, fingerprint, known: 'new'|'same'|'changed', previous }
-  constructor({ target, auth, remoteDir, knownHosts, confirmHostKey, onProgress }) {
+  // fullTools: install Tandem's full runtime if it isn't there (notebooks, the
+  // debugger); else, unless it's already installed, the server's own python3
+  // runs lite.py (files, the Terminal and Run) and nothing is installed.
+  constructor({ target, auth, remoteDir, knownHosts, confirmHostKey, onProgress, fullTools = false }) {
     super();
     this.target = { port: 22, folder: '~', ...target };
     this.auth = auth;
     this.remoteDir = remoteDir;
+    this.fullTools = fullTools;
     this.knownHosts = knownHosts;
     this.confirmHostKey = confirmHostKey;
     this.progress = onProgress || (() => {});
@@ -66,12 +70,13 @@ class RemoteSession extends EventEmitter {
     await this.open();
     this.progress('checking', 'Checking the server…');
     await this.exec(`mkdir -p ~/.tandem/remote/${files.id} && cat > ~/.tandem/remote/${files.id}/bootstrap.sh`, { stdin: files.bootstrap });
+    await this.exec(`cat > ~/.tandem/remote/${files.id}/lite.py`, { stdin: files.lite });
     const check = await this.exec(`sh ~/.tandem/remote/${files.id}/bootstrap.sh check ${files.id}`);
     const info = lines(check.stdout).find((l) => l.startsWith('tandem-check '));
     if (!info) throw new Error(`The server didn't answer as expected. Is it Linux or macOS with a POSIX shell?${check.stderr ? `\n\n${check.stderr.slice(-500)}` : ''}`);
     const facts = Object.fromEntries(info.slice('tandem-check '.length).split(' ').map((kv) => kv.split('=')));
     if (!['Linux', 'Darwin'].includes(facts.os)) throw new Error(`Tandem runs projects on Linux and macOS servers (this one is ${facts.os}).`);
-    if (facts.installed !== '1') {
+    if (facts.installed !== '1' && this.fullTools) {
       this.progress('installing', 'Installing Tandem on the server (the first time takes a minute)…');
       await this.exec(`cat > ~/.tandem/remote/${files.id}/${files.wheelName}`, { stdin: files.wheel });
       await this.exec(`cat > ~/.tandem/remote/${files.id}/constraints.txt`, { stdin: files.constraints });

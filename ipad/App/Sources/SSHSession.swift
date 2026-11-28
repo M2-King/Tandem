@@ -192,6 +192,7 @@ final class SSHSession: @unchecked Sendable {
     private struct RemoteFiles {
         let bootstrap: Data
         let constraints: Data
+        let lite: Data
         let wheel: Data
         let wheelName: String
         let id: String
@@ -203,6 +204,7 @@ final class SSHSession: @unchecked Sendable {
               let wheelName = names.first(where: { $0.hasPrefix("tandem_runtime-") && $0.hasSuffix(".whl") }),
               let bootstrap = try? Data(contentsOf: dir.appendingPathComponent("bootstrap.sh")),
               let constraints = try? Data(contentsOf: dir.appendingPathComponent("constraints.txt")),
+              let lite = try? Data(contentsOf: dir.appendingPathComponent("lite.py")),
               let wheel = try? Data(contentsOf: dir.appendingPathComponent(wheelName)) else {
             throw SSHFailure(message: "This copy of Tandem is missing the files it installs on servers.")
         }
@@ -210,8 +212,9 @@ final class SSHSession: @unchecked Sendable {
         hash.update(data: wheel)
         hash.update(data: constraints)
         hash.update(data: bootstrap)
+        hash.update(data: lite)
         let id = hash.finalize().map { String(format: "%02x", $0) }.joined().prefix(16)
-        return RemoteFiles(bootstrap: bootstrap, constraints: constraints, wheel: wheel, wheelName: wheelName, id: String(id))
+        return RemoteFiles(bootstrap: bootstrap, constraints: constraints, lite: lite, wheel: wheel, wheelName: wheelName, id: String(id))
     }
 
     private static func authentication(_ auth: SSHAuthInput, username: String) throws -> SSHAuthenticationMethod {
@@ -283,6 +286,7 @@ final class SSHSession: @unchecked Sendable {
     static func connect(server: SSHServer, auth: SSHAuthInput, known: KnownHosts,
                         confirm: @escaping (HostKeyInfo) async -> Bool,
                         progress: @escaping (String) -> Void,
+                        fullTools: Bool = false,
                         onClient: @escaping (SSHClient) -> Void = { _ in }) async throws -> SSHSession {
         let files = try remoteFiles()
         progress("Connecting to \(server.label)…")
@@ -312,18 +316,22 @@ final class SSHSession: @unchecked Sendable {
         let session = SSHSession(server: server, client: client, remotePort: 0, token: "")
         do {
             try Task.checkCancellation()
-            return try await session.start(files: files, progress: progress)
+            return try await session.start(files: files, fullTools: fullTools, progress: progress)
         } catch {
             try? await client.close()
             throw error
         }
     }
 
-    private func start(files: RemoteFiles, progress: @escaping (String) -> Void) async throws -> SSHSession {
+    // fullTools: install Tandem's full runtime if it isn't there (notebooks, the
+    // debugger). Otherwise, unless it's already installed, the server's own
+    // python3 runs lite.py (files, the Terminal and Run): nothing is installed.
+    private func start(files: RemoteFiles, fullTools: Bool, progress: @escaping (String) -> Void) async throws -> SSHSession {
         let dir = ".tandem/remote/\(files.id)"
         progress("Checking the server…")
         _ = try await run("mkdir -p ~/\(dir)")
         try await upload(files.bootstrap, to: "\(dir)/bootstrap.sh")
+        try await upload(files.lite, to: "\(dir)/lite.py")
         let check = try await run("sh ~/\(dir)/bootstrap.sh check \(files.id)")
         guard let line = check.out.components(separatedBy: "\n").first(where: { $0.hasPrefix("tandem-check ") }) else {
             throw SSHFailure(message: "The server didn't answer as expected. Is it Linux or macOS with a POSIX shell?")
@@ -336,7 +344,7 @@ final class SSHSession: @unchecked Sendable {
         guard ["Linux", "Darwin"].contains(facts["os"] ?? "") else {
             throw SSHFailure(message: "Tandem runs projects on Linux and macOS servers (this one is \(facts["os"] ?? "unknown")).")
         }
-        if facts["installed"] != "1" {
+        if facts["installed"] != "1" && fullTools {
             progress("Installing Tandem on the server (the first time takes a minute)…")
             try Task.checkCancellation()
             try await upload(files.wheel, to: "\(dir)/\(files.wheelName)")
