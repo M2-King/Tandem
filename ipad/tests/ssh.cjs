@@ -7,6 +7,7 @@ const { webkit } = require('playwright');
 
 const [url, user] = process.argv.slice(2);
 let failures = 0;
+let unfinished = () => 'none';
 const check = (ok, msg) => {
   console.log(`${ok ? 'ok  ' : 'FAILED:'} ${msg}`);
   if (!ok) failures++;
@@ -17,9 +18,16 @@ const check = (ok, msg) => {
   const page = await browser.newPage({ viewport: { width: 1180, height: 820 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  // Requests still waiting, shown if a check fails (what the page waits for).
+  const pending = new Map();
+  page.on('request', (r) => pending.set(r, Date.now()));
+  page.on('requestfinished', (r) => pending.delete(r));
+  page.on('requestfailed', (r) => pending.delete(r));
+  unfinished = () =>
+    [...pending].map(([r, t]) => `${r.method()} ${r.url()} (${Math.round((Date.now() - t) / 1000)} s)`).join('\n  ') || 'none';
   // The app connects at launch; the page then shows the server.
   for (let i = 0; i < 60; i++) {
-    await page.goto(url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
     if (await page.locator('.remote-chip').count()) break;
     await page.waitForTimeout(5000);
   }
@@ -56,5 +64,6 @@ const check = (ok, msg) => {
   process.exit(failures ? 1 : 0);
 })().catch((e) => {
   console.error('FAILED:', e.message);
+  console.error(`requests still waiting:\n  ${unfinished()}`);
   process.exit(1);
 });
