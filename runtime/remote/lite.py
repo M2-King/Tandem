@@ -539,6 +539,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        if self.close_connection:
+            # Say so, as the runtime does: the iPad passes the reply on as it
+            # is, and a browser that isn't told reuses the connection for its
+            # next request, which then gets no answer.
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(data)
 

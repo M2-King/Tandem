@@ -74,6 +74,13 @@ def test_only_this_host_with_the_token(lite):
     assert status["project"]["name"] == "proj"
 
 
+def test_says_when_it_closes_the_connection(lite):
+    # The iPad's gateway asks for one request per connection and passes the
+    # reply on as it is: the browser must be told the connection ends.
+    r = lite["client"].get("/api/status", headers={"connection": "close"})
+    assert r.status_code == 200 and r.headers.get("connection") == "close"
+
+
 def test_files(lite):
     c = lite["client"]
     assert [f["path"] for f in c.get("/api/files").json()["files"]] == ["hello.py"]
