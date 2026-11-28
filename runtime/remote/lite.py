@@ -179,9 +179,27 @@ class ProjectFiles:
 
 # ---------------------------------------------------------------- Python
 # As runtime/tandem_runtime/interpreters.py: the project's setting, its
-# environment (.venv, venv, env), else python3 on PATH.
+# environment (.venv, venv, env), else python3 on PATH (on macOS also where
+# Homebrew, python.org and pyenv put it, and Apple's /usr/bin/python3 last:
+# it's old, and slow to start the first time, or asks for the developer tools).
 
 VENV_DIRS = (".venv", "venv", "env")
+MAC_PLACES = ("/opt/homebrew/bin", "/usr/local/bin", "/Library/Frameworks/Python.framework/Versions/Current/bin",
+              "~/.pyenv/shims", "~/.local/bin")
+
+
+def path_python():
+    if sys.platform != "darwin":
+        return shutil.which("python3") or shutil.which("python")
+    dirs = [d for d in os.environ.get("PATH", "").split(os.pathsep) if d] + [os.path.expanduser(d) for d in MAC_PLACES]
+    for d in dirs:
+        if d.rstrip("/") == "/usr/bin":
+            continue
+        for name in ("python3", "python"):
+            exe = os.path.join(d, name)
+            if os.path.isfile(exe) and os.access(exe, os.X_OK):
+                return exe
+    return shutil.which("python3") or shutil.which("python")
 
 
 def project_python(root):
@@ -195,7 +213,7 @@ def project_python(root):
         candidate = root / name / "bin" / "python"
         if candidate.exists():
             return candidate, "project environment ({})".format(name)
-    found = shutil.which("python3") or shutil.which("python")
+    found = path_python()
     return (Path(found), "PATH") if found else (None, "none")
 
 

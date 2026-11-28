@@ -8,6 +8,7 @@ const { webkit } = require('playwright');
 const [url, user] = process.argv.slice(2);
 let failures = 0;
 let unfinished = () => 'none';
+let runtimeShown = async () => '';
 const check = (ok, msg) => {
   console.log(`${ok ? 'ok  ' : 'FAILED:'} ${msg}`);
   if (!ok) failures++;
@@ -23,6 +24,11 @@ const check = (ok, msg) => {
   page.on('request', (r) => pending.set(r, Date.now()));
   page.on('requestfinished', (r) => pending.delete(r));
   page.on('requestfailed', (r) => pending.delete(r));
+  runtimeShown = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('.runtime-status');
+      return el ? `${el.className}: ${el.innerText.replace(/\s+/g, ' ')}` : 'no runtime status';
+    });
   unfinished = () =>
     [...pending].map(([r, t]) => `${r.method()} ${r.url()} (${Math.round((Date.now() - t) / 1000)} s)`).join('\n  ') || 'none';
   // The app connects at launch; the page then shows the server.
@@ -62,8 +68,9 @@ const check = (ok, msg) => {
   await browser.close();
   console.log(failures ? `\n${failures} iPad SSH check(s) FAILED` : '\nAll iPad SSH checks passed.');
   process.exit(failures ? 1 : 0);
-})().catch((e) => {
+})().catch(async (e) => {
   console.error('FAILED:', e.message);
   console.error(`requests still waiting:\n  ${unfinished()}`);
+  console.error(`runtime status: ${await runtimeShown().catch(() => '?')}`);
   process.exit(1);
 });
